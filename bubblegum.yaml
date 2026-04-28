@@ -1,0 +1,24 @@
+grounding:
+  accept_threshold: 0.85
+  review_threshold: 0.70
+  ambiguous_gap: 0.05
+  reject_threshold: 0.50
+  max_cost_level: medium   # low | medium | high
+  enable_vision: false
+  enable_ocr: true
+  memory_ttl_days: 7
+  memory_max_failures: 3
+
+ai:
+  enabled: true
+  provider: openai          # anthropic | openai | gemini | local
+  model: gpt-4o-mini     # e.g. claude-sonnet-latest — must be set explicitly
+
+privacy:
+  redact_pii: true
+  send_screenshots: false      # set to true only to enable VisionModelResolver
+  log_provider_calls: true
+
+debug:
+  log_raw_payloads: false      # NEVER enable in CI or production
+  log_resolver_traces: true    # safe — logs resolver names + confidence only

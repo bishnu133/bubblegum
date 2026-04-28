@@ -1,0 +1,136 @@
+# =============================================================
+# Bubblegum — .gitignore
+# Python / Playwright / Appium / AI test automation project
+# =============================================================
+
+# ---------------------------
+# Python
+# ---------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+MANIFEST
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# ---------------------------
+# Bubblegum runtime artifacts
+# ---------------------------
+# Step screenshots and traces captured during test runs
+artifacts/
+*.png
+*.jpg
+*.jpeg
+
+# Bubblegum memory database (SQLite — local only, never commit)
+.bubblegum/
+*.db
+*.sqlite
+*.sqlite3
+
+# HTML / JSON step result reports (generated output)
+reports/
+bubblegum-report.html
+bubblegum-report.json
+step_result_*.json
+
+# ---------------------------
+# Secrets & credentials
+# ---------------------------
+# Never commit API keys or provider credentials
+.env
+.env.local
+.env.production
+secrets.yaml
+credentials.yaml
+*.pem
+*.key
+
+# bubblegum.yaml may contain provider keys — use .example instead
+# bubblegum.yaml        ← uncomment this line if your yaml holds secrets
+bubblegum.yaml.local
+
+# ---------------------------
+# Playwright
+# ---------------------------
+test-results/
+playwright-report/
+playwright/.cache/
+.playwright/
+
+# ---------------------------
+# Appium / Android
+# ---------------------------
+# APK test binaries — don't commit large binaries
+*.apk
+*.aab
+*.ipa
+
+# ---------------------------
+# macOS
+# ---------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+__MACOSX/
+
+# ---------------------------
+# IDE / editors
+# ---------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ---------------------------
+# Testing & coverage
+# ---------------------------
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+test-results.xml
+
+# ---------------------------
+# Packaging / distribution
+# ---------------------------
+*.tar.gz
+*.zip
+bubblegum.zip
+
+# ---------------------------
+# Logs
+# ---------------------------
+*.log
+logs/

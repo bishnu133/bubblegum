@@ -1,0 +1,35 @@
+{
+  "category": "broken_selectors",
+  "description": "20 broken-selector cases \u2014 element exists but selector is stale or wrong.",
+  "target_count": 20,
+  "current_count": 3,
+  "scenarios": [
+    {
+      "id": "brk_001",
+      "instruction": "Click Login",
+      "channel": "web",
+      "action_type": "click",
+      "failed_selector": "#login-btn",
+      "expected_resolver": "accessibility_tree",
+      "notes": "ID selector stale after React re-render"
+    },
+    {
+      "id": "brk_002",
+      "instruction": "Click Submit",
+      "channel": "web",
+      "action_type": "click",
+      "failed_selector": ".submit-button",
+      "expected_resolver": "exact_text",
+      "notes": "CSS class renamed in redesign"
+    },
+    {
+      "id": "brk_003",
+      "instruction": "Type in the search box",
+      "channel": "web",
+      "action_type": "type",
+      "failed_selector": "input[name='q']",
+      "expected_resolver": "accessibility_tree",
+      "notes": "name attribute removed"
+    }
+  ]
+}

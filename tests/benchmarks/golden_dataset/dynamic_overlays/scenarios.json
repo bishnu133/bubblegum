@@ -1,0 +1,32 @@
+{
+  "category": "dynamic_overlays",
+  "description": "10 dynamic/modal/overlay cases \u2014 element appears after an interaction.",
+  "target_count": 10,
+  "current_count": 3,
+  "scenarios": [
+    {
+      "id": "dyn_001",
+      "instruction": "Click Confirm in the confirmation dialog",
+      "channel": "web",
+      "action_type": "click",
+      "expected_resolver": "accessibility_tree",
+      "notes": "Dialog appears after Delete click"
+    },
+    {
+      "id": "dyn_002",
+      "instruction": "Click Accept cookies",
+      "channel": "web",
+      "action_type": "click",
+      "expected_resolver": "exact_text",
+      "notes": "Cookie banner on page load"
+    },
+    {
+      "id": "dyn_003",
+      "instruction": "Click the toast close button",
+      "channel": "web",
+      "action_type": "click",
+      "expected_resolver": "accessibility_tree",
+      "notes": "Toast notification appears after save"
+    }
+  ]
+}

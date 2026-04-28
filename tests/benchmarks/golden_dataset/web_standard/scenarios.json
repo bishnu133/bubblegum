@@ -1,0 +1,48 @@
+{
+  "category": "web_standard",
+  "description": "50 standard web UI steps \u2014 buttons, forms, links, dropdowns, modals.",
+  "target_count": 50,
+  "current_count": 5,
+  "scenarios": [
+    {
+      "id": "web_001",
+      "instruction": "Click Login",
+      "channel": "web",
+      "action_type": "click",
+      "expected_resolver": "accessibility_tree",
+      "notes": "Standard CTA button"
+    },
+    {
+      "id": "web_002",
+      "instruction": "Type 'user@example.com' in the email field",
+      "channel": "web",
+      "action_type": "type",
+      "expected_resolver": "exact_text",
+      "notes": "Form input by label"
+    },
+    {
+      "id": "web_003",
+      "instruction": "Click Submit",
+      "channel": "web",
+      "action_type": "click",
+      "expected_resolver": "accessibility_tree",
+      "notes": "Form submit button"
+    },
+    {
+      "id": "web_004",
+      "instruction": "Select 'Monthly' from the billing cycle dropdown",
+      "channel": "web",
+      "action_type": "select",
+      "expected_resolver": "exact_text",
+      "notes": "Dropdown select by label"
+    },
+    {
+      "id": "web_005",
+      "instruction": "Click the close button on the modal",
+      "channel": "web",
+      "action_type": "click",
+      "expected_resolver": "accessibility_tree",
+      "notes": "Modal dismiss"
+    }
+  ]
+}

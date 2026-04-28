@@ -1,0 +1,24 @@
+{
+  "category": "duplicate_labels",
+  "description": "10 duplicate-label cases \u2014 multiple matching elements on the page.",
+  "target_count": 10,
+  "current_count": 2,
+  "scenarios": [
+    {
+      "id": "dup_001",
+      "instruction": "Click Delete",
+      "channel": "web",
+      "action_type": "click",
+      "expected_error": "AmbiguousTargetError",
+      "notes": "Delete button in both table row and modal"
+    },
+    {
+      "id": "dup_002",
+      "instruction": "Click Edit",
+      "channel": "web",
+      "action_type": "click",
+      "expected_error": "AmbiguousTargetError",
+      "notes": "Multiple Edit buttons in a list"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+"""
+# AppiumAdapter — Phase 4.
+"""

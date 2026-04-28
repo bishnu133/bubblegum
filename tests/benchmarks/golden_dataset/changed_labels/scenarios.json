@@ -1,0 +1,35 @@
+{
+  "category": "changed_labels",
+  "description": "10 changed-label cases \u2014 button text changed slightly (Login -> Sign In).",
+  "target_count": 10,
+  "current_count": 3,
+  "scenarios": [
+    {
+      "id": "lbl_001",
+      "instruction": "Click Login",
+      "channel": "web",
+      "action_type": "click",
+      "actual_label": "Sign In",
+      "expected_resolver": "fuzzy_text",
+      "notes": "Login -> Sign In"
+    },
+    {
+      "id": "lbl_002",
+      "instruction": "Click Submit",
+      "channel": "web",
+      "action_type": "click",
+      "actual_label": "Continue",
+      "expected_resolver": "fuzzy_text",
+      "notes": "Submit -> Continue in new flow"
+    },
+    {
+      "id": "lbl_003",
+      "instruction": "Click Register",
+      "channel": "web",
+      "action_type": "click",
+      "actual_label": "Create Account",
+      "expected_resolver": "llm_grounding",
+      "notes": "Significant label change \u2014 needs AI"
+    }
+  ]
+}
