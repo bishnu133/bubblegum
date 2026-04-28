@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bubblegum-ai/bubblegum/main/docs/assets/logo.png" alt="Bubblegum AI" width="220"/>
+  <img src="docs/assets/bubblegum-ai-readme-logo.png" alt="Bubblegum AI" width="220"/>
 </p>
 
 <h1 align="center">Bubblegum</h1>
