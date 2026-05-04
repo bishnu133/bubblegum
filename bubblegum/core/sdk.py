@@ -40,6 +40,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from bubblegum.core.config import BubblegumConfig
 from bubblegum.core.grounding.engine import GroundingEngine
 from bubblegum.core.grounding.errors import BubblegumError
 from bubblegum.core.grounding.registry import ResolverRegistry
@@ -59,10 +60,40 @@ from bubblegum.core.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Module-level registry, engine, and memory cache — shared across SDK calls
-_registry      = ResolverRegistry()
-_engine        = GroundingEngine(registry=_registry)
-_memory_cache  = MemoryCacheResolver()    # Phase 3: single shared instance for record_*
+# Module-level runtime wiring — shared across SDK calls
+_config: BubblegumConfig = BubblegumConfig.load()
+_registry = ResolverRegistry()
+_engine = GroundingEngine(
+    registry=_registry,
+    accept_threshold=_config.grounding.accept_threshold,
+    review_threshold=_config.grounding.review_threshold,
+    ambiguous_gap=_config.grounding.ambiguous_gap,
+    reject_threshold=_config.grounding.reject_threshold,
+)
+_memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for record_*
+
+
+def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
+    """Configure SDK runtime from BubblegumConfig and rewire thresholds.
+
+    Args:
+        config: Pre-built BubblegumConfig instance.
+        config_path: Optional YAML path loaded via BubblegumConfig.load().
+
+    Returns:
+        The active runtime BubblegumConfig.
+    """
+    global _config, _engine
+
+    _config = config or BubblegumConfig.load(config_path)
+    _engine = GroundingEngine(
+        registry=_registry,
+        accept_threshold=_config.grounding.accept_threshold,
+        review_threshold=_config.grounding.review_threshold,
+        ambiguous_gap=_config.grounding.ambiguous_gap,
+        reject_threshold=_config.grounding.reject_threshold,
+    )
+    return _config
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +511,9 @@ def _get_adapter(channel: str, page=None, driver=None):
 
 def _build_options(kwargs: dict) -> ExecutionOptions:
     known = {"timeout_ms", "retry_count", "wait_for", "use_ai", "max_cost_level"}
-    opts  = {k: v for k, v in kwargs.items() if k in known}
+    opts = {k: v for k, v in kwargs.items() if k in known}
+    opts.setdefault("use_ai", _config.ai_enabled)
+    opts.setdefault("max_cost_level", _config.grounding.max_cost_level)
     return ExecutionOptions(**opts)
 
 
