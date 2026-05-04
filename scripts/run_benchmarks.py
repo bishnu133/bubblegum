@@ -41,9 +41,9 @@ def validate_case(case: dict, repo_root: Path) -> tuple[bool, str]:
     return True, "ok"
 
 
-def main() -> int:
-    repo_root = Path(__file__).resolve().parents[1]
-    cases = load_cases(repo_root)
+def run_benchmark_validation(repo_root: Path | None = None) -> int:
+    root = repo_root or Path(__file__).resolve().parents[1]
+    cases = load_cases(root)
 
     total = len(cases)
     passed = 0
@@ -51,7 +51,7 @@ def main() -> int:
     winners = Counter()
 
     for case in cases:
-        ok, _ = validate_case(case, repo_root)
+        ok, _ = validate_case(case, root)
         if ok:
             passed += 1
             winners[case["expected_resolver_winner"]] += 1
@@ -69,6 +69,10 @@ def main() -> int:
         print(f"  - {winner}: {count}")
 
     return 0 if failed == 0 else 1
+
+
+def main() -> int:
+    return run_benchmark_validation()
 
 
 if __name__ == "__main__":

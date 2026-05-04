@@ -114,12 +114,19 @@ def bubblegum_artifacts_dir(pytestconfig: pytest.Config) -> Path:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     report_path = session.config.getoption("--bubblegum-report")
-    if not report_path:
+    if report_path:
+        reporter = getattr(session.config, "_bubblegum_reporter", None)
+        results = getattr(reporter, "results", []) if reporter is not None else []
+
+        from bubblegum.reporting.html_report import write_html_report
+
+        write_html_report(results, path=report_path)
+
+    if not session.config.getoption("--bubblegum-benchmark"):
         return
 
-    reporter = getattr(session.config, "_bubblegum_reporter", None)
-    results = getattr(reporter, "results", []) if reporter is not None else []
+    from scripts.run_benchmarks import run_benchmark_validation
 
-    from bubblegum.reporting.html_report import write_html_report
-
-    write_html_report(results, path=report_path)
+    benchmark_exit = run_benchmark_validation()
+    if benchmark_exit != 0 and getattr(session, "exitstatus", exitstatus) == 0:
+        session.exitstatus = 1
