@@ -30,6 +30,7 @@ import logging
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
+from bubblegum.core.grounding.signals import make_signals
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,7 @@ class AccessibilityTreeResolver(Resolver):
 
         keywords = _extract_keywords(intent.instruction)
         candidates: list[ResolvedTarget] = []
+        signal_rows: list[tuple[str, float, float, float]] = []
 
         for line in snapshot.splitlines():
             m = _SNAPSHOT_LINE_RE.match(line)
@@ -147,6 +149,7 @@ class AccessibilityTreeResolver(Resolver):
                 continue
 
             ref = _build_ref(role, elname)
+            signal_rows.append((ref, confidence, 1.0 if _role_fits_action(role, intent.action_type) else 0.0, 0.5))
             candidates.append(
                 ResolvedTarget(
                     ref=ref,
@@ -161,7 +164,23 @@ class AccessibilityTreeResolver(Resolver):
             )
             logger.debug("A11yTree candidate: %s  conf=%.2f", ref, confidence)
 
-        return candidates
+        counts: dict[str, int] = {}
+        for ref, *_ in signal_rows:
+            counts[ref] = counts.get(ref, 0) + 1
+
+        enriched: list[ResolvedTarget] = []
+        for target in candidates:
+            row = next((r for r in signal_rows if r[0] == target.ref), None)
+            if row is None:
+                enriched.append(target)
+                continue
+            _, tmatch, rmatch, vis = row
+            uniq = 1.0 if counts.get(target.ref, 0) == 1 else 0.6
+            meta = dict(target.metadata)
+            meta["signals"] = make_signals(text_match=tmatch, role_match=rmatch, visibility=vis, uniqueness=uniq, memory=0.0)
+            enriched.append(target.model_copy(update={"metadata": meta}))
+
+        return enriched
 
 
 # ---------------------------------------------------------------------------

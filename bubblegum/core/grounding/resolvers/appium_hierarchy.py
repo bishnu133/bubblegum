@@ -39,6 +39,7 @@ import logging
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
+from bubblegum.core.grounding.signals import make_signals
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ class AppiumHierarchyResolver(Resolver):
 
         candidates: list[ResolvedTarget] = []
         for element in root.iter():
-            result = self._match_element(element, instruction_lower)
+            result = self._match_element(element, instruction_lower, intent.action_type)
             if result is not None:
                 candidates.append(result)
 
@@ -126,6 +127,7 @@ class AppiumHierarchyResolver(Resolver):
         self,
         element: ET.Element,
         instruction_lower: str,
+        action_type: str,
     ) -> ResolvedTarget | None:
         """
         Attempt to match a single XML element against the instruction.
@@ -146,6 +148,7 @@ class AppiumHierarchyResolver(Resolver):
                 confidence=_CONF_TEXT,
                 resolver_name=self.name,
                 metadata={
+                    "signals": make_signals(text_match=0.92, role_match=_role_match_for_action(tag, action_type), visibility=1.0 if bounds else 0.3, uniqueness=0.8, memory=0.0),
                     "matched_attr": "text",
                     "matched_value": text,
                     "tag": tag,
@@ -161,6 +164,7 @@ class AppiumHierarchyResolver(Resolver):
                 confidence=_CONF_CONTENT_DESC,
                 resolver_name=self.name,
                 metadata={
+                    "signals": make_signals(text_match=0.85, role_match=_role_match_for_action(tag, action_type), visibility=1.0 if bounds else 0.3, uniqueness=0.8, memory=0.0),
                     "matched_attr": "content-desc",
                     "matched_value": c_desc,
                     "tag": tag,
@@ -178,6 +182,7 @@ class AppiumHierarchyResolver(Resolver):
                     confidence=_CONF_RESOURCE_ID,
                     resolver_name=self.name,
                     metadata={
+                    "signals": make_signals(text_match=0.75, role_match=_role_match_for_action(tag, action_type), visibility=1.0 if bounds else 0.3, uniqueness=0.8, memory=0.0),
                         "matched_attr": "resource-id",
                         "matched_value": res_id,
                         "tag": tag,
@@ -208,3 +213,11 @@ def _build_xpath(tag: str, attr: str, value: str) -> str:
     parts = value.split("'")
     concat_args = ", \"'\", ".join(f"'{p}'" for p in parts)
     return f"//{tag}[@{attr}=concat({concat_args})]"
+
+def _role_match_for_action(tag: str, action_type: str) -> float:
+    t = tag.lower()
+    if action_type in ("tap", "click"):
+        return 1.0 if any(x in t for x in ("button", "imagebutton", "textview")) else 0.4
+    if action_type == "type":
+        return 1.0 if "edittext" in t else 0.2
+    return 0.5

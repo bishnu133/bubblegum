@@ -22,6 +22,7 @@ import logging
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
+from bubblegum.core.grounding.signals import make_signals
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class ExactTextResolver(Resolver):
         targets   = _extract_targets(intent.instruction)
         candidates: list[ResolvedTarget] = []
         seen: set[str] = set()
+        raw_matches: list[tuple[str, float]] = []
 
         for line in snapshot.splitlines():
             m = _SNAPSHOT_LINE_RE.match(line)
@@ -78,6 +80,7 @@ class ExactTextResolver(Resolver):
                 continue  # deduplicate
             seen.add(ref)
 
+            raw_matches.append((ref, confidence))
             candidates.append(
                 ResolvedTarget(
                     ref=ref,
@@ -88,7 +91,16 @@ class ExactTextResolver(Resolver):
             )
             logger.debug("ExactText candidate: %s  conf=%.2f", ref, confidence)
 
-        return candidates
+        counts = {r:0 for r,_ in raw_matches}
+        for r,_ in raw_matches: counts[r]+=1
+        enriched=[]
+        for t in candidates:
+            conf = next((c for r,c in raw_matches if r==t.ref), t.confidence)
+            tmatch = 1.0 if conf >= 0.90 else 0.82
+            uniq = 1.0 if counts.get(t.ref,0)==1 else 0.6
+            meta=dict(t.metadata); meta["signals"] = make_signals(text_match=tmatch, visibility=0.5, uniqueness=uniq, memory=0.0)
+            enriched.append(t.model_copy(update={"metadata": meta}))
+        return enriched
 
 
 # ---------------------------------------------------------------------------

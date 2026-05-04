@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
+from bubblegum.core.grounding.signals import make_signals
 
 
 class ExplicitSelectorResolver(Resolver):
@@ -50,6 +51,6 @@ class ExplicitSelectorResolver(Resolver):
                 ref=selector,
                 confidence=1.0,
                 resolver_name=self.name,
-                metadata={"source": "explicit_selector"},
+                metadata={"source": "explicit_selector", "signals": make_signals(text_match=1.0, uniqueness=1.0)},
             )
         ]
