@@ -619,6 +619,132 @@ class TestGroundingEngineSkeleton:
             await engine.ground(intent)
         # The test confirms engine runs without crashing — traces are internal
 
+    @pytest.mark.asyncio
+    async def test_ground_tier1_review_range_raises_low_confidence(self):
+        """
+        Current semantics: Tier 1 candidates in [review, accept) do not auto-return.
+        If no later tier returns, engine raises LowConfidenceError.
+        """
+        from bubblegum.core.grounding.engine import GroundingEngine
+        from bubblegum.core.grounding.errors import LowConfidenceError
+        from bubblegum.core.grounding.registry import ResolverRegistry
+        from bubblegum.core.grounding.resolver import Resolver
+        from bubblegum.core.schemas import ExecutionOptions, ResolvedTarget, StepIntent
+
+        class Tier1ReviewBand(Resolver):
+            name = "tier1_review_band"
+            priority = 5
+            channels = ["web", "mobile"]
+            cost_level = "low"
+            tier = 1
+
+            def resolve(self, intent):
+                return [ResolvedTarget(ref="btn", confidence=0.72, resolver_name=self.name)]
+
+        reg = ResolverRegistry()
+        reg.register(Tier1ReviewBand())
+        engine = GroundingEngine(registry=reg)
+        intent = StepIntent(
+            instruction="Click x",
+            channel="web",
+            action_type="click",
+            options=ExecutionOptions(max_cost_level="high"),
+        )
+        with pytest.raises(LowConfidenceError) as exc_info:
+            await engine.ground(intent)
+
+        err = exc_info.value
+        assert err.best_confidence == 0.72
+        assert len(err.candidates) >= 1
+        assert "0.72" in err.message
+
+    @pytest.mark.asyncio
+    async def test_ground_tier2_review_range_returns_successfully(self):
+        """Tier 2 candidates in [review, accept) should return successfully."""
+        from bubblegum.core.grounding.engine import GroundingEngine
+        from bubblegum.core.grounding.registry import ResolverRegistry
+        from bubblegum.core.grounding.resolver import Resolver
+        from bubblegum.core.schemas import ResolvedTarget, StepIntent
+
+        class Tier2ReviewBand(Resolver):
+            name = "tier2_review_band"
+            priority = 45
+            channels = ["web", "mobile"]
+            cost_level = "low"
+            tier = 2
+
+            def resolve(self, intent):
+                return [ResolvedTarget(ref="btn-tier2", confidence=0.72, resolver_name=self.name)]
+
+        reg = ResolverRegistry()
+        reg.register(Tier2ReviewBand())
+        engine = GroundingEngine(registry=reg)
+        intent = StepIntent(instruction="Click x", channel="web", action_type="click")
+        target, _traces = await engine.ground(intent)
+        assert target.resolver_name == "tier2_review_band"
+        assert target.confidence == 0.72
+
+    @pytest.mark.asyncio
+    async def test_ground_tier1_accept_range_returns_successfully(self):
+        """Tier 1 candidates >= accept_threshold should return successfully."""
+        from bubblegum.core.grounding.engine import GroundingEngine
+        from bubblegum.core.grounding.registry import ResolverRegistry
+        from bubblegum.core.grounding.resolver import Resolver
+        from bubblegum.core.schemas import ResolvedTarget, StepIntent
+
+        class Tier1Accepted(Resolver):
+            name = "tier1_accepted"
+            priority = 6
+            channels = ["web", "mobile"]
+            cost_level = "low"
+            tier = 1
+
+            def resolve(self, intent):
+                return [ResolvedTarget(ref="btn-tier1", confidence=0.85, resolver_name=self.name)]
+
+        reg = ResolverRegistry()
+        reg.register(Tier1Accepted())
+        engine = GroundingEngine(registry=reg)
+        intent = StepIntent(instruction="Click x", channel="web", action_type="click")
+        target, _traces = await engine.ground(intent)
+        assert target.resolver_name == "tier1_accepted"
+        assert target.confidence == 0.85
+
+    @pytest.mark.asyncio
+    async def test_ground_reject_threshold_not_used_as_return_gate(self):
+        """
+        Document current behavior: scores above reject threshold are still not
+        returned from Tier 1 unless they also meet accept threshold.
+        """
+        from bubblegum.core.grounding.engine import GroundingEngine
+        from bubblegum.core.grounding.errors import LowConfidenceError
+        from bubblegum.core.grounding.registry import ResolverRegistry
+        from bubblegum.core.grounding.resolver import Resolver
+        from bubblegum.core.schemas import ExecutionOptions, ResolvedTarget, StepIntent
+
+        class Tier1AboveReject(Resolver):
+            name = "tier1_above_reject"
+            priority = 7
+            channels = ["web", "mobile"]
+            cost_level = "low"
+            tier = 1
+
+            def resolve(self, intent):
+                return [ResolvedTarget(ref="btn-above-reject", confidence=0.60, resolver_name=self.name)]
+
+        reg = ResolverRegistry()
+        reg.register(Tier1AboveReject())
+        engine = GroundingEngine(registry=reg)
+        intent = StepIntent(
+            instruction="Click x",
+            channel="web",
+            action_type="click",
+            options=ExecutionOptions(max_cost_level="high"),
+        )
+        with pytest.raises(LowConfidenceError) as exc_info:
+            await engine.ground(intent)
+        assert exc_info.value.best_confidence == 0.60
+
 
 # ---------------------------------------------------------------------------
 # 9. Benchmark dataset scaffold tests
