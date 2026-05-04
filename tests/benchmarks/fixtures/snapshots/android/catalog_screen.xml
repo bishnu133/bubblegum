@@ -1,0 +1,8 @@
+<hierarchy>
+  <node class="android.widget.TextView" text="Catalog"/>
+  <node class="android.widget.ScrollView" content-desc="catalog_list">
+    <node class="android.widget.TextView" text="Starter Plan"/>
+    <node class="android.widget.TextView" text="Pro Plan"/>
+    <node class="android.widget.TextView" text="Enterprise Plan"/>
+  </node>
+</hierarchy>

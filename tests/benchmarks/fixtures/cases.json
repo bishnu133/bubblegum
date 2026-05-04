@@ -1,0 +1,134 @@
+[
+  {
+    "id": "web_click_exact_text_001",
+    "category": "web_click_exact_text",
+    "platform": "web",
+    "instruction": "Click Login",
+    "action_type": "click",
+    "snapshot_path": "snapshots/web/auth_page.html",
+    "expected_resolver_winner": "exact_text",
+    "confidence_min": 0.9,
+    "confidence_max": 1.0
+  },
+  {
+    "id": "web_click_accessibility_role_001",
+    "category": "web_click_accessibility_role",
+    "platform": "web",
+    "instruction": "Click the Submit button",
+    "action_type": "click",
+    "snapshot_path": "snapshots/web/auth_page.html",
+    "expected_resolver_winner": "accessibility_tree",
+    "confidence_min": 0.8,
+    "confidence_max": 0.99
+  },
+  {
+    "id": "web_type_input_001",
+    "category": "web_type_input",
+    "platform": "web",
+    "instruction": "Type user@example.com in the Email field",
+    "action_type": "type",
+    "snapshot_path": "snapshots/web/auth_page.html",
+    "expected_resolver_winner": "exact_text",
+    "confidence_min": 0.85,
+    "confidence_max": 1.0
+  },
+  {
+    "id": "web_select_dropdown_001",
+    "category": "web_select_dropdown",
+    "platform": "web",
+    "instruction": "Select Monthly from Billing cycle",
+    "action_type": "select",
+    "snapshot_path": "snapshots/web/settings_page.html",
+    "expected_resolver_winner": "exact_text",
+    "confidence_min": 0.8,
+    "confidence_max": 0.98
+  },
+  {
+    "id": "web_verify_text_001",
+    "category": "web_verify_text",
+    "platform": "web",
+    "instruction": "Verify text Active plan is visible",
+    "action_type": "verify",
+    "snapshot_path": "snapshots/web/settings_page.html",
+    "expected_resolver_winner": "exact_text",
+    "confidence_min": 0.9,
+    "confidence_max": 1.0
+  },
+  {
+    "id": "web_ambiguous_text_001",
+    "category": "web_ambiguous_text",
+    "platform": "web",
+    "instruction": "Click Continue",
+    "action_type": "click",
+    "snapshot_path": "snapshots/web/overlay_page.html",
+    "expected_resolver_winner": "fuzzy_text",
+    "confidence_min": 0.5,
+    "confidence_max": 0.75
+  },
+  {
+    "id": "web_stale_selector_recovery_001",
+    "category": "web_stale_selector_recovery",
+    "platform": "web",
+    "instruction": "Click Continue after overlay clears",
+    "action_type": "click",
+    "snapshot_path": "snapshots/web/overlay_page.html",
+    "expected_resolver_winner": "memory_cache",
+    "confidence_min": 0.6,
+    "confidence_max": 0.9
+  },
+  {
+    "id": "android_tap_text_001",
+    "category": "android_tap_text",
+    "platform": "android",
+    "instruction": "Tap Sign In",
+    "action_type": "tap",
+    "snapshot_path": "snapshots/android/login_screen.xml",
+    "expected_resolver_winner": "appium_hierarchy",
+    "confidence_min": 0.85,
+    "confidence_max": 1.0
+  },
+  {
+    "id": "android_tap_content_desc_001",
+    "category": "android_tap_content_desc",
+    "platform": "android",
+    "instruction": "Tap button with content description sign_in_button",
+    "action_type": "tap",
+    "snapshot_path": "snapshots/android/login_screen.xml",
+    "expected_resolver_winner": "accessibility_tree",
+    "confidence_min": 0.8,
+    "confidence_max": 1.0
+  },
+  {
+    "id": "android_type_input_001",
+    "category": "android_type_input",
+    "platform": "android",
+    "instruction": "Type into Email input",
+    "action_type": "type",
+    "snapshot_path": "snapshots/android/login_screen.xml",
+    "expected_resolver_winner": "appium_hierarchy",
+    "confidence_min": 0.75,
+    "confidence_max": 0.98
+  },
+  {
+    "id": "android_scroll_to_target_001",
+    "category": "android_scroll_to_target",
+    "platform": "android",
+    "instruction": "Scroll to Enterprise Plan",
+    "action_type": "scroll",
+    "snapshot_path": "snapshots/android/catalog_screen.xml",
+    "expected_resolver_winner": "appium_hierarchy",
+    "confidence_min": 0.7,
+    "confidence_max": 0.95
+  },
+  {
+    "id": "android_verify_text_001",
+    "category": "android_verify_text",
+    "platform": "android",
+    "instruction": "Verify text Order Confirmed",
+    "action_type": "verify",
+    "snapshot_path": "snapshots/android/checkout_screen.xml",
+    "expected_resolver_winner": "exact_text",
+    "confidence_min": 0.9,
+    "confidence_max": 1.0
+  }
+]
