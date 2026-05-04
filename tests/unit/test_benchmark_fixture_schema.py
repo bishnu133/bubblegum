@@ -56,6 +56,32 @@ def test_expected_winner_and_confidence_fields_present() -> None:
         assert "confidence_max" in case
 
 
+def test_optional_execute_fields_validate_when_present() -> None:
+    _, cases, _ = _load_schema_and_cases()
+    for case in cases:
+        if "execute_confidence_min" in case or "execute_confidence_max" in case:
+            assert "execute_confidence_min" in case
+            assert "execute_confidence_max" in case
+            assert 0 <= case["execute_confidence_min"] <= case["execute_confidence_max"] <= 1
+
+
+def test_executable_false_requires_skip_reason() -> None:
+    _, cases, _ = _load_schema_and_cases()
+    for case in cases:
+        if case.get("executable") is False:
+            assert case.get("execute_skip_reason")
+
+
+def test_executable_true_requires_execute_expectations() -> None:
+    _, cases, _ = _load_schema_and_cases()
+    for case in cases:
+        if case.get("executable") is True:
+            assert case.get("execute_expected_resolver_winner")
+            assert "execute_confidence_min" in case
+            assert "execute_confidence_max" in case
+            assert 0 <= case["execute_confidence_min"] <= case["execute_confidence_max"] <= 1
+
+
 def test_all_required_categories_present() -> None:
     _, cases, _ = _load_schema_and_cases()
     present = {case["category"] for case in cases}

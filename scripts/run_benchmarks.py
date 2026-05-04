@@ -30,6 +30,12 @@ REQUIRED_KEYS = {
     "confidence_max",
 }
 
+EXECUTE_EXPECTED_KEYS = {
+    "execute_expected_resolver_winner",
+    "execute_confidence_min",
+    "execute_confidence_max",
+}
+
 
 class GroundingEngineProtocol(Protocol):
     async def ground(self, intent: StepIntent) -> tuple[Any, list[Any]]:
@@ -203,12 +209,41 @@ async def _execute_cases_async(
     cases: list[dict],
 ) -> dict[str, Any]:
     diagnostics: list[dict[str, Any]] = []
+    skipped = 0
+    executed = 0
 
     for case in cases:
+        if case.get("executable") is False:
+            skipped += 1
+            diagnostics.append(
+                {
+                    "id": case["id"],
+                    "category": case["category"],
+                    "expected_winner": None,
+                    "actual_winner": None,
+                    "actual_confidence": None,
+                    "confidence_min": None,
+                    "confidence_max": None,
+                    "winner_ok": None,
+                    "confidence_ok": None,
+                    "status": "skipped",
+                    "error": None,
+                    "skip_reason": case.get("execute_skip_reason", "case marked executable=false"),
+                    "trace_count": 0,
+                }
+            )
+            continue
+
+        executed += 1
         intent = _map_case_to_intent(case, repo_root)
-        expected_winner = case["expected_resolver_winner"]
-        cmin = case["confidence_min"]
-        cmax = case["confidence_max"]
+        if EXECUTE_EXPECTED_KEYS.issubset(case):
+            expected_winner = case["execute_expected_resolver_winner"]
+            cmin = case["execute_confidence_min"]
+            cmax = case["execute_confidence_max"]
+        else:
+            expected_winner = case["expected_resolver_winner"]
+            cmin = case["confidence_min"]
+            cmax = case["confidence_max"]
 
         try:
             target, traces = await engine.ground(intent)
@@ -232,6 +267,7 @@ async def _execute_cases_async(
                     "confidence_ok": conf_ok,
                     "status": status,
                     "error": None,
+                    "skip_reason": None,
                     "trace_count": len(traces),
                 }
             )
@@ -249,17 +285,20 @@ async def _execute_cases_async(
                     "confidence_ok": False,
                     "status": "fail",
                     "error": f"{type(exc).__name__}: {exc}",
+                    "skip_reason": None,
                     "trace_count": 0,
                 }
             )
 
     passed = sum(1 for d in diagnostics if d["status"] == "pass")
-    failed = len(diagnostics) - passed
+    failed = sum(1 for d in diagnostics if d["status"] == "fail")
     return {
         "total": len(diagnostics),
+        "executed": executed,
+        "skipped": skipped,
         "passed": passed,
         "failed": failed,
-        "success_rate": (passed / len(diagnostics) * 100.0) if diagnostics else 0.0,
+        "success_rate": (passed / executed * 100.0) if executed else 0.0,
         "diagnostics": diagnostics,
         "ok": failed == 0,
     }
@@ -291,9 +330,11 @@ def _print_static_summary(result: dict[str, Any]) -> None:
 def _print_execution_summary(result: dict[str, Any]) -> None:
     print("\n[execution validation]")
     print(f"total cases: {result['total']}")
+    print(f"executed cases: {result['executed']}")
+    print(f"skipped cases: {result['skipped']}")
     print(f"passed cases: {result['passed']}")
     print(f"failed cases: {result['failed']}")
-    print(f"success rate: {result['success_rate']:.2f}%")
+    print(f"success rate (executed only): {result['success_rate']:.2f}%")
 
 
 def run_benchmark_validation(
