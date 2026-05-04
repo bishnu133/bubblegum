@@ -4,9 +4,17 @@ bubblegum/core/grounding/engine.py
 GroundingEngine — orchestrates tiered resolver execution for a single StepIntent.
 
 Execution model:
-  Tier 1 (priority 0–39):  deterministic resolvers — stop if best confidence ≥ 0.85
+  Tier 1 (priority 0–39):  deterministic resolvers — stop only if best confidence ≥ 0.85
   Tier 2 (priority 40–49): fuzzy resolvers        — stop if best confidence ≥ 0.70
   Tier 3 (priority 50+):   AI fallback            — only if Tiers 1+2 failed; blocked on cost=low
+
+Important current semantics:
+  - Tier 1 does NOT auto-return candidates in the review band [0.70, 0.85).
+    Those candidates are carried forward while lower tiers are still attempted.
+  - review_threshold is a return gate for Tier 2/3, not Tier 1.
+  - reject_threshold is stored/configurable but not used as a direct return gate
+    in this control flow; final LowConfidenceError is raised whenever candidates
+    exist but no tier-specific return condition was met.
 
 Ambiguity check:
   If the top 2 candidates are within 0.05 confidence → raise AmbiguousTargetError.
@@ -124,7 +132,9 @@ class GroundingEngine:
 
             best = self.ranker.best(tier_candidates)
 
-            # Tier 1: stop on accept_threshold
+            # Tier 1: stop on accept_threshold only.
+            # NOTE: review-range scores in Tier 1 intentionally do not return;
+            # they fall through so lower tiers can attempt resolution.
             if tier_num == 1 and best.confidence >= self.accept_threshold:
                 logger.debug("Tier 1 resolved '%s' — confidence %.2f", intent.instruction, best.confidence)
                 self._check_ambiguity(tier_candidates, intent)
