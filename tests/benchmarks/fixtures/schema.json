@@ -14,16 +14,71 @@
     "confidence_max"
   ],
   "properties": {
-    "id": {"type": "string", "minLength": 1},
-    "category": {"type": "string", "minLength": 1},
-    "platform": {"type": "string", "enum": ["web", "android"]},
-    "instruction": {"type": "string", "minLength": 1},
-    "action_type": {"type": "string", "minLength": 1},
-    "snapshot_path": {"type": "string", "minLength": 1},
-    "expected_resolver_winner": {"type": "string", "minLength": 1},
-    "confidence_min": {"type": "number", "minimum": 0, "maximum": 1},
-    "confidence_max": {"type": "number", "minimum": 0, "maximum": 1},
-    "notes": {"type": "string"}
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "web",
+        "android"
+      ]
+    },
+    "instruction": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_resolver_winner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence_min": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "confidence_max": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "notes": {
+      "type": "string"
+    },
+    "executable": {
+      "type": "boolean"
+    },
+    "execute_expected_resolver_winner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execute_confidence_min": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "execute_confidence_max": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "execute_skip_reason": {
+      "type": "string",
+      "minLength": 1
+    }
   },
   "additionalProperties": false
 }

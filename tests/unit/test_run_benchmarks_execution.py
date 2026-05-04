@@ -48,27 +48,82 @@ def test_static_validation_still_passes_current_fixtures() -> None:
     assert result["total"] > 0
 
 
-def test_execution_summary_shape_is_deterministic() -> None:
+def test_execution_summary_shape_includes_skipped_and_executed() -> None:
     root = _repo_root()
-    cases = [load_cases(root)[0]]
-    engine = FakeEngine(winner="exact_text", confidence=0.95)
+    case = dict(load_cases(root)[0])
+    case.pop("executable", None)
+    case.pop("execute_skip_reason", None)
+    cases = [case]
+    engine = FakeEngine(winner="fuzzy_text", confidence=0.725)
 
     result = run_execution_validation(root, engine=engine, cases=cases)
 
-    assert sorted(result.keys()) == ["diagnostics", "failed", "ok", "passed", "success_rate", "total"]
+    assert sorted(result.keys()) == ["diagnostics", "executed", "failed", "ok", "passed", "skipped", "success_rate", "total"]
     assert result["total"] == 1
+    assert result["executed"] == 1
+    assert result["skipped"] == 0
     assert len(result["diagnostics"]) == 1
-    row = result["diagnostics"][0]
-    assert row["status"] == "pass"
-    assert row["trace_count"] == 1
+
+
+def test_executable_false_cases_are_skipped_not_failed() -> None:
+    root = _repo_root()
+    case = dict(load_cases(root)[0])
+    case["executable"] = False
+    case["execute_skip_reason"] = "not executable"
+    engine = FakeEngine()
+
+    result = run_execution_validation(root, engine=engine, cases=[case])
+
+    assert result["failed"] == 0
+    assert result["skipped"] == 1
+    assert result["executed"] == 0
+    assert result["diagnostics"][0]["status"] == "skipped"
+    assert result["diagnostics"][0]["skip_reason"] == "not executable"
+    assert len(engine.intents) == 0
+
+
+def test_execution_uses_execute_expectation_override() -> None:
+    root = _repo_root()
+    case = dict(load_cases(root)[0])
+    case.pop("executable", None)
+    case.pop("execute_skip_reason", None)
+    case["execute_expected_resolver_winner"] = "fuzzy_text"
+    case["execute_confidence_min"] = 0.7
+    case["execute_confidence_max"] = 0.8
+    engine = FakeEngine(winner="fuzzy_text", confidence=0.725)
+
+    result = run_execution_validation(root, engine=engine, cases=[case])
+
+    assert result["ok"] is True
+    assert result["passed"] == 1
+
+
+def test_execution_falls_back_to_static_expectations_when_execute_fields_absent() -> None:
+    root = _repo_root()
+    case = dict(load_cases(root)[0])
+    for key in ("execute_expected_resolver_winner", "execute_confidence_min", "execute_confidence_max"):
+        case.pop(key, None)
+    case.pop("executable", None)
+    case.pop("execute_skip_reason", None)
+
+    engine = FakeEngine(winner="exact_text", confidence=0.95)
+    result = run_execution_validation(root, engine=engine, cases=[case])
+
+    assert result["ok"] is True
+    assert result["passed"] == 1
 
 
 def test_winner_mismatch_returns_failure() -> None:
     root = _repo_root()
-    cases = [load_cases(root)[0]]
+    case = dict(load_cases(root)[0])
+    case.pop("executable", None)
+    case.pop("execute_skip_reason", None)
+    case["execute_expected_resolver_winner"] = "exact_text"
+    case["execute_confidence_min"] = 0.9
+    case["execute_confidence_max"] = 1.0
     engine = FakeEngine(winner="fuzzy_text", confidence=0.95)
 
-    result = run_execution_validation(root, engine=engine, cases=cases)
+    result = run_execution_validation(root, engine=engine, cases=[case])
 
     assert result["ok"] is False
     assert result["failed"] == 1
@@ -77,10 +132,15 @@ def test_winner_mismatch_returns_failure() -> None:
 
 def test_confidence_out_of_range_returns_failure() -> None:
     root = _repo_root()
-    cases = [load_cases(root)[0]]
-    engine = FakeEngine(winner="exact_text", confidence=0.2)
+    case = dict(load_cases(root)[0])
+    case.pop("executable", None)
+    case.pop("execute_skip_reason", None)
+    case["execute_expected_resolver_winner"] = "fuzzy_text"
+    case["execute_confidence_min"] = 0.7
+    case["execute_confidence_max"] = 0.8
+    engine = FakeEngine(winner="fuzzy_text", confidence=0.2)
 
-    result = run_execution_validation(root, engine=engine, cases=cases)
+    result = run_execution_validation(root, engine=engine, cases=[case])
 
     assert result["ok"] is False
     assert result["failed"] == 1
@@ -114,12 +174,19 @@ def test_android_fixture_maps_to_mobile_hierarchy_xml_context() -> None:
 
 def test_execution_uses_injected_engine_only() -> None:
     root = _repo_root()
-    cases = load_cases(root)[:2]
+    case_a = dict(load_cases(root)[0])
+    case_b = dict(load_cases(root)[1])
+    for c in (case_a, case_b):
+        c["executable"] = True
+        c["execute_expected_resolver_winner"] = "exact_text"
+        c["execute_confidence_min"] = 0.9
+        c["execute_confidence_max"] = 1.0
     engine = FakeEngine()
 
-    result = run_execution_validation(root, engine=engine, cases=cases)
+    result = run_execution_validation(root, engine=engine, cases=[case_a, case_b])
 
     assert result["total"] == 2
+    assert result["executed"] == 2
     assert len(engine.intents) == 2
 
 
@@ -141,7 +208,9 @@ def test_html_fixture_is_mapped_to_a11y_like_snapshot() -> None:
 
 def test_execute_mode_produces_case_level_diagnostics_without_global_policy_error() -> None:
     root = _repo_root()
-    cases = load_cases(root)[:2]
+    cases = [dict(load_cases(root)[0]), dict(load_cases(root)[1])]
+    for c in cases:
+        c["executable"] = True
     result = run_execution_validation(root, cases=cases)
     assert result["total"] == 2
     assert len(result["diagnostics"]) == 2
