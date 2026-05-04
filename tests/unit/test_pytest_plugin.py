@@ -160,3 +160,89 @@ def test_report_emitted_with_flag_and_no_results(tmp_path):
 
     assert report_path.exists()
     assert "No steps recorded" in report_path.read_text(encoding="utf-8")
+
+
+class _Session:
+    def __init__(self, config, exitstatus: int = 0):
+        self.config = config
+        self.exitstatus = exitstatus
+
+
+def test_benchmark_not_run_without_flag(monkeypatch):
+    from bubblegum import pytest_plugin as plugin
+
+    called = {"count": 0}
+
+    def _fake_run() -> int:
+        called["count"] += 1
+        return 0
+
+    monkeypatch.setattr("scripts.run_benchmarks.run_benchmark_validation", _fake_run)
+
+    cfg = _Cfg({"--bubblegum-report": None, "--bubblegum-benchmark": False})
+    session = _Session(cfg, exitstatus=0)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert called["count"] == 0
+
+
+def test_benchmark_run_with_flag_success(monkeypatch):
+    from bubblegum import pytest_plugin as plugin
+
+    called = {"count": 0}
+
+    def _fake_run() -> int:
+        called["count"] += 1
+        return 0
+
+    monkeypatch.setattr("scripts.run_benchmarks.run_benchmark_validation", _fake_run)
+
+    cfg = _Cfg({"--bubblegum-report": None, "--bubblegum-benchmark": True})
+    session = _Session(cfg, exitstatus=0)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert called["count"] == 1
+    assert session.exitstatus == 0
+
+
+def test_benchmark_run_with_flag_failure_sets_exitstatus(monkeypatch):
+    from bubblegum import pytest_plugin as plugin
+
+    def _fake_run() -> int:
+        return 1
+
+    monkeypatch.setattr("scripts.run_benchmarks.run_benchmark_validation", _fake_run)
+
+    cfg = _Cfg({"--bubblegum-report": None, "--bubblegum-benchmark": True})
+    session = _Session(cfg, exitstatus=0)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert session.exitstatus == 1
+
+    already_failed = _Session(cfg, exitstatus=2)
+    plugin.pytest_sessionfinish(already_failed, 2)
+    assert already_failed.exitstatus == 2
+
+
+def test_benchmark_and_report_can_coexist(tmp_path, monkeypatch):
+    from bubblegum import pytest_plugin as plugin
+
+    called = {"count": 0}
+
+    def _fake_run() -> int:
+        called["count"] += 1
+        return 0
+
+    monkeypatch.setattr("scripts.run_benchmarks.run_benchmark_validation", _fake_run)
+
+    report_path = tmp_path / "bubblegum_report.html"
+    cfg = _Cfg({"--bubblegum-report": str(report_path), "--bubblegum-benchmark": True})
+    reporter = plugin.bubblegum_reporter.__wrapped__(cfg)
+    reporter.add(_step_result(action="Click Login", status="passed"))
+
+    session = _Session(cfg, exitstatus=0)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert called["count"] == 1
+    assert report_path.exists()
+    assert "Click Login" in report_path.read_text(encoding="utf-8")
