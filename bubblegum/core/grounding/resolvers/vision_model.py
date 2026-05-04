@@ -21,6 +21,10 @@ class VisionModelResolver(Resolver):
     cost_level = "high"
     tier       = 3
 
+    def supports(self, intent: StepIntent) -> bool:
+        """Run only when vision is enabled and screenshot sharing is allowed."""
+        return bool(intent.context.get("config_vision_enabled", True))
+
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         """Phase 0 stub — implementation in Phase 6."""
         return []

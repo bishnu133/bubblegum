@@ -41,6 +41,8 @@ class ExecutionOptions(BaseModel):
     wait_for:       str | None = None    # e.g. 'networkidle', 'domcontentloaded'
     use_ai:         bool      = True
     max_cost_level: str       = "medium"  # "low" | "medium" | "high"
+    memory_ttl_days: int      = 7
+    memory_max_failures: int  = 3
 
 
 # ---------------------------------------------------------------------------
