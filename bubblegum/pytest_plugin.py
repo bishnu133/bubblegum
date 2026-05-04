@@ -4,19 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Iterable
 
 import pytest
 
 from bubblegum.core.config import BubblegumConfig
+from bubblegum.core.schemas import StepResult
 from bubblegum.core.sdk import configure_runtime
 
 
 @dataclass
 class BubblegumReporter:
-    """Minimal session container for future StepResult aggregation."""
+    """Session container for StepResult aggregation."""
 
-    results: list[Any] = field(default_factory=list)
+    results: list[StepResult] = field(default_factory=list)
+
+    def add(self, result: StepResult) -> None:
+        self.results.append(result)
+
+    def extend(self, results: Iterable[StepResult]) -> None:
+        self.results.extend(results)
 
 
 class BubblegumEngineHandle:
@@ -112,9 +119,6 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
     reporter = getattr(session.config, "_bubblegum_reporter", None)
     results = getattr(reporter, "results", []) if reporter is not None else []
-
-    if not results:
-        return
 
     from bubblegum.reporting.html_report import write_html_report
 
