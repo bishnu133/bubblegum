@@ -31,6 +31,8 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.playwright
+
 from bubblegum.adapters.web.playwright.sync_adapter import SyncPlaywrightAdapter
 from bubblegum.core.grounding.engine import GroundingEngine
 from bubblegum.core.grounding.errors import BubblegumError
