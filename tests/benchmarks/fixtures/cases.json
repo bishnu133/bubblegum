@@ -9,8 +9,10 @@
     "expected_resolver_winner": "exact_text",
     "confidence_min": 0.9,
     "confidence_max": 1.0,
-    "executable": false,
-    "execute_skip_reason": "static synthetic expectation; deterministic execute-mode baseline not yet aligned"
+    "executable": true,
+    "execute_expected_resolver_winner": "fuzzy_text",
+    "execute_confidence_min": 0.72,
+    "execute_confidence_max": 0.73
   },
   {
     "id": "web_click_accessibility_role_001",
@@ -61,8 +63,10 @@
     "expected_resolver_winner": "exact_text",
     "confidence_min": 0.9,
     "confidence_max": 1.0,
-    "executable": false,
-    "execute_skip_reason": "static synthetic expectation; deterministic execute-mode baseline not yet aligned"
+    "executable": true,
+    "execute_expected_resolver_winner": "fuzzy_text",
+    "execute_confidence_min": 0.72,
+    "execute_confidence_max": 0.73
   },
   {
     "id": "web_ambiguous_text_001",
