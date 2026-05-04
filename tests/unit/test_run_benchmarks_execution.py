@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
 from bubblegum.core.schemas import ResolvedTarget, ResolverTrace
 from scripts.run_benchmarks import (
     _build_deterministic_engine,
@@ -156,6 +157,8 @@ def test_web_fixture_maps_to_web_context() -> None:
     assert intent.channel == "web"
     assert "a11y_snapshot" in intent.context
     assert "dom_snapshot" in intent.context
+    assert "screen_signature" in intent.context
+    assert intent.context["screen_signature"]
     assert intent.context["a11y_snapshot"].strip()
     assert "button" in intent.context["a11y_snapshot"]
 
@@ -216,3 +219,32 @@ def test_execute_mode_produces_case_level_diagnostics_without_global_policy_erro
     assert len(result["diagnostics"]) == 2
     for row in result["diagnostics"]:
         assert "AICostPolicyBlockedError" not in str(row["error"])
+
+
+def test_memory_precondition_case_resolves_through_memory_cache() -> None:
+    root = _repo_root()
+    case = next(c for c in load_cases(root) if c["id"] == "web_stale_selector_recovery_001")
+    result = run_execution_validation(root, cases=[case])
+    assert result["executed"] == 1
+    assert result["passed"] == 1
+    assert result["failed"] == 0
+    assert result["diagnostics"][0]["actual_winner"] == "memory_cache"
+
+
+def test_execute_mode_does_not_touch_repo_default_memory_db() -> None:
+    root = _repo_root()
+    db_path = root / ".bubblegum" / "memory.db"
+    before = db_path.stat().st_mtime_ns if db_path.exists() else None
+    case = next(c for c in load_cases(root) if c["id"] == "web_stale_selector_recovery_001")
+
+    _ = run_execution_validation(root, cases=[case])
+
+    after = db_path.stat().st_mtime_ns if db_path.exists() else None
+    assert before == after
+
+
+def test_deterministic_engine_uses_memory_cache_with_ephemeral_db() -> None:
+    engine = _build_deterministic_engine()
+    memory = next(r for r in engine.registry.all() if r.name == "memory_cache")
+    assert isinstance(memory, MemoryCacheResolver)
+    assert "benchmark_memory.db" in str(memory._layer._db_path)

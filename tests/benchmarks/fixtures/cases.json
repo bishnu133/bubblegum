@@ -89,8 +89,30 @@
     "expected_resolver_winner": "memory_cache",
     "confidence_min": 0.6,
     "confidence_max": 0.9,
-    "executable": false,
-    "execute_skip_reason": "requires memory cache pre-seeding not implemented in Phase 6D"
+    "executable": true,
+    "execute_expected_resolver_winner": "memory_cache",
+    "execute_confidence_min": 0.85,
+    "execute_confidence_max": 1.0,
+    "preconditions": {
+      "memory_seed": {
+        "ref": "role=button[name=\"Continue\"]",
+        "confidence": 0.95,
+        "resolver_name": "fuzzy_text",
+        "metadata": {
+          "matched_text": "Continue",
+          "signals": {
+            "text_match": 1.0,
+            "role_match": 1.0,
+            "visibility": 1.0,
+            "uniqueness": 1.0,
+            "proximity": 1.0,
+            "memory": 1.0,
+            "memory_history": 1.0
+          }
+        },
+        "force_memory_only": true
+      }
+    }
   },
   {
     "id": "android_tap_text_001",
