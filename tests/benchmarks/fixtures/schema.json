@@ -78,6 +78,42 @@
     "execute_skip_reason": {
       "type": "string",
       "minLength": 1
+    },
+    "preconditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory_seed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ref",
+            "confidence",
+            "resolver_name"
+          ],
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "resolver_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "metadata": {
+              "type": "object"
+            },
+            "force_memory_only": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": false

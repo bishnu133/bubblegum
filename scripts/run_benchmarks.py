@@ -8,6 +8,7 @@ import asyncio
 import json
 import re
 import sys
+import tempfile
 from collections import Counter
 from html import unescape
 from pathlib import Path
@@ -17,6 +18,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bubblegum.core.schemas import ExecutionOptions, StepIntent
+from bubblegum.core.memory.fingerprint import compute_signature
 
 REQUIRED_KEYS = {
     "id",
@@ -95,9 +97,11 @@ def _map_case_to_intent(case: dict, repo_root: Path) -> StepIntent:
     if platform == "web":
         channel = "web"
         a11y_snapshot = _html_to_a11y_snapshot(snapshot)
+        screen_signature = compute_signature(f"fixture://{case['snapshot_path']}", a11y_snapshot)
         context = {
             "a11y_snapshot": a11y_snapshot,
             "dom_snapshot": snapshot,
+            "screen_signature": screen_signature,
         }
     elif platform == "android":
         channel = "mobile"
@@ -193,7 +197,7 @@ def _build_deterministic_engine() -> GroundingEngineProtocol:
         registry.unregister(resolver_name)
     for resolver in [
         ExplicitSelectorResolver(),
-        MemoryCacheResolver(),
+        MemoryCacheResolver(db_path=Path(tempfile.mkdtemp()) / "benchmark_memory.db"),
         AccessibilityTreeResolver(),
         AppiumHierarchyResolver(),
         ExactTextResolver(),
@@ -201,6 +205,29 @@ def _build_deterministic_engine() -> GroundingEngineProtocol:
     ]:
         registry.register(resolver)
     return GroundingEngine(registry=registry)
+
+
+def _seed_memory_preconditions(engine: GroundingEngineProtocol, intent: StepIntent, case: dict) -> None:
+    preconditions = case.get("preconditions") or {}
+    memory_seed = preconditions.get("memory_seed")
+    if not isinstance(memory_seed, dict):
+        return
+
+    resolver = next((r for r in engine.registry.all() if getattr(r, "name", "") == "memory_cache"), None)
+    if resolver is None:
+        return
+
+    from bubblegum.core.schemas import ResolvedTarget
+
+    seed_target = ResolvedTarget(
+        ref=memory_seed["ref"],
+        confidence=float(memory_seed["confidence"]),
+        resolver_name=memory_seed["resolver_name"],
+        metadata=memory_seed.get("metadata") or {},
+    )
+    resolver.record_success(intent, seed_target)
+    if memory_seed.get("force_memory_only") is True:
+        intent.context = {"screen_signature": intent.context.get("screen_signature", "")}
 
 
 async def _execute_cases_async(
@@ -236,6 +263,7 @@ async def _execute_cases_async(
 
         executed += 1
         intent = _map_case_to_intent(case, repo_root)
+        _seed_memory_preconditions(engine, intent, case)
         if EXECUTE_EXPECTED_KEYS.issubset(case):
             expected_winner = case["execute_expected_resolver_winner"]
             cmin = case["execute_confidence_min"]

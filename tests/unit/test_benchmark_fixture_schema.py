@@ -86,3 +86,18 @@ def test_all_required_categories_present() -> None:
     _, cases, _ = _load_schema_and_cases()
     present = {case["category"] for case in cases}
     assert REQUIRED_CATEGORIES.issubset(present)
+
+
+def test_memory_seed_preconditions_shape_when_present() -> None:
+    _, cases, _ = _load_schema_and_cases()
+    for case in cases:
+        pre = case.get("preconditions")
+        if not pre:
+            continue
+        seed = pre.get("memory_seed")
+        if not seed:
+            continue
+        assert seed.get("ref")
+        assert "confidence" in seed
+        assert 0 <= seed["confidence"] <= 1
+        assert seed.get("resolver_name")
