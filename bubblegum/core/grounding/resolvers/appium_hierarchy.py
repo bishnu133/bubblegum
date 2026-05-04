@@ -135,39 +135,49 @@ class AppiumHierarchyResolver(Resolver):
         Uses bidirectional substring matching via _text_matches().
         """
         tag    = element.tag or ""
+        widget_type = (element.get("class") or tag or "").strip()
         text   = (element.get("text") or "").strip()
         c_desc = (element.get("content-desc") or "").strip()
         res_id = (element.get("resource-id") or "").strip()
         bounds = element.get("bounds") or ""
+        enabled_attr = (element.get("enabled") or "").strip().lower()
+        visible_attr = (element.get("visible-to-user") or "").strip().lower()
+        hidden_attr = (element.get("hidden") or "").strip().lower()
+        explicitly_hidden = (
+            enabled_attr == "false"
+            or visible_attr == "false"
+            or hidden_attr in ("true", "1")
+        )
+        visibility = 0.2 if explicitly_hidden else (1.0 if bounds else 0.8)
 
         # text match (highest confidence)
         if text and _text_matches(instruction_lower, text):
-            xpath = _build_xpath(tag, "text", text)
+            xpath = _build_xpath(widget_type, "text", text)
             return ResolvedTarget(
                 ref=json.dumps({"by": "xpath", "value": xpath}),
                 confidence=_CONF_TEXT,
                 resolver_name=self.name,
                 metadata={
-                    "signals": make_signals(text_match=0.92, role_match=_role_match_for_action(tag, action_type), visibility=1.0 if bounds else 0.3, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=0.92, role_match=_role_match_for_action(widget_type, action_type), visibility=visibility, uniqueness=0.8, memory=0.0),
                     "matched_attr": "text",
                     "matched_value": text,
-                    "tag": tag,
+                    "tag": widget_type,
                     "bounds": bounds,
                 },
             )
 
         # content-desc match
         if c_desc and _text_matches(instruction_lower, c_desc):
-            xpath = _build_xpath(tag, "content-desc", c_desc)
+            xpath = _build_xpath(widget_type, "content-desc", c_desc)
             return ResolvedTarget(
                 ref=json.dumps({"by": "xpath", "value": xpath}),
                 confidence=_CONF_CONTENT_DESC,
                 resolver_name=self.name,
                 metadata={
-                    "signals": make_signals(text_match=0.85, role_match=_role_match_for_action(tag, action_type), visibility=1.0 if bounds else 0.3, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=0.85, role_match=_role_match_for_action(widget_type, action_type), visibility=visibility, uniqueness=0.8, memory=0.0),
                     "matched_attr": "content-desc",
                     "matched_value": c_desc,
-                    "tag": tag,
+                    "tag": widget_type,
                     "bounds": bounds,
                 },
             )
@@ -176,16 +186,16 @@ class AppiumHierarchyResolver(Resolver):
         if res_id:
             id_part = res_id.split("/")[-1] if "/" in res_id else res_id
             if _text_matches(instruction_lower, id_part) or _text_matches(instruction_lower, res_id):
-                xpath = _build_xpath(tag, "resource-id", res_id)
+                xpath = _build_xpath(widget_type, "resource-id", res_id)
                 return ResolvedTarget(
                     ref=json.dumps({"by": "xpath", "value": xpath}),
                     confidence=_CONF_RESOURCE_ID,
                     resolver_name=self.name,
                     metadata={
-                    "signals": make_signals(text_match=0.75, role_match=_role_match_for_action(tag, action_type), visibility=1.0 if bounds else 0.3, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=0.75, role_match=_role_match_for_action(widget_type, action_type), visibility=visibility, uniqueness=0.8, memory=0.0),
                         "matched_attr": "resource-id",
                         "matched_value": res_id,
-                        "tag": tag,
+                        "tag": widget_type,
                         "bounds": bounds,
                     },
                 )
@@ -220,4 +230,6 @@ def _role_match_for_action(tag: str, action_type: str) -> float:
         return 1.0 if any(x in t for x in ("button", "imagebutton", "textview")) else 0.4
     if action_type == "type":
         return 1.0 if "edittext" in t else 0.2
+    if action_type == "verify":
+        return 0.9 if any(x in t for x in ("textview", "edittext", "button")) else 0.5
     return 0.5
