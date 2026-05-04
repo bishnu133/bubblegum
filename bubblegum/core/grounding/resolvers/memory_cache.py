@@ -42,6 +42,7 @@ from pathlib import Path
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.memory.layer import MemoryLayer
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
+from bubblegum.core.grounding.signals import make_signals
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +103,25 @@ class MemoryCacheResolver(Resolver):
             "MemoryCache: HIT  sig=%r  hash=%s  ref=%r  conf=%.2f",
             screen_sig[:20], step_h, entry.ref, entry.confidence,
         )
+        base_meta = {**entry.metadata, "cached_from": entry.resolver_name}
+        existing = dict(base_meta.get("signals") or {})
+        memory_val = max(float(existing.get("memory", 0.0)), float(existing.get("memory_history", 0.0)), 0.8)
+        existing.update(make_signals(
+            text_match=float(existing.get("text_match", entry.confidence)),
+            role_match=float(existing.get("role_match", 0.0)),
+            visibility=float(existing.get("visibility", 0.5)),
+            uniqueness=float(existing.get("uniqueness", 0.8)),
+            proximity=float(existing.get("proximity", 0.5)),
+            memory=memory_val,
+            memory_history=memory_val,
+        ))
+        base_meta["signals"] = existing
         return [
             ResolvedTarget(
                 ref=entry.ref,
                 confidence=entry.confidence,
                 resolver_name=self.name,
-                metadata={**entry.metadata, "cached_from": entry.resolver_name},
+                metadata=base_meta,
             )
         ]
 
