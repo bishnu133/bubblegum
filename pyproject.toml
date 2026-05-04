@@ -17,4 +17,8 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "llm: marks tests that call the real LLM API",
+    "memory: marks tests that require disk-backed memory fixtures",
+    "appium: marks tests that require Appium server/device",
+    "playwright: marks tests that require Playwright/browser setup",
+    "e2e: marks optional end-to-end tests",
 ]
