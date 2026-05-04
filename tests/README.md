@@ -21,7 +21,12 @@ This repository organizes tests into the following directories:
 - `tests/fixtures/`
   - Shared static test artifacts (HTML/XML/JSON/etc.) for reuse across unit/integration/e2e tests.
 
-## Markers and optional test groups
+## Markers vs Bubblegum plugin flags
+
+- **Pytest markers/selectors** (`-m ...`) choose which tests run.
+  - Examples: `-m playwright`, `-m appium`, `-m llm`, `-m memory`, `-m e2e`.
+- **Bubblegum plugin flags** (`--bubblegum-...`) control Bubblegum runtime behavior and reporting.
+  - Examples: `--bubblegum-config`, `--bubblegum-report`, `--bubblegum-report-json`, `--bubblegum-artifacts`, `--bubblegum-benchmark`.
 
 Registered markers:
 
@@ -31,11 +36,11 @@ Registered markers:
 - `playwright` — tests requiring Playwright/browser setup.
 - `e2e` — end-to-end tests that are optional in default local runs.
 
-Default behavior keeps optional groups **off** unless explicitly enabled.
+Default behavior keeps optional groups **off** unless explicitly selected.
 
 ## Running tests
 
-Default test run:
+Default-safe run:
 
 ```bash
 pytest
@@ -47,30 +52,39 @@ This default run should not require:
 - Appium server/device
 - real browser runtime
 
-Run optional groups:
+Optional marked runs (selection via `-m`):
 
 ```bash
-# LLM integration
-pytest -m llm --llm -v
-
-# Disk-backed memory integration
-pytest -m memory --memory -v
-
-# Appium integration
-pytest -m appium --appium -v
-
-# Playwright integration
-pytest -m playwright --playwright -v
-
-# E2E tests
-pytest -m e2e --e2e -v
+pytest -m llm -v
+pytest -m memory -v
+pytest -m appium -v
+pytest -m playwright -v
+pytest -m e2e -v
 ```
 
-You can combine markers/flags as needed for local or CI pipelines.
+Bubblegum plugin reporting examples:
 
+```bash
+# HTML report
+pytest --bubblegum-config bubblegum.yaml \
+  --bubblegum-report artifacts/bubblegum-report.html
+
+# JSON report
+pytest --bubblegum-config bubblegum.yaml \
+  --bubblegum-report-json artifacts/bubblegum-report.json
+
+# HTML + JSON + artifacts directory
+pytest --bubblegum-config bubblegum.yaml \
+  --bubblegum-artifacts artifacts \
+  --bubblegum-report artifacts/bubblegum-report.html \
+  --bubblegum-report-json artifacts/bubblegum-report.json
+
+# Benchmark validation
+pytest --bubblegum-benchmark
+```
 
 Default-safe scaffolds:
 - `tests/integration/test_phase3c_integration_scaffold.py` uses deterministic fake objects only.
 - `tests/e2e/test_phase3c_e2e_scaffold.py` uses deterministic fake SDK flow only.
 
-Note: `tests/integration/test_playwright_adapter.py` is marked `playwright` and is skipped unless `--playwright` is passed.
+Note: `tests/integration/test_playwright_adapter.py` is marked `playwright` and is skipped unless selected with `-m playwright`.
