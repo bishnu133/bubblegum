@@ -12,6 +12,10 @@ dependencies = ["pydantic>=2.0", "pyyaml"]
 [project.optional-dependencies]
 test = ["pytest-asyncio"]
 
+
+[project.entry-points.pytest11]
+bubblegum = "bubblegum.pytest_plugin"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["bubblegum*"]
