@@ -120,6 +120,53 @@ That's it. You get value from Bubblegum **before writing a single new natural-la
 
 ---
 
+
+## Pytest plugin reporting
+
+Bubblegum ships with a pytest plugin entrypoint (`bubblegum.pytest_plugin`) that can emit HTML/JSON reports and manage artifacts during test sessions.
+
+### Common commands
+
+```bash
+# HTML report
+pytest --bubblegum-config bubblegum.yaml \
+  --bubblegum-report artifacts/bubblegum-report.html
+
+# JSON report
+pytest --bubblegum-config bubblegum.yaml \
+  --bubblegum-report-json artifacts/bubblegum-report.json
+
+# HTML + JSON + explicit artifacts directory
+pytest --bubblegum-config bubblegum.yaml \
+  --bubblegum-artifacts artifacts \
+  --bubblegum-report artifacts/bubblegum-report.html \
+  --bubblegum-report-json artifacts/bubblegum-report.json
+
+# Run benchmark validation at session end
+pytest --bubblegum-benchmark
+```
+
+### GitHub Actions example
+
+```yaml
+- name: Run tests with Bubblegum reporting
+  run: |
+    pytest \
+      --bubblegum-config bubblegum.yaml \
+      --bubblegum-artifacts artifacts \
+      --bubblegum-report artifacts/bubblegum-report.html \
+      --bubblegum-report-json artifacts/bubblegum-report.json
+
+- name: Upload Bubblegum artifacts
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: bubblegum-artifacts
+    path: artifacts/
+```
+
+---
+
 ## Public API
 
 Four primitives. These are the only methods test authors need.
