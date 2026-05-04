@@ -566,6 +566,71 @@ class TestAppiumHierarchyResolverMultipleMatches:
 
 
 # ===========================================================================
+# AppiumHierarchyResolver — signal scoring (Phase 6G)
+# ===========================================================================
+
+class TestAppiumHierarchyResolverSignalsPhase6G:
+
+    def _resolve(self, instruction, xml, action_type):
+        from bubblegum.core.grounding.resolvers.appium_hierarchy import AppiumHierarchyResolver
+        from bubblegum.core.schemas import ExecutionOptions, StepIntent
+        r = AppiumHierarchyResolver()
+        intent = StepIntent(
+            instruction=instruction,
+            channel="mobile",
+            action_type=action_type,
+            context={"hierarchy_xml": xml},
+            options=ExecutionOptions(),
+        )
+        return r.resolve(intent)
+
+    def test_role_match_uses_class_for_node_button_tap(self):
+        xml = """<hierarchy>
+  <node class="android.widget.Button" text="Sign In" content-desc="sign_in_button"/>
+</hierarchy>"""
+        candidates = self._resolve("Tap Sign In", xml, "tap")
+        text_matches = [c for c in candidates if c.metadata.get("matched_attr") == "text"]
+        assert text_matches
+        assert text_matches[0].metadata["signals"]["role_match"] == 1.0
+
+    def test_role_match_uses_class_for_node_edittext_type(self):
+        xml = """<hierarchy>
+  <node class="android.widget.EditText" text="" content-desc="Email input"/>
+</hierarchy>"""
+        candidates = self._resolve("Type into Email input", xml, "type")
+        c_desc_matches = [c for c in candidates if c.metadata.get("matched_attr") == "content-desc"]
+        assert c_desc_matches
+        assert c_desc_matches[0].metadata["signals"]["role_match"] == 1.0
+
+    def test_role_match_for_verify_textview_is_stronger_than_generic(self):
+        xml = """<hierarchy>
+  <node class="android.widget.TextView" text="Order Confirmed"/>
+</hierarchy>"""
+        candidates = self._resolve("Verify text Order Confirmed", xml, "verify")
+        text_matches = [c for c in candidates if c.metadata.get("matched_attr") == "text"]
+        assert text_matches
+        assert text_matches[0].metadata["signals"]["role_match"] > 0.5
+
+    def test_visibility_without_bounds_defaults_to_0_8_for_present_node(self):
+        xml = """<hierarchy>
+  <node class="android.widget.Button" text="Sign In"/>
+</hierarchy>"""
+        candidates = self._resolve("Tap Sign In", xml, "tap")
+        text_matches = [c for c in candidates if c.metadata.get("matched_attr") == "text"]
+        assert text_matches
+        assert text_matches[0].metadata["signals"]["visibility"] == 0.8
+
+    def test_visibility_reduced_when_explicitly_disabled(self):
+        xml = """<hierarchy>
+  <node class="android.widget.Button" text="Sign In" enabled="false"/>
+</hierarchy>"""
+        candidates = self._resolve("Tap Sign In", xml, "tap")
+        text_matches = [c for c in candidates if c.metadata.get("matched_attr") == "text"]
+        assert text_matches
+        assert text_matches[0].metadata["signals"]["visibility"] == 0.2
+
+
+# ===========================================================================
 # XPath builder
 # ===========================================================================
 
