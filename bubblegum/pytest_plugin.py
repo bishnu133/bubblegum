@@ -58,6 +58,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Write Bubblegum HTML report to this path at session end (optional).",
     )
     group.addoption(
+        "--bubblegum-report-json",
+        action="store",
+        default=None,
+        metavar="PATH",
+        help="Write Bubblegum JSON report to this path at session end (optional).",
+    )
+    group.addoption(
         "--bubblegum-artifacts",
         action="store",
         default="artifacts",
@@ -114,13 +121,21 @@ def bubblegum_artifacts_dir(pytestconfig: pytest.Config) -> Path:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     report_path = session.config.getoption("--bubblegum-report")
-    if report_path:
+    report_json_path = session.config.getoption("--bubblegum-report-json")
+
+    if report_path or report_json_path:
         reporter = getattr(session.config, "_bubblegum_reporter", None)
         results = getattr(reporter, "results", []) if reporter is not None else []
 
-        from bubblegum.reporting.html_report import write_html_report
+        if report_path:
+            from bubblegum.reporting.html_report import write_html_report
 
-        write_html_report(results, path=report_path)
+            write_html_report(results, path=report_path)
+
+        if report_json_path:
+            from bubblegum.reporting.json_report import write_json_report
+
+            write_json_report(results, path=report_json_path)
 
     if not session.config.getoption("--bubblegum-benchmark"):
         return
