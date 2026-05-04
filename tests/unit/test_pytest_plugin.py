@@ -5,6 +5,12 @@ from pathlib import Path
 import yaml
 from _pytest.config.argparsing import Parser
 
+from bubblegum.core.schemas import StepResult
+
+
+def _step_result(action: str = "Click Login", status: str = "passed") -> StepResult:
+    return StepResult(status=status, action=action)
+
 
 def test_plugin_module_importable():
     import bubblegum.pytest_plugin as plugin
@@ -102,3 +108,55 @@ def test_no_report_emitted_without_flag(tmp_path):
 
     report_file = tmp_path / "bubblegum_report.html"
     assert not report_file.exists()
+
+
+def test_bubblegum_reporter_accepts_stepresult_append():
+    from bubblegum import pytest_plugin as plugin
+
+    cfg = _Cfg({})
+    reporter = plugin.bubblegum_reporter.__wrapped__(cfg)
+
+    step = _step_result(action="Submit form", status="passed")
+    reporter.add(step)
+
+    assert len(reporter.results) == 1
+    assert reporter.results[0] == step
+
+
+def test_report_emitted_with_flag_and_results(tmp_path):
+    from bubblegum import pytest_plugin as plugin
+
+    report_path = tmp_path / "bubblegum_report.html"
+    cfg = _Cfg({"--bubblegum-report": str(report_path)})
+    reporter = plugin.bubblegum_reporter.__wrapped__(cfg)
+    reporter.add(_step_result(action="Click Login", status="passed"))
+
+    class _Session:
+        def __init__(self, config):
+            self.config = config
+
+    session = _Session(cfg)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert report_path.exists()
+    content = report_path.read_text(encoding="utf-8")
+    assert "Click Login" in content
+    assert "PASSED" in content
+
+
+def test_report_emitted_with_flag_and_no_results(tmp_path):
+    from bubblegum import pytest_plugin as plugin
+
+    report_path = tmp_path / "bubblegum_report.html"
+    cfg = _Cfg({"--bubblegum-report": str(report_path)})
+    plugin.bubblegum_reporter.__wrapped__(cfg)
+
+    class _Session:
+        def __init__(self, config):
+            self.config = config
+
+    session = _Session(cfg)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert report_path.exists()
+    assert "No steps recorded" in report_path.read_text(encoding="utf-8")
