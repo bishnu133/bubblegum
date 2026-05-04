@@ -21,6 +21,10 @@ class OCRResolver(Resolver):
     cost_level = "medium"
     tier       = 3
 
+    def supports(self, intent: StepIntent) -> bool:
+        """Run only when OCR is enabled in the runtime config context."""
+        return bool(intent.context.get("config_ocr_enabled", True))
+
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         """Phase 0 stub — implementation in Phase 6."""
         return []

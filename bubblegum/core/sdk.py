@@ -510,10 +510,20 @@ def _get_adapter(channel: str, page=None, driver=None):
 
 
 def _build_options(kwargs: dict) -> ExecutionOptions:
-    known = {"timeout_ms", "retry_count", "wait_for", "use_ai", "max_cost_level"}
+    known = {
+        "timeout_ms",
+        "retry_count",
+        "wait_for",
+        "use_ai",
+        "max_cost_level",
+        "memory_ttl_days",
+        "memory_max_failures",
+    }
     opts = {k: v for k, v in kwargs.items() if k in known}
     opts.setdefault("use_ai", _config.ai_enabled)
     opts.setdefault("max_cost_level", _config.grounding.max_cost_level)
+    opts.setdefault("memory_ttl_days", _config.grounding.memory_ttl_days)
+    opts.setdefault("memory_max_failures", _config.grounding.memory_max_failures)
     return ExecutionOptions(**opts)
 
 
@@ -557,6 +567,10 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
         intent.context["screenshot"] = ui_ctx.screenshot
     if ui_ctx.screen_signature:
         intent.context["screen_signature"] = ui_ctx.screen_signature
+
+    # Runtime config flags exposed in context for resolver eligibility checks.
+    intent.context.setdefault("config_ocr_enabled", _config.ocr_enabled)
+    intent.context.setdefault("config_vision_enabled", _config.vision_enabled)
 
 
 def _failed_result(instruction: str, exc: BubblegumError, duration_ms: int) -> StepResult:
