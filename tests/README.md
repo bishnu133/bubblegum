@@ -67,3 +67,10 @@ pytest -m e2e --e2e -v
 ```
 
 You can combine markers/flags as needed for local or CI pipelines.
+
+
+Default-safe scaffolds:
+- `tests/integration/test_phase3c_integration_scaffold.py` uses deterministic fake objects only.
+- `tests/e2e/test_phase3c_e2e_scaffold.py` uses deterministic fake SDK flow only.
+
+Note: `tests/integration/test_playwright_adapter.py` is marked `playwright` and is skipped unless `--playwright` is passed.
