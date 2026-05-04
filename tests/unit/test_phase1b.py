@@ -32,13 +32,14 @@ from bubblegum.core.grounding.resolvers.fuzzy_text import (
 from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver, _step_hash
 from bubblegum.core.schemas import (
     ArtifactRef,
+    ErrorInfo,
     ExecutionOptions,
     ResolvedTarget,
     StepIntent,
     StepResult,
     ValidationResult,
 )
-from bubblegum.reporting.html_report import write_html_report
+from bubblegum.reporting.html_report import build_report_analytics, write_html_report
 
 
 # ===========================================================================
@@ -586,3 +587,64 @@ class TestHTMLReport:
     def test_custom_title(self, tmp_path):
         out = write_html_report([], path=tmp_path / "r.html", title="My QA Run")
         assert "My QA Run" in out.read_text()
+
+
+class TestHtmlReportAnalytics:
+    def _result(
+        self,
+        *,
+        status: str,
+        confidence: float,
+        resolver_name: str | None,
+        error_type: str | None = None,
+    ) -> StepResult:
+        target = None
+        if resolver_name is not None:
+            target = ResolvedTarget(
+                ref='role=button[name="X"]',
+                confidence=confidence,
+                resolver_name=resolver_name,
+            )
+        error = ErrorInfo(error_type=error_type, message="boom") if error_type else None
+        return StepResult(
+            status=status,
+            action="Do step",
+            target=target,
+            confidence=confidence,
+            error=error,
+        )
+
+    def test_build_report_analytics_mixed_results(self):
+        results = [
+            self._result(status="passed", confidence=0.91, resolver_name="accessibility_tree"),
+            self._result(status="recovered", confidence=0.73, resolver_name="fuzzy_text"),
+            self._result(status="failed", confidence=0.42, resolver_name=None, error_type="ResolutionFailedError"),
+            self._result(status="skipped", confidence=0.0, resolver_name=None),
+            self._result(status="failed", confidence=0.65, resolver_name="fuzzy_text", error_type="ExecutionFailedError"),
+        ]
+        analytics = build_report_analytics(results)
+        assert analytics["total"] == 5
+        assert analytics["status_counts"] == {"passed": 1, "recovered": 1, "failed": 2, "skipped": 1}
+        assert analytics["resolver_win_counts"] == {"accessibility_tree": 1, "fuzzy_text": 2}
+        conf = analytics["confidence_summary"]
+        assert conf["count"] == 5
+        assert conf["min"] == 0.0
+        assert conf["max"] == 0.91
+        assert conf["average"] == pytest.approx((0.91 + 0.73 + 0.42 + 0.0 + 0.65) / 5)
+        assert conf["buckets"] == {"high": 1, "medium": 1, "low": 3}
+        assert analytics["error_type_counts"] == {"ResolutionFailedError": 1, "ExecutionFailedError": 1}
+
+    def test_html_contains_analytics_sections_and_counts(self, tmp_path):
+        results = [
+            self._result(status="passed", confidence=0.90, resolver_name="accessibility_tree"),
+            self._result(status="recovered", confidence=0.72, resolver_name="fuzzy_text"),
+            self._result(status="failed", confidence=0.40, resolver_name=None, error_type="ResolutionFailedError"),
+        ]
+        out = write_html_report(results, path=tmp_path / "report.html")
+        content = out.read_text()
+        assert "Resolver Win Distribution" in content
+        assert "Confidence Summary" in content
+        assert "Error Type Distribution" in content
+        assert "accessibility_tree" in content
+        assert "fuzzy_text" in content
+        assert "ResolutionFailedError" in content
