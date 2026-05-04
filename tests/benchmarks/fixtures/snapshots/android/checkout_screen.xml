@@ -1,0 +1,6 @@
+<hierarchy>
+  <node class="android.widget.TextView" text="Checkout"/>
+  <node class="android.widget.EditText" text="" content-desc="Address input"/>
+  <node class="android.widget.Button" text="Place Order" content-desc="place_order"/>
+  <node class="android.widget.TextView" text="Order Confirmed"/>
+</hierarchy>

@@ -1,0 +1,6 @@
+<hierarchy>
+  <node class="android.widget.TextView" text="Welcome"/>
+  <node class="android.widget.EditText" text="" content-desc="Email input"/>
+  <node class="android.widget.EditText" text="" content-desc="Password input"/>
+  <node class="android.widget.Button" text="Sign In" content-desc="sign_in_button"/>
+</hierarchy>
