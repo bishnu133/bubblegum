@@ -3,9 +3,27 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from _pytest.config.argparsing import Parser
+import argparse
 
 from bubblegum.core.schemas import StepResult
+
+class _OptionGroup:
+    def __init__(self, parser: argparse.ArgumentParser):
+        self._parser = parser
+
+    def addoption(self, *args, **kwargs):
+        self._parser.add_argument(*args, **kwargs)
+
+
+class _PublicParserAdapter:
+    def __init__(self):
+        self._parser = argparse.ArgumentParser(add_help=False)
+
+    def getgroup(self, _name: str):
+        return _OptionGroup(self._parser)
+
+    def parse(self, args: list[str]):
+        return self._parser.parse_args(args)
 
 
 def _step_result(action: str = "Click Login", status: str = "passed") -> StepResult:
@@ -21,7 +39,7 @@ def test_plugin_module_importable():
 def test_cli_options_registered():
     from bubblegum import pytest_plugin as plugin
 
-    parser = Parser()
+    parser = _PublicParserAdapter()
     plugin.pytest_addoption(parser)
     opts = parser.parse(["--bubblegum-artifacts", "out", "--bubblegum-ai"])
 
