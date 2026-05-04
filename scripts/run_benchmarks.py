@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 from collections import Counter
+from html import unescape
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -86,8 +88,9 @@ def _map_case_to_intent(case: dict, repo_root: Path) -> StepIntent:
     platform = case["platform"].lower()
     if platform == "web":
         channel = "web"
+        a11y_snapshot = _html_to_a11y_snapshot(snapshot)
         context = {
-            "a11y_snapshot": snapshot,
+            "a11y_snapshot": a11y_snapshot,
             "dom_snapshot": snapshot,
         }
     elif platform == "android":
@@ -103,6 +106,95 @@ def _map_case_to_intent(case: dict, repo_root: Path) -> StepIntent:
         context=context,
         options=ExecutionOptions(max_cost_level="low"),
     )
+
+
+def _html_to_a11y_snapshot(html: str) -> str:
+    """
+    Convert fixture HTML into a minimal aria-snapshot-like line format.
+
+    This is intentionally heuristic and benchmark-harness-only, just enough for
+    deterministic text/a11y resolvers that expect lines like:
+      button "Login"
+      textbox "Email"
+      heading "Settings"
+    """
+    role_lines: list[str] = []
+
+    # button / link / heading / paragraph-ish visible text
+    text_roles = [
+        (r"<button\b([^>]*)>(.*?)</button>", "button"),
+        (r"<a\b([^>]*)>(.*?)</a>", "link"),
+        (r"<h[1-6]\b([^>]*)>(.*?)</h[1-6]>", "heading"),
+        (r"<p\b([^>]*)>(.*?)</p>", "paragraph"),
+        (r"<option\b([^>]*)>(.*?)</option>", "option"),
+        (r"<label\b([^>]*)>(.*?)</label>", "paragraph"),
+    ]
+    for pattern, default_role in text_roles:
+        for attrs, body in re.findall(pattern, html, flags=re.IGNORECASE | re.DOTALL):
+            role = _extract_attr(attrs, "role") or default_role
+            name = _clean_text(body) or _extract_attr(attrs, "aria-label")
+            role_lines.append(_fmt_snapshot_line(role, name))
+
+    # input/select controls (self-closing or paired)
+    for attrs in re.findall(r"<input\b([^>]*)/?>", html, flags=re.IGNORECASE | re.DOTALL):
+        role = _extract_attr(attrs, "role") or "textbox"
+        name = _extract_attr(attrs, "aria-label") or _extract_attr(attrs, "name") or _extract_attr(attrs, "id")
+        role_lines.append(_fmt_snapshot_line(role, name))
+
+    for attrs in re.findall(r"<select\b([^>]*)>", html, flags=re.IGNORECASE | re.DOTALL):
+        role = _extract_attr(attrs, "role") or "combobox"
+        name = _extract_attr(attrs, "aria-label") or _extract_attr(attrs, "name") or _extract_attr(attrs, "id")
+        role_lines.append(_fmt_snapshot_line(role, name))
+
+    # remove blank lines while preserving order
+    cleaned = [line for line in role_lines if line.strip()]
+    return "\n".join(cleaned)
+
+
+def _extract_attr(attrs: str, name: str) -> str:
+    m = re.search(rf"""\b{name}\s*=\s*["']([^"']+)["']""", attrs, flags=re.IGNORECASE)
+    return unescape(m.group(1)).strip() if m else ""
+
+
+def _clean_text(value: str) -> str:
+    collapsed = re.sub(r"<[^>]+>", " ", value)
+    collapsed = unescape(collapsed)
+    return re.sub(r"\s+", " ", collapsed).strip()
+
+
+def _fmt_snapshot_line(role: str, name: str) -> str:
+    role_clean = (role or "").strip().lower()
+    name_clean = (name or "").strip()
+    if not role_clean:
+        return ""
+    if name_clean:
+        return f'{role_clean} "{name_clean}"'
+    return role_clean
+
+
+def _build_deterministic_engine() -> GroundingEngineProtocol:
+    from bubblegum.core.grounding.engine import GroundingEngine
+    from bubblegum.core.grounding.registry import ResolverRegistry
+    from bubblegum.core.grounding.resolvers.accessibility_tree import AccessibilityTreeResolver
+    from bubblegum.core.grounding.resolvers.appium_hierarchy import AppiumHierarchyResolver
+    from bubblegum.core.grounding.resolvers.exact_text import ExactTextResolver
+    from bubblegum.core.grounding.resolvers.explicit_selector import ExplicitSelectorResolver
+    from bubblegum.core.grounding.resolvers.fuzzy_text import FuzzyTextResolver
+    from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
+
+    registry = ResolverRegistry()
+    for resolver_name in ("llm_grounding", "ocr", "vision_model"):
+        registry.unregister(resolver_name)
+    for resolver in [
+        ExplicitSelectorResolver(),
+        MemoryCacheResolver(),
+        AccessibilityTreeResolver(),
+        AppiumHierarchyResolver(),
+        ExactTextResolver(),
+        FuzzyTextResolver(),
+    ]:
+        registry.register(resolver)
+    return GroundingEngine(registry=registry)
 
 
 async def _execute_cases_async(
@@ -179,9 +271,7 @@ def run_execution_validation(
     cases: list[dict] | None = None,
 ) -> dict[str, Any]:
     if engine is None:
-        from bubblegum.core.grounding.engine import GroundingEngine
-
-        engine = GroundingEngine()
+        engine = _build_deterministic_engine()
 
     selected_cases = cases if cases is not None else load_cases(repo_root)
     return asyncio.run(_execute_cases_async(repo_root, engine, selected_cases))
