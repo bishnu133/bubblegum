@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="#"><img src="https://img.shields.io/badge/pip%20install-bubblegum--ai-pink.svg" alt="pip install bubblegum-ai"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/phase-0%20%E2%80%94%20foundation-orange.svg" alt="Phase 0"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/phase-7A%20%E2%80%94%20mvp%20hardening-orange.svg" alt="Phase 7A"/></a>
   <a href="#"><img src="https://img.shields.io/badge/architecture-v0.9%20approved-brightgreen.svg" alt="Architecture Approved"/></a>
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-lightgrey.svg" alt="MIT License"/></a>
 </p>
@@ -69,7 +69,22 @@ Every decision produces a trace artifact with confidence scores, so your team al
 ### Install
 
 ```bash
+# Base package
 pip install bubblegum-ai
+
+# Web usage prerequisites (Playwright)
+pip install playwright
+playwright install chromium
+
+# Mobile usage prerequisites (Appium)
+pip install Appium-Python-Client
+# plus: running Appium server + connected emulator/device
+```
+
+### Public import pattern
+
+```python
+from bubblegum import act, verify, recover, extract, configure_runtime
 ```
 
 ### Add configuration
@@ -103,9 +118,9 @@ privacy:
 ### Recover a failing step in an existing Playwright test
 
 ```python
-import bubblegum
+from bubblegum import recover
 
-result = await bubblegum.recover(
+result = await recover(
     page=page,
     failed_selector="#login-btn",
     intent="Click Login"
@@ -167,29 +182,66 @@ pytest --bubblegum-benchmark
 
 ---
 
+
+## Quickstart examples
+
+Runnable templates are available in:
+
+- `examples/playwright_quickstart.py`
+- `examples/appium_quickstart.py`
+- `examples/README.md`
+
+These are intentionally minimal and avoid credentials/secrets.
+
+---
+
+## Pytest reporter fixture integration
+
+If you want Bubblegum HTML/JSON reports to include step-level SDK results, add the `bubblegum_reporter` fixture and append each `StepResult`:
+
+```python
+import pytest
+from bubblegum import act
+
+@pytest.mark.asyncio
+async def test_login_flow(page, bubblegum_reporter):
+    result = await act("Click Login", channel="web", page=page)
+    bubblegum_reporter.add(result)
+    assert result.status in {"passed", "recovered"}
+```
+
+Run with report outputs:
+
+```bash
+pytest --bubblegum-config bubblegum.yaml \
+  --bubblegum-report artifacts/bubblegum-report.html \
+  --bubblegum-report-json artifacts/bubblegum-report.json
+```
+
+---
 ## Public API
 
 Four primitives. These are the only methods test authors need.
 
 ```python
 # Natural language — direct mode (web)
-await bubblegum.act("Click Login",          channel="web")
-await bubblegum.verify("Dashboard visible", channel="web")
-await bubblegum.extract("Get user email",   channel="web")
+await act("Click Login",          channel="web")
+await verify("Dashboard visible", channel="web")
+await extract("Get user email",   channel="web")
 
 # Natural language — mobile
-await bubblegum.act("Tap Continue",   channel="mobile", platform="android")
-await bubblegum.verify("OTP screen",  channel="mobile", platform="ios")
+await act("Tap Continue",   channel="mobile", platform="android")
+await verify("OTP screen",  channel="mobile", platform="ios")
 
 # Fallback recovery — plug into an existing Playwright test
-await bubblegum.recover(
+await recover(
     page=page,
     failed_selector="#submit-btn",
     intent="Click Submit"
 )
 ```
 
-> **Mobile `recover()`:** In Phase 1/2, `recover()` accepts a Playwright `page` object. Appium session support will be added in Phase 4.
+> **Mobile `recover()`:** `recover()` supports mobile by passing `channel="mobile"` and an Appium `driver`.
 
 ### StepResult — what every call returns
 
