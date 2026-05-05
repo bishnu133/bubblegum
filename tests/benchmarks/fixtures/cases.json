@@ -24,8 +24,10 @@
     "expected_resolver_winner": "accessibility_tree",
     "confidence_min": 0.8,
     "confidence_max": 0.99,
-    "executable": false,
-    "execute_skip_reason": "static synthetic expectation; deterministic execute-mode baseline not yet aligned"
+    "executable": true,
+    "execute_expected_resolver_winner": "fuzzy_text",
+    "execute_confidence_min": 0.72,
+    "execute_confidence_max": 0.73
   },
   {
     "id": "web_type_input_001",
@@ -37,8 +39,10 @@
     "expected_resolver_winner": "exact_text",
     "confidence_min": 0.85,
     "confidence_max": 1.0,
-    "executable": false,
-    "execute_skip_reason": "static synthetic expectation; deterministic execute-mode baseline not yet aligned"
+    "executable": true,
+    "execute_expected_resolver_winner": "fuzzy_text",
+    "execute_confidence_min": 0.72,
+    "execute_confidence_max": 0.73
   },
   {
     "id": "web_select_dropdown_001",
@@ -50,8 +54,10 @@
     "expected_resolver_winner": "exact_text",
     "confidence_min": 0.8,
     "confidence_max": 0.98,
-    "executable": false,
-    "execute_skip_reason": "static synthetic expectation; deterministic execute-mode baseline not yet aligned"
+    "executable": true,
+    "execute_expected_resolver_winner": "fuzzy_text",
+    "execute_confidence_min": 0.72,
+    "execute_confidence_max": 0.73
   },
   {
     "id": "web_verify_text_001",
