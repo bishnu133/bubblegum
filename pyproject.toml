@@ -11,6 +11,10 @@ dependencies = ["pydantic>=2.0", "pyyaml"]
 
 [project.optional-dependencies]
 test = ["pytest-asyncio"]
+web = ["playwright"]
+mobile = ["Appium-Python-Client"]
+dev = ["pytest-asyncio"]
+all = ["playwright", "Appium-Python-Client", "pytest-asyncio"]
 
 
 [project.entry-points.pytest11]
