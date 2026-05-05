@@ -46,8 +46,26 @@ async def main() -> None:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
 
-            # Template target page; replace with your application URL.
-            await page.goto("https://example.com")
+            # Deterministic local smoke target; replace with your app URL/content later.
+            await page.set_content("""
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bubblegum Playwright Quickstart</title>
+  </head>
+  <body>
+    <main>
+      <h1>Example Domain</h1>
+      <p>This is deterministic local quickstart content.</p>
+      <a href="#more-info">More information</a>
+      <section id="more-info">
+        <p>Smoke target ready for act verify extract.</p>
+      </section>
+    </main>
+  </body>
+</html>
+""")
 
             # Optional recover demo: expected to require a real app + stale selector.
             try:

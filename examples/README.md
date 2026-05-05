@@ -42,5 +42,5 @@ You also need a running Appium server and a connected emulator/device.
 
 ### Quick expectations
 
-- `playwright_quickstart.py` should run after web dependencies + Chromium are installed. The `recover()` block is demonstrative and may require a real app/stale selector to produce a meaningful recovery.
+- `playwright_quickstart.py` uses `page.set_content(...)` with deterministic local HTML by default, so smoke validation does not require outbound network access. After this path works, adapt it to your real web target (URL/selectors/assertions). The `recover()` block is demonstrative and may require a real app/stale selector to produce a meaningful recovery.
 - `appium_quickstart.py` requires a real Appium session (server + device/emulator + compatible capabilities).

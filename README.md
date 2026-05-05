@@ -200,6 +200,8 @@ Runnable templates are available in:
 
 These are intentionally minimal and avoid credentials/secrets.
 
+The Playwright quickstart uses `page.set_content(...)` with deterministic local HTML by default, so first-run smoke does not depend on outbound network access.
+
 For quickstart troubleshooting (dependency/proxy issues, Playwright browser setup, Appium server/device requirements), see `examples/README.md`.
 
 ---
