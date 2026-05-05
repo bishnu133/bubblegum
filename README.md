@@ -200,6 +200,8 @@ Runnable templates are available in:
 
 These are intentionally minimal and avoid credentials/secrets.
 
+For quickstart troubleshooting (dependency/proxy issues, Playwright browser setup, Appium server/device requirements), see `examples/README.md`.
+
 ---
 
 ## Pytest reporter fixture integration
