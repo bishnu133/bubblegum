@@ -608,14 +608,22 @@ bubblegum/
 
 ## Release/package validation
 
-These checks are intended for maintainers preparing a release candidate (not required for normal package users):
+These checks are intended for maintainers preparing a release candidate (not required for normal package users).
+
+CI-required release checks (current workflow):
 
 ```bash
 python scripts/validate_package.py
 python -m build
-# optional, if twine is installed
+```
+
+Optional maintainer check (local, if `twine` is installed):
+
+```bash
 python -m twine check dist/*
 ```
+
+Publishing is not automated yet in CI.
 
 ## Project Status
 
