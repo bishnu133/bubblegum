@@ -59,6 +59,8 @@ def test_expected_winner_and_confidence_fields_present() -> None:
 def test_optional_execute_fields_validate_when_present() -> None:
     _, cases, _ = _load_schema_and_cases()
     for case in cases:
+        if "execute_allow_review" in case:
+            assert isinstance(case["execute_allow_review"], bool)
         if "execute_confidence_min" in case or "execute_confidence_max" in case:
             assert "execute_confidence_min" in case
             assert "execute_confidence_max" in case
