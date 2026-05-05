@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
+      - name: Upgrade pip and install build tooling
+        run: python -m pip install --upgrade pip build
 
       - name: Install test dependencies
         run: pip install -e ".[test]"
@@ -36,6 +36,9 @@ jobs:
 
       - name: Validate package
         run: python scripts/validate_package.py
+
+      - name: Build distribution artifacts
+        run: python -m build
 
       - name: Benchmark static validation
         run: python scripts/run_benchmarks.py
