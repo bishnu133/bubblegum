@@ -72,13 +72,20 @@ Every decision produces a trace artifact with confidence scores, so your team al
 # Base package
 pip install bubblegum-ai
 
-# Web usage prerequisites (Playwright)
-pip install playwright
-playwright install chromium
+# Local development install with web extra (Playwright)
+pip install -e ".[web]"
+python -m playwright install chromium
 
-# Mobile usage prerequisites (Appium)
-pip install Appium-Python-Client
+# Local development install with mobile extra (Appium client)
+pip install -e ".[mobile]"
 # plus: running Appium server + connected emulator/device
+
+# Local development install with all optional extras
+pip install -e ".[all]"
+
+# Package-user installs (non-editable)
+pip install "bubblegum-ai[web]"
+pip install "bubblegum-ai[mobile]"
 ```
 
 ### Public import pattern

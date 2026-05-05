@@ -1,7 +1,8 @@
 """Minimal Appium + Bubblegum template.
 
 Requirements:
-  pip install bubblegum-ai Appium-Python-Client
+  pip install -e ".[mobile]"
+  # package users: pip install "bubblegum-ai[mobile]"
   # plus: running Appium server and connected emulator/device
 """
 

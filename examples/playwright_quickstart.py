@@ -1,8 +1,9 @@
 """Minimal Playwright + Bubblegum template.
 
 Requirements:
-  pip install bubblegum-ai playwright
-  playwright install chromium
+  pip install -e ".[web]"
+  python -m playwright install chromium
+  # package users: pip install "bubblegum-ai[web]"
 """
 
 from __future__ import annotations

@@ -4,23 +4,22 @@ These examples are **minimal templates** to help you wire Bubblegum into existin
 
 ## Requirements
 
-Install Bubblegum core:
+Install Bubblegum with extras:
 
 ```bash
-pip install bubblegum-ai
-```
+# Web example (editable install)
+pip install -e ".[web]"
+python -m playwright install chromium
 
-Install web prerequisites for Playwright example:
+# Mobile example (editable install)
+pip install -e ".[mobile]"
 
-```bash
-pip install playwright
-playwright install chromium
-```
+# Or install every optional dependency
+pip install -e ".[all]"
 
-Install mobile prerequisites for Appium example:
-
-```bash
-pip install Appium-Python-Client
+# Package-user installs (non-editable)
+pip install "bubblegum-ai[web]"
+pip install "bubblegum-ai[mobile]"
 ```
 
 You also need a running Appium server and a connected emulator/device.
