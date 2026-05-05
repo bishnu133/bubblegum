@@ -88,3 +88,34 @@ Default-safe scaffolds:
 - `tests/e2e/test_phase3c_e2e_scaffold.py` uses deterministic fake SDK flow only.
 
 Note: `tests/integration/test_playwright_adapter.py` is marked `playwright` and is skipped unless selected with `-m playwright`.
+
+
+## Benchmark validation (Phase 6Q)
+
+The benchmark runner has two modes and both are expected to pass in the current Phase 6 state:
+
+- Static validation (`python scripts/run_benchmarks.py`)
+  - checks fixture schema compliance, snapshot existence, and static expected winner/confidence ranges.
+- Execute validation (`python scripts/run_benchmarks.py --execute`)
+  - runs deterministic execution against executable expectations.
+
+Current expected results:
+
+- static: 12/12 passed
+- execute: total 12, executed 12, skipped 0, passed 12, failed 0
+
+Notes:
+
+- `execute_*` fields are executable-mode expectations and may differ from static expectations by design.
+- `execute_allow_review=true` is benchmark-only review-pass handling and does not alter SDK/engine runtime behavior.
+- Deterministic execute mode excludes Tier 3 AI/OCR/Vision resolvers.
+- Memory benchmark execution uses ephemeral DB setup/pre-seeding and avoids `.bubblegum/memory.db`.
+
+Useful checks:
+
+```bash
+python scripts/run_benchmarks.py
+python scripts/run_benchmarks.py --execute
+pytest tests/unit/test_run_benchmarks_execution.py -q
+pytest tests/unit/test_benchmark_fixture_schema.py -q
+```

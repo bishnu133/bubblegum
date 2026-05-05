@@ -413,6 +413,26 @@ Because Bubblegum may send DOM text and hierarchy data to external LLM providers
 
 ## Benchmark Strategy
 
+### Phase 6Q benchmark status
+
+Current deterministic benchmark expectations:
+
+- static validation: 12/12 passed
+- execute validation: total 12, executed 12, skipped 0, passed 12, failed 0
+
+Static validation checks fixture schema, snapshot existence, and static expected winner/confidence ranges.
+Execute validation runs deterministic benchmark execution and evaluates `execute_*` expectations, which may intentionally differ from static expectations.
+
+`execute_allow_review=true` is benchmark-only review-pass handling and does not change SDK/engine runtime semantics.
+Deterministic execution excludes Tier 3 AI/OCR/Vision resolvers. Memory benchmark runs with ephemeral DB setup/pre-seeding and does not use `.bubblegum/memory.db`.
+
+Benchmark commands:
+
+```bash
+python scripts/run_benchmarks.py
+python scripts/run_benchmarks.py --execute
+```
+
 A golden dataset is created in Phase 0. Without it, Bubblegum cannot be proven better than plain Playwright.
 
 ### Dataset Composition (100 scenarios)
