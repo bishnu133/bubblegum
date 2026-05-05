@@ -128,8 +128,11 @@
     "expected_resolver_winner": "appium_hierarchy",
     "confidence_min": 0.85,
     "confidence_max": 1.0,
-    "executable": false,
-    "execute_skip_reason": "deterministic execute-mode fixture expectation not aligned yet (requires improved Android context mapping)"
+    "executable": true,
+    "execute_allow_review": true,
+    "execute_expected_resolver_winner": "appium_hierarchy",
+    "execute_confidence_min": 0.9,
+    "execute_confidence_max": 0.94
   },
   {
     "id": "android_tap_content_desc_001",
@@ -141,8 +144,11 @@
     "expected_resolver_winner": "accessibility_tree",
     "confidence_min": 0.8,
     "confidence_max": 1.0,
-    "executable": false,
-    "execute_skip_reason": "deterministic execute-mode fixture expectation not aligned yet (requires improved Android context mapping)"
+    "executable": true,
+    "execute_allow_review": true,
+    "execute_expected_resolver_winner": "appium_hierarchy",
+    "execute_confidence_min": 0.83,
+    "execute_confidence_max": 0.87
   },
   {
     "id": "android_type_input_001",
@@ -154,8 +160,11 @@
     "expected_resolver_winner": "appium_hierarchy",
     "confidence_min": 0.75,
     "confidence_max": 0.98,
-    "executable": false,
-    "execute_skip_reason": "deterministic execute-mode fixture expectation not aligned yet (requires improved Android context mapping)"
+    "executable": true,
+    "execute_allow_review": true,
+    "execute_expected_resolver_winner": "appium_hierarchy",
+    "execute_confidence_min": 0.83,
+    "execute_confidence_max": 0.87
   },
   {
     "id": "android_scroll_to_target_001",
@@ -167,8 +176,11 @@
     "expected_resolver_winner": "appium_hierarchy",
     "confidence_min": 0.7,
     "confidence_max": 0.95,
-    "executable": false,
-    "execute_skip_reason": "deterministic execute-mode fixture expectation not aligned yet (requires improved Android context mapping)"
+    "executable": true,
+    "execute_allow_review": true,
+    "execute_expected_resolver_winner": "appium_hierarchy",
+    "execute_confidence_min": 0.9,
+    "execute_confidence_max": 0.94
   },
   {
     "id": "android_verify_text_001",
@@ -180,7 +192,10 @@
     "expected_resolver_winner": "exact_text",
     "confidence_min": 0.9,
     "confidence_max": 1.0,
-    "executable": false,
-    "execute_skip_reason": "deterministic execute-mode fixture expectation not aligned yet (requires improved Android context mapping)"
+    "executable": true,
+    "execute_allow_review": true,
+    "execute_expected_resolver_winner": "appium_hierarchy",
+    "execute_confidence_min": 0.9,
+    "execute_confidence_max": 0.94
   }
 ]
