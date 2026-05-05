@@ -130,6 +130,8 @@ def _html_to_a11y_snapshot(html: str) -> str:
       heading "Settings"
     """
     role_lines: list[str] = []
+    consumed_label_texts: set[str] = set()
+    label_for_map = _extract_label_for_map(html)
 
     # button / link / heading / paragraph-ish visible text
     text_roles = [
@@ -138,7 +140,6 @@ def _html_to_a11y_snapshot(html: str) -> str:
         (r"<h[1-6]\b([^>]*)>(.*?)</h[1-6]>", "heading"),
         (r"<p\b([^>]*)>(.*?)</p>", "paragraph"),
         (r"<option\b([^>]*)>(.*?)</option>", "option"),
-        (r"<label\b([^>]*)>(.*?)</label>", "paragraph"),
     ]
     for pattern, default_role in text_roles:
         for attrs, body in re.findall(pattern, html, flags=re.IGNORECASE | re.DOTALL):
@@ -149,17 +150,53 @@ def _html_to_a11y_snapshot(html: str) -> str:
     # input/select controls (self-closing or paired)
     for attrs in re.findall(r"<input\b([^>]*)/?>", html, flags=re.IGNORECASE | re.DOTALL):
         role = _extract_attr(attrs, "role") or "textbox"
-        name = _extract_attr(attrs, "aria-label") or _extract_attr(attrs, "name") or _extract_attr(attrs, "id")
+        control_id = _extract_attr(attrs, "id")
+        label_name = label_for_map.get(control_id, "")
+        if label_name:
+            consumed_label_texts.add(label_name)
+        name = (
+            _extract_attr(attrs, "aria-label")
+            or label_name
+            or _extract_attr(attrs, "name")
+            or control_id
+            or _extract_attr(attrs, "placeholder")
+        )
         role_lines.append(_fmt_snapshot_line(role, name))
 
     for attrs in re.findall(r"<select\b([^>]*)>", html, flags=re.IGNORECASE | re.DOTALL):
         role = _extract_attr(attrs, "role") or "combobox"
-        name = _extract_attr(attrs, "aria-label") or _extract_attr(attrs, "name") or _extract_attr(attrs, "id")
+        control_id = _extract_attr(attrs, "id")
+        label_name = label_for_map.get(control_id, "")
+        if label_name:
+            consumed_label_texts.add(label_name)
+        name = _extract_attr(attrs, "aria-label") or label_name or _extract_attr(attrs, "name") or control_id
         role_lines.append(_fmt_snapshot_line(role, name))
+        if label_name and control_id and control_id != name:
+            role_lines.append(_fmt_snapshot_line(role, control_id))
+
+    # Labels that are not consumed by controls still appear as generic text.
+    for attrs, body in re.findall(r"<label\b([^>]*)>(.*?)</label>", html, flags=re.IGNORECASE | re.DOTALL):
+        role = _extract_attr(attrs, "role") or "paragraph"
+        label_text = _clean_text(body) or _extract_attr(attrs, "aria-label")
+        if label_text and label_text in consumed_label_texts:
+            continue
+        role_lines.append(_fmt_snapshot_line(role, label_text))
 
     # remove blank lines while preserving order
     cleaned = [line for line in role_lines if line.strip()]
     return "\n".join(cleaned)
+
+
+def _extract_label_for_map(html: str) -> dict[str, str]:
+    label_map: dict[str, str] = {}
+    for attrs, body in re.findall(r"<label\b([^>]*)>(.*?)</label>", html, flags=re.IGNORECASE | re.DOTALL):
+        control_id = _extract_attr(attrs, "for")
+        if not control_id:
+            continue
+        label_text = _clean_text(body) or _extract_attr(attrs, "aria-label")
+        if label_text:
+            label_map[control_id] = label_text
+    return label_map
 
 
 def _extract_attr(attrs: str, name: str) -> str:

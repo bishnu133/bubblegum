@@ -227,6 +227,25 @@ def test_html_fixture_is_mapped_to_a11y_like_snapshot() -> None:
     assert 'textbox "Email"' in snap
 
 
+def test_auth_page_fixture_mapping_preserves_semantic_input_names() -> None:
+    root = _repo_root()
+    html = (root / "tests/benchmarks/fixtures/snapshots/web/auth_page.html").read_text(encoding="utf-8")
+    snap = _html_to_a11y_snapshot(html)
+    assert 'button "Submit"' in snap
+    assert 'textbox "Email"' in snap
+    assert 'textbox "Password"' in snap
+
+
+def test_settings_page_fixture_mapping_associates_label_to_select_and_avoids_noisy_label_paragraph() -> None:
+    root = _repo_root()
+    html = (root / "tests/benchmarks/fixtures/snapshots/web/settings_page.html").read_text(encoding="utf-8")
+    snap = _html_to_a11y_snapshot(html)
+    assert 'combobox "Billing cycle"' in snap
+    assert 'option "Monthly"' in snap
+    assert 'option "Yearly"' in snap
+    assert 'paragraph "Billing cycle"' not in snap
+
+
 def test_execute_mode_produces_case_level_diagnostics_without_global_policy_error() -> None:
     root = _repo_root()
     cases = [dict(load_cases(root)[0]), dict(load_cases(root)[1])]
