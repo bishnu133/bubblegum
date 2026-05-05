@@ -79,6 +79,9 @@
       "type": "string",
       "minLength": 1
     },
+    "execute_allow_review": {
+      "type": "boolean"
+    },
     "preconditions": {
       "type": "object",
       "additionalProperties": false,

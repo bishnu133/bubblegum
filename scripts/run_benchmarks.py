@@ -18,6 +18,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bubblegum.core.schemas import ExecutionOptions, StepIntent
+from bubblegum.core.grounding.errors import LowConfidenceError
 from bubblegum.core.memory.fingerprint import compute_signature
 
 REQUIRED_KEYS = {
@@ -297,6 +298,64 @@ async def _execute_cases_async(
                     "error": None,
                     "skip_reason": None,
                     "trace_count": len(traces),
+                    "review_candidate_used": False,
+                    "review_candidate_winner": None,
+                    "review_candidate_confidence": None,
+                    "status_detail": "direct_pass" if status == "pass" else "direct_fail",
+                }
+            )
+        except LowConfidenceError as exc:
+            allow_review = case.get("execute_allow_review") is True
+            if not allow_review or not exc.candidates:
+                diagnostics.append(
+                    {
+                        "id": case["id"],
+                        "category": case["category"],
+                        "expected_winner": expected_winner,
+                        "actual_winner": None,
+                        "actual_confidence": None,
+                        "confidence_min": cmin,
+                        "confidence_max": cmax,
+                        "winner_ok": False,
+                        "confidence_ok": False,
+                        "status": "fail",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "skip_reason": None,
+                        "trace_count": 0,
+                        "review_candidate_used": False,
+                        "review_candidate_winner": None,
+                        "review_candidate_confidence": None,
+                        "status_detail": "low_confidence_fail",
+                    }
+                )
+                continue
+
+            best = max(exc.candidates, key=lambda c: float(c.confidence))
+            review_winner = best.resolver_name
+            review_conf = float(best.confidence)
+            winner_ok = review_winner == expected_winner
+            conf_ok = cmin <= review_conf <= cmax
+            status = "pass" if (winner_ok and conf_ok) else "fail"
+
+            diagnostics.append(
+                {
+                    "id": case["id"],
+                    "category": case["category"],
+                    "expected_winner": expected_winner,
+                    "actual_winner": review_winner,
+                    "actual_confidence": round(review_conf, 4),
+                    "confidence_min": cmin,
+                    "confidence_max": cmax,
+                    "winner_ok": winner_ok,
+                    "confidence_ok": conf_ok,
+                    "status": status,
+                    "error": None if status == "pass" else f"{type(exc).__name__}: {exc}",
+                    "skip_reason": None,
+                    "trace_count": 0,
+                    "review_candidate_used": True,
+                    "review_candidate_winner": review_winner,
+                    "review_candidate_confidence": round(review_conf, 4),
+                    "status_detail": "review_pass" if status == "pass" else "review_fail",
                 }
             )
         except Exception as exc:  # noqa: BLE001
@@ -315,6 +374,10 @@ async def _execute_cases_async(
                     "error": f"{type(exc).__name__}: {exc}",
                     "skip_reason": None,
                     "trace_count": 0,
+                    "review_candidate_used": False,
+                    "review_candidate_winner": None,
+                    "review_candidate_confidence": None,
+                    "status_detail": "exception_fail",
                 }
             )
 

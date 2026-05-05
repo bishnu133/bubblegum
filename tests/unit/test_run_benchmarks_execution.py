@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bubblegum.core.grounding.errors import LowConfidenceError
 from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
 from bubblegum.core.schemas import ResolvedTarget, ResolverTrace
 from scripts.run_benchmarks import (
@@ -37,6 +38,23 @@ class FakeEngine:
             )
         ]
         return target, traces
+
+
+class LowConfidenceEngine:
+    def __init__(self, candidates: list[ResolvedTarget]) -> None:
+        self.candidates = candidates
+
+    async def ground(self, intent):
+        raise LowConfidenceError(
+            step=intent.instruction,
+            candidates=self.candidates,
+            best_confidence=max(float(c.confidence) for c in self.candidates) if self.candidates else 0.0,
+        )
+
+
+class BoomEngine:
+    async def ground(self, intent):
+        raise RuntimeError("boom")
 
 
 def _repo_root() -> Path:
@@ -248,3 +266,104 @@ def test_deterministic_engine_uses_memory_cache_with_ephemeral_db() -> None:
     memory = next(r for r in engine.registry.all() if r.name == "memory_cache")
     assert isinstance(memory, MemoryCacheResolver)
     assert "benchmark_memory.db" in str(memory._layer._db_path)
+
+
+def _base_execute_case() -> tuple[Path, dict]:
+    root = _repo_root()
+    case = dict(load_cases(root)[0])
+    case["executable"] = True
+    return root, case
+
+
+def test_execute_allow_review_true_converts_low_confidence_to_review_pass() -> None:
+    root, case = _base_execute_case()
+    case["execute_allow_review"] = True
+    case["execute_expected_resolver_winner"] = "appium_hierarchy"
+    case["execute_confidence_min"] = 0.7
+    case["execute_confidence_max"] = 0.8
+    engine = LowConfidenceEngine(
+        candidates=[
+            ResolvedTarget(ref="//bad", confidence=0.5, resolver_name="exact_text"),
+            ResolvedTarget(ref="//ok", confidence=0.72, resolver_name="appium_hierarchy"),
+        ]
+    )
+
+    result = run_execution_validation(root, engine=engine, cases=[case])
+
+    assert result["ok"] is True
+    row = result["diagnostics"][0]
+    assert row["status"] == "pass"
+    assert row["review_candidate_used"] is True
+    assert row["review_candidate_winner"] == "appium_hierarchy"
+    assert row["review_candidate_confidence"] == 0.72
+    assert row["status_detail"] == "review_pass"
+
+
+def test_execute_allow_review_false_keeps_low_confidence_as_failure() -> None:
+    root, case = _base_execute_case()
+    case["execute_allow_review"] = False
+    case["execute_expected_resolver_winner"] = "appium_hierarchy"
+    case["execute_confidence_min"] = 0.7
+    case["execute_confidence_max"] = 0.8
+    engine = LowConfidenceEngine(
+        candidates=[ResolvedTarget(ref="//ok", confidence=0.72, resolver_name="appium_hierarchy")]
+    )
+
+    result = run_execution_validation(root, engine=engine, cases=[case])
+
+    assert result["ok"] is False
+    row = result["diagnostics"][0]
+    assert row["status"] == "fail"
+    assert row["review_candidate_used"] is False
+    assert "LowConfidenceError" in str(row["error"])
+
+
+def test_review_pass_respects_expected_resolver_winner() -> None:
+    root, case = _base_execute_case()
+    case["execute_allow_review"] = True
+    case["execute_expected_resolver_winner"] = "exact_text"
+    case["execute_confidence_min"] = 0.7
+    case["execute_confidence_max"] = 0.8
+    engine = LowConfidenceEngine(
+        candidates=[ResolvedTarget(ref="//ok", confidence=0.72, resolver_name="appium_hierarchy")]
+    )
+
+    result = run_execution_validation(root, engine=engine, cases=[case])
+    row = result["diagnostics"][0]
+    assert row["status"] == "fail"
+    assert row["winner_ok"] is False
+    assert row["review_candidate_used"] is True
+    assert row["status_detail"] == "review_fail"
+
+
+def test_review_pass_respects_confidence_range() -> None:
+    root, case = _base_execute_case()
+    case["execute_allow_review"] = True
+    case["execute_expected_resolver_winner"] = "appium_hierarchy"
+    case["execute_confidence_min"] = 0.7
+    case["execute_confidence_max"] = 0.8
+    engine = LowConfidenceEngine(
+        candidates=[ResolvedTarget(ref="//ok", confidence=0.65, resolver_name="appium_hierarchy")]
+    )
+
+    result = run_execution_validation(root, engine=engine, cases=[case])
+    row = result["diagnostics"][0]
+    assert row["status"] == "fail"
+    assert row["confidence_ok"] is False
+    assert row["review_candidate_used"] is True
+    assert row["review_candidate_confidence"] == 0.65
+
+
+def test_non_low_confidence_error_still_fails_normally() -> None:
+    root, case = _base_execute_case()
+    case["execute_allow_review"] = True
+    case["execute_expected_resolver_winner"] = "exact_text"
+    case["execute_confidence_min"] = 0.9
+    case["execute_confidence_max"] = 1.0
+
+    result = run_execution_validation(root, engine=BoomEngine(), cases=[case])
+    row = result["diagnostics"][0]
+    assert row["status"] == "fail"
+    assert row["review_candidate_used"] is False
+    assert row["status_detail"] == "exception_fail"
+    assert "RuntimeError" in str(row["error"])
