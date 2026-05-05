@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install test dependencies
+        run: pip install -e ".[test]"
+
+      - name: Package metadata tests
+        run: pytest tests/unit/test_package_metadata.py -q
+
+      - name: Packaging extras tests
+        run: pytest tests/unit/test_packaging_extras.py -q
+
+      - name: Public API tests
+        run: pytest tests/unit/test_public_api.py -q
+
+      - name: Validate package
+        run: python scripts/validate_package.py
+
+      - name: Benchmark static validation
+        run: python scripts/run_benchmarks.py
+
+      - name: Benchmark execute validation
+        run: python scripts/run_benchmarks.py --execute
+
+      - name: Pytest collection check
+        run: pytest --collect-only -q
