@@ -605,6 +605,18 @@ bubblegum/
 
 ---
 
+
+## Release/package validation
+
+These checks are intended for maintainers preparing a release candidate (not required for normal package users):
+
+```bash
+python scripts/validate_package.py
+python -m build
+# optional, if twine is installed
+python -m twine check dist/*
+```
+
 ## Project Status
 
 | Item | Detail |
