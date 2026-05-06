@@ -51,6 +51,15 @@ Before running it:
 > These examples intentionally avoid real credentials and should be adapted to your app/test env.
 
 
+
+## Hybrid examples
+
+Use a hybrid pattern when your suite spans web + mobile and you want deterministic selectors first with natural-language fallback for resilience.
+
+- `hybrid_web_mobile_example.py` — illustrative template showing Playwright-style `page` and Appium-style `driver` usage with `act`, `verify`, `extract`, and `recover`, including optional injected OCR blocks as example context data only.
+
+> Note: `playwright_quickstart.py` is self-contained for local smoke (`page.set_content(...)`). Mobile/Appium and hybrid mobile portions require real infrastructure (Appium server + emulator/device + installed app + capabilities).
+
 ## Troubleshooting
 
 - **Dependency install blocked (proxy/network):** If `pip install -e ".[...]"` fails (for example due to proxy restrictions), configure your proxy/index access first, then retry.

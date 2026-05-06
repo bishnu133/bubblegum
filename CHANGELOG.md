@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Release checklist consistency cleanup for reusable pre-release gates.
 - OCRResolver injected-block MVP added (context-driven `ocr_blocks`, deterministic synthetic refs `ocr://block/<index>`, no external OCR engine dependency yet).
 - Phase 10J planning documentation added for post-OCR MVP verification, risk assessment, and next-slice recommendation (Phase 10K hybrid web + mobile examples).
+- Phase 10K hybrid web + mobile examples added (`examples/hybrid_web_mobile_example.py`) with README linkage and guidance (docs/examples only; no runtime behavior changes).
 
 ## v0.0.1-alpha (MVP RC)
 
