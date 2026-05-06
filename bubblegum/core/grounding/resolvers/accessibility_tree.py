@@ -176,8 +176,32 @@ class AccessibilityTreeResolver(Resolver):
                 continue
             _, tmatch, rmatch, vis = row
             uniq = 1.0 if counts.get(target.ref, 0) == 1 else 0.6
+            boosted_tmatch = _signal_text_match(
+                intent=intent,
+                elname=str(target.metadata.get("name", "")),
+                base_conf=tmatch,
+                matched_text=str(target.metadata.get("matched_text", "")),
+            )
+            strong_verify_extract = _is_strong_verify_extract_match(
+                intent=intent,
+                elname=str(target.metadata.get("name", "")),
+                boosted_tmatch=boosted_tmatch,
+            )
+            boosted_vis = 1.0 if strong_verify_extract else vis
+            boosted_prox = (
+                1.0
+                if strong_verify_extract
+                else 0.0
+            )
             meta = dict(target.metadata)
-            meta["signals"] = make_signals(text_match=tmatch, role_match=rmatch, visibility=vis, uniqueness=uniq, memory=0.0)
+            meta["signals"] = make_signals(
+                text_match=boosted_tmatch,
+                role_match=rmatch,
+                visibility=boosted_vis,
+                uniqueness=uniq,
+                proximity=boosted_prox,
+                memory=0.0,
+            )
             enriched.append(target.model_copy(update={"metadata": meta}))
 
         return enriched
@@ -197,6 +221,98 @@ def _extract_keywords(instruction: str) -> list[str]:
     tokens = re.findall(r"[a-zA-Z0-9']+", instruction.lower())
     meaningful = [t for t in tokens if t not in stopwords]
     return meaningful if meaningful else tokens
+
+
+def _extract_phrases(instruction: str) -> list[str]:
+    """Extract likely target phrases from NL instruction (lowercased)."""
+    quoted = re.findall(r'["\']([^"\']+)["\']', instruction)
+    if quoted:
+        return [q.strip().lower() for q in quoted if q.strip()]
+
+    lowered = instruction.lower()
+    stopword_patterns = [
+        r"\bclick\b", r"\btap\b", r"\bpress\b", r"\bselect\b", r"\btype\b", r"\benter\b",
+        r"\bverify\b", r"\bcheck\b", r"\bassert\b", r"\bconfirm\b", r"\bextract\b", r"\bget\b",
+        r"\bvisible\b", r"\bpresent\b", r"\btext\b", r"\bheading\b", r"\blink\b", r"\bbutton\b",
+        r"\bof\b", r"\bis\b", r"\bare\b", r"\bthe\b", r"\ba\b", r"\ban\b",
+    ]
+    for pat in stopword_patterns:
+        lowered = re.sub(pat, " ", lowered)
+    cleaned = re.sub(r"\s+", " ", lowered).strip()
+    return [cleaned] if cleaned else []
+
+
+def _signal_text_match(intent: StepIntent, elname: str, base_conf: float, matched_text: str) -> float:
+    """Resolver-local signal bump for obvious NL verify/extract phrase matches."""
+    el = elname.strip().lower()
+    if base_conf <= 0.0:
+        return 0.0
+    if not el:
+        return base_conf
+
+    expected = str(intent.context.get("expected_value", "")).strip().lower()
+    if expected and el == expected:
+        return 1.0
+
+    if intent.action_type in {"verify", "extract"}:
+        tokens = re.findall(r"[a-zA-Z0-9']+", el)
+        instruction_keywords = _extract_keywords(intent.instruction)
+        phrase_exact = any(p == el for p in _extract_phrases(intent.instruction))
+        if len(tokens) == 1 and len(instruction_keywords) > 1 and not phrase_exact and not expected:
+            # Avoid over-promoting short generic labels (e.g. "plan") embedded in
+            # richer instructions like "Active plan visible".
+            return min(base_conf, 0.82)
+
+    if base_conf >= 0.96:
+        return 1.0
+
+    if intent.action_type in {"verify", "extract"}:
+        for phrase in _extract_phrases(intent.instruction):
+            if phrase == el:
+                return 1.0
+            if _is_strong_phrase_containment(el, phrase):
+                return max(0.95, base_conf)
+
+    if matched_text and matched_text.strip().lower() == el:
+        return max(0.95, base_conf)
+    return base_conf
+
+
+def _is_strong_verify_extract_match(intent: StepIntent, elname: str, boosted_tmatch: float) -> bool:
+    """
+    Strong match gate for verify/extract boosts.
+    Prevents weak one-word substring candidates (e.g., "plan") from being
+    promoted to the same level as richer phrase matches.
+    """
+    if intent.action_type not in {"verify", "extract"}:
+        return False
+    el = elname.strip().lower()
+    if not el:
+        return False
+
+    expected = str(intent.context.get("expected_value", "")).strip().lower()
+    if expected and expected == el:
+        return True
+
+    for phrase in _extract_phrases(intent.instruction):
+        if phrase == el:
+            return True
+    return False
+
+
+def _is_strong_phrase_containment(el: str, phrase: str) -> bool:
+    """
+    True only for high-signal phrase containment:
+    - exact containment relationship, AND
+    - element name is multi-token or sufficiently long.
+    This avoids over-boosting generic short single-word labels.
+    """
+    if not phrase:
+        return False
+    if not (el in phrase or phrase in el):
+        return False
+    token_count = len(re.findall(r"[a-zA-Z0-9']+", el))
+    return token_count >= 2 or len(el) >= 10
 
 
 def _score(

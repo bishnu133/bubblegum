@@ -199,6 +199,72 @@ class TestAccessibilityTreeResolver:
         for r in self.resolver.resolve(intent):
             assert r.confidence <= 0.96
 
+    def test_verify_phrase_match_emits_strong_signals(self):
+        snapshot = '- heading "Example Domain" [level=1]\n'
+        intent = _intent(
+            "Example Domain visible",
+            action_type="verify",
+            context={"a11y_snapshot": snapshot},
+        )
+        results = self.resolver.resolve(intent)
+        heading = next(r for r in results if 'role=heading[name="Example Domain"]' == r.ref)
+        scored = CandidateRanker().score(heading)
+        assert scored >= 0.85
+        assert heading.resolver_name == "accessibility_tree"
+
+    def test_extract_phrase_match_emits_strong_signals(self):
+        snapshot = '- heading "Example Domain" [level=1]\n'
+        intent = _intent(
+            "Get text of Example Domain heading",
+            action_type="extract",
+            context={"a11y_snapshot": snapshot},
+        )
+        results = self.resolver.resolve(intent)
+        heading = next(r for r in results if 'role=heading[name="Example Domain"]' == r.ref)
+        scored = CandidateRanker().score(heading)
+        assert scored >= 0.85
+        assert heading.resolver_name == "accessibility_tree"
+
+    def test_engine_returns_heading_for_verify_nl_phrase(self):
+        snapshot = '- heading "Example Domain" [level=1]\n'
+        intent = _intent(
+            "Example Domain visible",
+            action_type="verify",
+            context={"a11y_snapshot": snapshot},
+        )
+        target, _traces = asyncio.run(GroundingEngine().ground(intent))
+        assert target.ref == 'role=heading[name="Example Domain"]'
+        assert target.resolver_name == "accessibility_tree"
+
+    def test_engine_returns_heading_for_extract_nl_phrase(self):
+        snapshot = '- heading "Example Domain" [level=1]\n'
+        intent = _intent(
+            "Get text of Example Domain heading",
+            action_type="extract",
+            context={"a11y_snapshot": snapshot},
+        )
+        target, _traces = asyncio.run(GroundingEngine().ground(intent))
+        assert target.ref == 'role=heading[name="Example Domain"]'
+        assert target.resolver_name == "accessibility_tree"
+
+    def test_verify_active_plan_short_label_not_over_boosted(self):
+        snapshot = """\
+- paragraph "Status: Active plan"
+- combobox "plan"
+"""
+        intent = _intent(
+            "Verify text Active plan is visible",
+            action_type="verify",
+            context={"a11y_snapshot": snapshot},
+        )
+        results = self.resolver.resolve(intent)
+        para = next(r for r in results if r.ref == 'role=paragraph[name="Status: Active plan"]')
+        combo = next(r for r in results if r.ref == 'role=combobox[name="plan"]')
+        para_score = CandidateRanker().score(para)
+        combo_score = CandidateRanker().score(combo)
+        assert para_score > combo_score
+        assert combo_score < 0.72
+
 
 # ---------------------------------------------------------------------------
 # ExactTextResolver
