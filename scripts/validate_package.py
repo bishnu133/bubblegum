@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import sys
 from importlib import metadata
@@ -23,13 +24,16 @@ def _print_header(title: str) -> None:
     print(f"\n[{title}]")
 
 
-def _validate_metadata(dist_name: str) -> bool:
+def _validate_metadata(dist_name: str, strict: bool = False) -> bool:
     _print_header("installed metadata")
     try:
         md = metadata.metadata(dist_name)
     except metadata.PackageNotFoundError:
         print(f"distribution not installed: {dist_name}")
         print("hint: run editable install first (pip install -e .) to validate installed metadata")
+        if strict:
+            print("strict mode: FAIL (installed distribution metadata is required)")
+            return False
         return True
 
     ok = True
@@ -78,21 +82,45 @@ def _check_license_file() -> bool:
     return exists
 
 
-def _build_hint() -> None:
-    _print_header("optional build check")
+def _build_check(strict: bool = False) -> bool:
+    _print_header("build module check" if strict else "optional build check")
     has_build = importlib.util.find_spec("build") is not None
     if has_build:
         print("build module detected. run: python -m build")
-    else:
-        print("build module not installed. optional release check skipped.")
+        return True
+
+    if strict:
+        print("build module not installed. strict mode requires it: pip install build")
+        return False
+
+    print("build module not installed. optional release check skipped.")
+    return True
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Validate Bubblegum package metadata and release-readiness checks.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Enable strict release-mode validation (installed metadata and build module required).",
+    )
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help="Alias for --strict.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    strict = bool(args.strict or args.release)
+
     ok = True
     ok = _validate_import() and ok
     ok = _check_license_file() and ok
-    ok = _validate_metadata(EXPECTED_NAME) and ok
-    _build_hint()
+    ok = _validate_metadata(EXPECTED_NAME, strict=strict) and ok
+    ok = _build_check(strict=strict) and ok
 
     _print_header("result")
     if ok:

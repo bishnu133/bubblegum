@@ -90,7 +90,7 @@ Default-safe scaffolds:
 Note: `tests/integration/test_playwright_adapter.py` is marked `playwright` and is skipped unless selected with `-m playwright`.
 
 
-## Benchmark validation (Phase 6Q)
+## Benchmark validation (Phase 8 baseline)
 
 The benchmark runner has two modes and both are expected to pass in the current Phase 6 state:
 

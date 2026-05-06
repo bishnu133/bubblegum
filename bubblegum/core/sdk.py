@@ -18,7 +18,7 @@ recover() is a special case:
     falls through to AccessibilityTreeResolver / ExactTextResolver
   - status = "recovered" when the original selector was stale but Bubblegum found it
 
-extract() resolves the target element and reads its inner_text.
+extract() resolves the target element and reads text via channel-specific extraction paths.
   - Returns StepResult with extracted value in target.metadata["extracted_value"]
   - action_type = "extract"
 
@@ -273,8 +273,10 @@ async def extract(
     """
     Extract text content from a matched element.
 
-    Grounds the target element using the same resolver chain as act(), then
-    reads its inner text via page.locator(ref).inner_text().
+    Grounds the target element using the same resolver chain as act().
+
+    Web channel reads text via Playwright locator inner_text() path.
+    Mobile channel delegates to the adapter extraction path (e.g., AppiumAdapter.extract_text()).
 
     The extracted value is returned in StepResult.target.metadata["extracted_value"].
 
