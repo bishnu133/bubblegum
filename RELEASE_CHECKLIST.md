@@ -1,4 +1,4 @@
-# RELEASE CHECKLIST — MVP RC (Phase 9B)
+# RELEASE CHECKLIST — v0.0.2-alpha planning baseline
 
 Target release tag recommendation: `v0.0.1-alpha`
 
@@ -22,10 +22,10 @@ pytest tests/unit/test_public_api.py -q
 pytest --collect-only -q
 ```
 
-Expected baseline for MVP RC:
+Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 445 tests collected
+- pytest collection: 448 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -36,7 +36,7 @@ python examples/playwright_quickstart.py
 ```
 
 Notes:
-- Keep this as manual smoke for MVP RC.
+- Keep this as manual smoke for v0.0.2-alpha.
 - Do not add runtime Playwright browser execution as required CI gate yet.
 
 ## Manual Appium checklist (not CI-gated)
@@ -49,10 +49,18 @@ Before running `examples/appium_quickstart.py`, verify:
 
 Notes:
 - Appium quickstart is intentionally a real-infrastructure template.
-- Do not gate CI on mobile runtime infra for MVP RC.
+- Do not gate CI on mobile runtime infra for v0.0.2-alpha.
 
 ## Release policy (MVP RC)
 
 - Keep package version at `0.0.1` for this phase.
 - Tag GitHub pre-release as `v0.0.1-alpha` after all required gates pass.
 - Do not publish to PyPI/TestPyPI in this phase.
+
+## Contributor setup notes for strict/build checks
+
+- `python scripts/validate_package.py` is default-mode and offline-safe.
+- Strict mode requires a local editable install so installed distribution metadata is present:
+  - `python -m pip install -e ".[test]"`
+- Strict/build gates require `build` to be available:
+  - `python -m pip install build`

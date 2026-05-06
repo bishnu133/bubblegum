@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/pip%20install-bubblegum--ai-pink.svg" alt="pip install bubblegum-ai"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/phase-9B%20%E2%80%94%20mvp%20rc%20finalization-orange.svg" alt="Phase 8Q"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/architecture-v0.9%20approved-brightgreen.svg" alt="Architecture Approved"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/license-MIT-lightgrey.svg" alt="MIT License"/></a>
+  <a href="https://github.com/bubblegum-ai/bubblegum/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-GitHub%20Actions-blue.svg" alt="CI workflow"/></a>
+  <a href="https://github.com/bubblegum-ai/bubblegum/releases/tag/v0.0.1-alpha"><img src="https://img.shields.io/badge/release-v0.0.1--alpha-orange.svg" alt="v0.0.1-alpha release"/></a>
+  <a href="https://github.com/bubblegum-ai/bubblegum"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
+  <a href="https://github.com/bubblegum-ai/bubblegum/blob/main/README.md#quick-start"><img src="https://img.shields.io/badge/pip%20install-bubblegum--ai-pink.svg" alt="pip install bubblegum-ai"/></a>
+  <a href="https://github.com/bubblegum-ai/bubblegum/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-lightgrey.svg" alt="MIT License"/></a>
 </p>
 
 ---

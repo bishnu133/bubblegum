@@ -1,4 +1,4 @@
-# Bubblegum Examples (Phase 9 MVP RC)
+# Bubblegum Examples (v0.0.2-alpha planning baseline)
 
 These examples are **minimal templates** to help you wire Bubblegum into existing automation.
 
