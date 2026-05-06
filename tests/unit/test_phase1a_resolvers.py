@@ -10,8 +10,11 @@ Run with:
 
 from __future__ import annotations
 
+import asyncio
 import pytest
 
+from bubblegum.core.grounding.engine import GroundingEngine
+from bubblegum.core.grounding.ranker import CandidateRanker
 from bubblegum.core.schemas import ExecutionOptions, StepIntent
 from bubblegum.core.grounding.resolvers.explicit_selector import ExplicitSelectorResolver
 from bubblegum.core.grounding.resolvers.accessibility_tree import AccessibilityTreeResolver
@@ -99,6 +102,19 @@ class TestExplicitSelectorResolver:
     def test_works_with_css_selector(self):
         intent = _intent("Click btn", context={"explicit_selector": "button.primary"})
         assert self.resolver.resolve(intent)[0].ref == "button.primary"
+
+    def test_emits_strong_signals_that_rank_to_accept(self):
+        intent = _intent("Click Login", context={"explicit_selector": "#login-btn"})
+        result = self.resolver.resolve(intent)[0]
+        ranked = CandidateRanker().score(result)
+        assert ranked >= 0.85
+
+    def test_engine_returns_explicit_selector_without_low_confidence(self):
+        intent = _intent("Click Login", context={"explicit_selector": "#login-btn"})
+        target, _traces = asyncio.run(GroundingEngine().ground(intent))
+        assert target.resolver_name == "explicit_selector"
+        assert target.ref == "#login-btn"
+        assert target.confidence >= 0.85
 
 
 # ---------------------------------------------------------------------------

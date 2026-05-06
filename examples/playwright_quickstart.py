@@ -82,22 +82,33 @@ async def main() -> None:
                 print("recover status: failed", f"({exc})")
                 print(RECOVER_TEMPLATE_HINT)
 
-            # Natural-language action.
-            acted = await act("Click More information", page=page, channel="web")
-            print("act status:", acted.status)
-
-            # Natural-language verification.
-            checked = await verify(
-                "Example Domain visible",
+            # Deterministic smoke action using an explicit selector.
+            acted = await act(
+                "Click More information",
                 page=page,
                 channel="web",
+                selector='text="More information"',
+            )
+            print("act status:", acted.status)
+
+            # Deterministic smoke verification with explicit selector + expected text.
+            checked = await verify(
+                "Confirm heading text is visible",
+                page=page,
+                channel="web",
+                selector='text="Example Domain"',
                 assertion_type="text_visible",
                 expected_value="Example Domain",
             )
             print("verify status:", checked.status)
 
-            # Natural-language extraction.
-            extracted = await extract("Get heading text", page=page, channel="web")
+            # Deterministic smoke extraction via explicit heading selector.
+            extracted = await extract(
+                "Get text of Example Domain heading",
+                page=page,
+                channel="web",
+                selector="h1",
+            )
             value = (extracted.target.metadata or {}).get("extracted_value") if extracted.target else None
             print("extract status:", extracted.status, "value:", value)
 
