@@ -24,6 +24,25 @@ pip install "bubblegum-ai[mobile]"
 
 You also need a running Appium server and a connected emulator/device.
 
+## Appium real-environment setup (required)
+
+`appium_quickstart.py` is a real-infrastructure template and is **not self-contained** like the Playwright local HTML smoke.
+
+Before running it:
+
+1. Install mobile dependencies:
+   - `pip install -e ".[mobile]"`
+   - or `pip install "bubblegum-ai[mobile]"`
+2. Start an Appium server (for example `http://localhost:4723`).
+3. Start an Android emulator or connect a physical device.
+4. Install the target app on the device/emulator (template uses Android ApiDemos).
+5. Verify capabilities in `appium_quickstart.py` match your environment:
+   - `platformName`
+   - `appium:deviceName`
+   - `appium:automationName`
+   - `appium:appPackage`
+   - `appium:appActivity`
+
 ## Files
 
 - `playwright_quickstart.py` — async Playwright flow using `recover`, `act`, `verify`, and `extract` with explicit smoke selectors for deterministic first-run checks.
@@ -39,6 +58,19 @@ You also need a running Appium server and a connected emulator/device.
 - **Playwright browser binaries missing:** Run `python -m playwright install chromium`.
 - **Appium server/device missing:** Start Appium server, connect an emulator/device, and update capabilities in `appium_quickstart.py` for your local app.
 - **Template expectations:** These examples are templates. Target URLs, selectors, app package/activity, and assertions may require local adjustment.
+
+### Appium common failures
+
+- **Appium Python client missing** (`ModuleNotFoundError: appium`):
+  - install mobile extra (`pip install -e ".[mobile]"` or `pip install "bubblegum-ai[mobile]"`).
+- **Appium server not running / wrong URL**:
+  - start server and confirm URL in template (default `http://localhost:4723`).
+- **Device/emulator not visible**:
+  - start emulator or connect device and verify it is available to Appium.
+- **`appPackage` / `appActivity` mismatch**:
+  - align capabilities with the installed app entry activity/package.
+- **App not installed**:
+  - install target app on device/emulator before quickstart run.
 
 ### Quick expectations
 

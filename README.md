@@ -206,6 +206,8 @@ The Appium quickstart is a real-environment template (Appium server + emulator/d
 
 For quickstart troubleshooting (dependency/proxy issues, Playwright browser setup, Appium server/device requirements), see `examples/README.md`.
 
+For Appium-specific onboarding (real-environment prerequisites, capability checklist, and common startup failures), jump to the Appium setup and troubleshooting sections in `examples/README.md`.
+
 ---
 
 ## Pytest reporter fixture integration
