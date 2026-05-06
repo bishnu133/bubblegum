@@ -247,6 +247,50 @@ class TestAccessibilityTreeResolver:
         assert target.ref == 'role=heading[name="Example Domain"]'
         assert target.resolver_name == "accessibility_tree"
 
+    def test_finds_link_with_trailing_colon_snapshot_line(self):
+        snapshot = """\
+- heading "Example Domain"
+- link "More information":
+  - /url: "#more-info"
+"""
+        intent = _intent(
+            "Click More information",
+            action_type="click",
+            context={"a11y_snapshot": snapshot},
+        )
+        results = self.resolver.resolve(intent)
+        link = next((r for r in results if r.ref == 'role=link[name="More information"]'), None)
+        assert link is not None
+        assert link.confidence >= 0.80
+        assert link.resolver_name == "accessibility_tree"
+
+    def test_engine_returns_link_for_click_more_information(self):
+        snapshot = """\
+- heading "Example Domain"
+- link "More information":
+  - /url: "#more-info"
+"""
+        intent = _intent(
+            "Click More information",
+            action_type="click",
+            context={"a11y_snapshot": snapshot},
+        )
+        target, _traces = asyncio.run(GroundingEngine().ground(intent))
+        assert target.ref == 'role=link[name="More information"]'
+        assert target.resolver_name == "accessibility_tree"
+
+    def test_click_login_button_not_over_boosted_to_accept(self):
+        snapshot = '- button "Login"\n'
+        intent = _intent(
+            "Click Login",
+            action_type="click",
+            context={"a11y_snapshot": snapshot},
+        )
+        results = self.resolver.resolve(intent)
+        login = next(r for r in results if r.ref == 'role=button[name="Login"]')
+        scored = CandidateRanker().score(login)
+        assert scored < 0.85
+
     def test_verify_active_plan_short_label_not_over_boosted(self):
         snapshot = """\
 - paragraph "Status: Active plan"
