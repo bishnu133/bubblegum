@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 - Appium onboarding documentation improvements across README and examples.
 - Manual mobile smoke guidance clarified (Appium runtime smoke remains manual and non-CI-gated).
 - Release checklist consistency cleanup for reusable pre-release gates.
+- OCRResolver injected-block MVP added (context-driven `ocr_blocks`, deterministic synthetic refs `ocr://block/<index>`, no external OCR engine dependency yet).
 
 ## v0.0.1-alpha (MVP RC)
 
