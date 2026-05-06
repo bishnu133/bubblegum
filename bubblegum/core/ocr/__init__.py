@@ -1,3 +1,4 @@
+from bubblegum.core.ocr.backends import CallableOCREngine
 from bubblegum.core.ocr.engine import (
     OCRBlock,
     OCREngine,
@@ -7,6 +8,7 @@ from bubblegum.core.ocr.engine import (
 )
 
 __all__ = [
+    "CallableOCREngine",
     "OCRBlock",
     "OCREngine",
     "FakeOCREngine",
