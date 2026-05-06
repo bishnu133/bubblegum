@@ -7,7 +7,8 @@ name = "bubblegum-ai"
 version = "0.0.1"
 description = "AI-powered recovery and natural-language execution layer for Playwright and Appium tests"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Bubblegum contributors" },
 ]
@@ -16,7 +17,6 @@ dependencies = ["pydantic>=2.0", "pyyaml"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

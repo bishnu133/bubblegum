@@ -13,7 +13,6 @@ from typing import Iterable
 EXPECTED_NAME = "bubblegum-ai"
 REQUIRED_METADATA_FIELDS = (
     "Summary",
-    "License",
     "Author",
     "Requires-Python",
 )
@@ -22,6 +21,30 @@ REQUIRED_URL_LABELS = ("Homepage", "Repository", "Issues")
 
 def _print_header(title: str) -> None:
     print(f"\n[{title}]")
+
+
+def _validate_license_metadata(md: metadata.PackageMetadata) -> bool:
+    license_expression = (md.get("License-Expression") or "").strip()
+    license_value = (md.get("License") or "").strip()
+
+    if license_expression:
+        print(f"License-Expression: {license_expression}")
+    else:
+        print("License-Expression: MISSING")
+
+    if license_value:
+        print(f"License: {license_value}")
+    else:
+        print("License: MISSING")
+
+    if license_expression == "MIT":
+        return True
+
+    if license_value == "MIT" or "mit" in license_value.lower():
+        return True
+
+    print("license metadata: MISSING or unsupported (expected MIT via License-Expression or License)")
+    return False
 
 
 def _validate_metadata(dist_name: str, strict: bool = False) -> bool:
@@ -39,6 +62,8 @@ def _validate_metadata(dist_name: str, strict: bool = False) -> bool:
     ok = True
     print(f"Name: {md.get('Name')}")
     print(f"Version: {md.get('Version')}")
+
+    ok = _validate_license_metadata(md) and ok
 
     for field in REQUIRED_METADATA_FIELDS:
         value = md.get(field)
