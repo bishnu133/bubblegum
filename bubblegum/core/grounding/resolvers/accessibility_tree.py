@@ -97,7 +97,7 @@ def _make_snapshot_re() -> re.Pattern:
         r"(?P<role>[a-zA-Z]+)"          # role word
         r'(?:\s+"(?P<elname>[^"]+)")?'  # optional  "quoted name"
         r"(?:\s+\[(?P<attrs>[^\]]*)\])?" # optional [attrs]
-        r"\s*$"
+        r"\s*:?\s*$"
     )
     return re.compile(pattern)
 
@@ -129,6 +129,7 @@ class AccessibilityTreeResolver(Resolver):
             return []
 
         keywords = _extract_keywords(intent.instruction)
+        phrases = _extract_phrases(intent.instruction)
         candidates: list[ResolvedTarget] = []
         signal_rows: list[tuple[str, float, float, float]] = []
 
@@ -144,7 +145,7 @@ class AccessibilityTreeResolver(Resolver):
             if not role:
                 continue
 
-            confidence, matched = _score(role, elname, keywords, intent.action_type)
+            confidence, matched = _score(role, elname, keywords, phrases, intent.action_type)
             if confidence == 0.0:
                 continue
 
@@ -187,10 +188,17 @@ class AccessibilityTreeResolver(Resolver):
                 elname=str(target.metadata.get("name", "")),
                 boosted_tmatch=boosted_tmatch,
             )
-            boosted_vis = 1.0 if strong_verify_extract else vis
+            strong_click_match = (
+                intent.action_type in {"click", "tap"}
+                and boosted_tmatch >= 1.0
+                and str(target.metadata.get("role", "")) == "link"
+                and _role_fits_action(str(target.metadata.get("role", "")), intent.action_type)
+            )
+            strong_match = strong_verify_extract or strong_click_match
+            boosted_vis = 1.0 if strong_match else vis
             boosted_prox = (
                 1.0
-                if strong_verify_extract
+                if strong_match
                 else 0.0
             )
             meta = dict(target.metadata)
@@ -319,6 +327,7 @@ def _score(
     role: str,
     elname: str,
     keywords: list[str],
+    phrases: list[str],
     action_type: str,
 ) -> tuple[float, str]:
     """
@@ -332,6 +341,9 @@ def _score(
     """
     name_lower = elname.lower()
     role_ok = _role_fits_action(role, action_type)
+
+    if name_lower and any(phrase == name_lower for phrase in phrases):
+        return (0.96, elname)
 
     if name_lower and any(kw == name_lower for kw in keywords):
         return (0.96, elname)

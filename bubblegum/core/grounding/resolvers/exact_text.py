@@ -33,7 +33,7 @@ _SNAPSHOT_LINE_RE = re.compile(
     (?P<role>[a-zA-Z]+)
     (?:\s+"(?P<name>[^"]+)")?
     (?:\s+\[(?P<attrs>[^\]]*)\])?
-    \s*$
+    \s*:?\s*$
     """,
     re.VERBOSE,
 )
