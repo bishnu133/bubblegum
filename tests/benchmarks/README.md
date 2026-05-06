@@ -1,4 +1,4 @@
-# Benchmark Fixtures (Current MVP RC Status)
+# Benchmark Fixtures (Phase 9 MVP RC Status)
 
 This directory contains the deterministic benchmark fixture suite under `tests/benchmarks/fixtures`.
 

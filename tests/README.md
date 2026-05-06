@@ -90,9 +90,9 @@ Default-safe scaffolds:
 Note: `tests/integration/test_playwright_adapter.py` is marked `playwright` and is skipped unless selected with `-m playwright`.
 
 
-## Benchmark validation (Phase 8 baseline)
+## Benchmark validation (Phase 9 MVP RC baseline)
 
-The benchmark runner has two modes and both are expected to pass in the current Phase 6 state:
+The benchmark runner has two modes and both are expected to pass in the current MVP RC state:
 
 - Static validation (`python scripts/run_benchmarks.py`)
   - checks fixture schema compliance, snapshot existence, and static expected winner/confidence ranges.
