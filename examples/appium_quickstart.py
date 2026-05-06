@@ -43,6 +43,7 @@ def build_driver():
     #   - Appium server running at the URL below
     #   - Android emulator/device online
     #   - ApiDemos app installed (or replace with your app package/activity)
+    #   - Capability values aligned to your local environment
     capabilities = {
         "platformName": "Android",
         "appium:deviceName": "emulator-5554",

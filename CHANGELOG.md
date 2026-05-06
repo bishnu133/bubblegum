@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Planned for v0.0.2-alpha
+- Appium onboarding documentation improvements across README and examples.
+- Manual mobile smoke guidance clarified (Appium runtime smoke remains manual and non-CI-gated).
+- Release checklist consistency cleanup for reusable pre-release gates.
+
 ## v0.0.1-alpha (MVP RC)
 
 ### Highlights

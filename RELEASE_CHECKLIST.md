@@ -1,6 +1,10 @@
-# RELEASE CHECKLIST — v0.0.2-alpha planning baseline
+# RELEASE CHECKLIST — reusable pre-release gates
 
-Target release tag recommendation: `v0.0.1-alpha`
+Historical release note:
+- `v0.0.1-alpha` is already released.
+
+Current planning note:
+- v0.0.2-alpha planning keeps Playwright and Appium runtime smoke as manual (non-CI-gated).
 
 ## Pre-release gates (required)
 
@@ -51,11 +55,11 @@ Notes:
 - Appium quickstart is intentionally a real-infrastructure template.
 - Do not gate CI on mobile runtime infra for v0.0.2-alpha.
 
-## Release policy (MVP RC)
+## Release policy
 
-- Keep package version at `0.0.1` for this phase.
-- Tag GitHub pre-release as `v0.0.1-alpha` after all required gates pass.
-- Do not publish to PyPI/TestPyPI in this phase.
+- Keep package version aligned to the active release phase.
+- Use GitHub pre-release tagging per release plan.
+- PyPI/TestPyPI publishing remains deferred unless explicitly enabled in a future phase.
 
 ## Contributor setup notes for strict/build checks
 
