@@ -31,7 +31,7 @@ def test_required_release_metadata_present() -> None:
 
     assert project.get("description")
     assert project.get("readme") == "README.md"
-    assert project.get("license", {}).get("file") == "LICENSE"
+    assert project.get("license") == "MIT"
     assert project.get("authors")
     assert project.get("classifiers")
     assert project.get("urls")

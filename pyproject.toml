@@ -7,7 +7,7 @@ name = "bubblegum-ai"
 version = "0.0.1"
 description = "AI-powered recovery and natural-language execution layer for Playwright and Appium tests"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
 authors = [
     { name = "Bubblegum contributors" },
 ]
@@ -16,7 +16,6 @@ dependencies = ["pydantic>=2.0", "pyyaml"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -37,6 +36,9 @@ all = ["playwright", "Appium-Python-Client", "pytest-asyncio"]
 
 [project.entry-points.pytest11]
 bubblegum = "bubblegum.pytest_plugin"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 where = ["."]
