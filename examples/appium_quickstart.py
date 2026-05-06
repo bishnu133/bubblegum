@@ -1,9 +1,12 @@
-"""Minimal Appium + Bubblegum template.
+"""Minimal Appium + Bubblegum template for real mobile environments.
 
 Requirements:
   pip install -e ".[mobile]"
   # package users: pip install "bubblegum-ai[mobile]"
-  # plus: running Appium server and connected emulator/device
+  # plus: running Appium server + running emulator/device + installed target app
+
+This quickstart is NOT self-contained like the Playwright local HTML smoke.
+It requires real Appium/mobile infrastructure and local capability alignment.
 """
 
 from __future__ import annotations
@@ -28,13 +31,18 @@ Checklist:
 
 
 def build_driver():
-    """Create an Appium driver (template values; replace as needed)."""
+    """Create an Appium driver (real-env template values; replace as needed)."""
     try:
         from appium import webdriver
     except ModuleNotFoundError:
         print(APPIUM_INSTALL_HINT)
         return None
 
+    # Template capabilities for Android ApiDemos.
+    # Prerequisites:
+    #   - Appium server running at the URL below
+    #   - Android emulator/device online
+    #   - ApiDemos app installed (or replace with your app package/activity)
     capabilities = {
         "platformName": "Android",
         "appium:deviceName": "emulator-5554",

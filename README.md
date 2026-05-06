@@ -78,7 +78,7 @@ python -m playwright install chromium
 
 # Local development install with mobile extra (Appium client)
 pip install -e ".[mobile]"
-# plus: running Appium server + connected emulator/device
+# plus: running Appium server + running emulator/device + installed target app
 
 # Local development install with all optional extras
 pip install -e ".[all]"
@@ -201,6 +201,8 @@ Runnable templates are available in:
 These are intentionally minimal and avoid credentials/secrets.
 
 The Playwright quickstart uses `page.set_content(...)` with deterministic local HTML by default, so first-run smoke does not depend on outbound network access.
+
+The Appium quickstart is a real-environment template (Appium server + emulator/device + app/capabilities) and is intentionally not self-contained.
 
 For quickstart troubleshooting (dependency/proxy issues, Playwright browser setup, Appium server/device requirements), see `examples/README.md`.
 
