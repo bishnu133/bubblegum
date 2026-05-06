@@ -231,6 +231,40 @@ class TestAppiumAdapterScreenshot:
 
 
 # ===========================================================================
+# AppiumAdapter — extract_text
+# ===========================================================================
+
+class TestAppiumAdapterExtractText:
+
+    def test_extract_text_prefers_element_text(self):
+        driver, element = _make_driver()
+        element.text = "Animation"
+        element.get_attribute.side_effect = lambda name: None
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        adapter = AppiumAdapter(driver)
+        value = _run_async(adapter.extract_text(_LOGIN_REF))
+        assert value == "Animation"
+
+    def test_extract_text_falls_back_to_content_desc(self):
+        driver, element = _make_driver()
+        element.text = ""
+        element.get_attribute.side_effect = lambda name: "Email input" if name == "content-desc" else None
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        adapter = AppiumAdapter(driver)
+        value = _run_async(adapter.extract_text(_LOGIN_REF))
+        assert value == "Email input"
+
+    def test_extract_text_accepts_json_xpath_ref(self):
+        driver, element = _make_driver()
+        element.text = "Login"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        adapter = AppiumAdapter(driver)
+        value = _run_async(adapter.extract_text(_LOGIN_REF))
+        assert value == "Login"
+        driver.find_element.assert_called()
+
+
+# ===========================================================================
 # AppiumAdapter — validate
 # ===========================================================================
 
@@ -698,3 +732,35 @@ class TestSDKMobileChannelRouting:
         import inspect
         from bubblegum.core import sdk as sdk_module
         assert "driver" in inspect.signature(sdk_module.extract).parameters
+
+    def test_extract_mobile_routes_to_adapter_extract_text(self, monkeypatch):
+        from bubblegum.core import sdk as sdk_module
+        from bubblegum.core.schemas import ContextRequest, ExecutionOptions, ResolvedTarget, UIContext
+
+        class _FakeAdapter:
+            async def collect_context(self, request: ContextRequest):
+                return UIContext(hierarchy_xml=_SIMPLE_XML, screen_signature="abcd1234abcd1234abcd1234abcd1234")
+
+            async def extract_text(self, ref, timeout_ms=5000):
+                return "MOBILE_VALUE"
+
+        async def _fake_ground(intent):
+            return (
+                ResolvedTarget(ref=_LOGIN_REF, confidence=0.92, resolver_name="appium_hierarchy"),
+                [],
+            )
+
+        monkeypatch.setattr(sdk_module, "_get_adapter", lambda channel, page=None, driver=None: _FakeAdapter())
+        monkeypatch.setattr(sdk_module._engine, "ground", _fake_ground)
+
+        result = _run_async(
+            sdk_module.extract(
+                "Read login label",
+                channel="mobile",
+                driver=MagicMock(),
+                options=ExecutionOptions(),
+            )
+        )
+        assert result.status == "passed"
+        assert result.target is not None
+        assert result.target.metadata.get("extracted_value") == "MOBILE_VALUE"

@@ -317,7 +317,14 @@ async def extract(
     # Extract text content from the resolved element ref
     timeout_ms = options.timeout_ms
     try:
-        extracted_value = await _extract_inner_text(page, target.ref, timeout_ms)
+        if channel == "mobile":
+            if not hasattr(adapter, "extract_text"):
+                raise NotImplementedError(
+                    "Mobile extract is not supported by the active adapter."
+                )
+            extracted_value = await adapter.extract_text(target.ref, timeout_ms=timeout_ms)
+        else:
+            extracted_value = await _extract_inner_text(page, target.ref, timeout_ms)
     except Exception as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         logger.error("inner_text() failed for ref=%r: %s", target.ref, exc)

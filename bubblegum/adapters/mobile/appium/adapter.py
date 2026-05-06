@@ -218,6 +218,34 @@ class AppiumAdapter(BaseAdapter):
             timestamp=ts.isoformat(),
         )
 
+    async def extract_text(self, ref, timeout_ms: int = 5000) -> str:
+        """
+        Extract user-visible text from a resolved mobile element.
+
+        Resolution order:
+          1) element.text
+          2) element.get_attribute("content-desc")
+          3) element.get_attribute("value")
+          4) element.get_attribute("text")
+          5) element.get_attribute("name")
+        """
+        del timeout_ms  # reserved for future wait/retry strategy
+        element = self._find_element(ref)
+
+        text_value = (getattr(element, "text", None) or "").strip()
+        if text_value:
+            return text_value
+
+        for attr in ("content-desc", "value", "text", "name"):
+            try:
+                value = (element.get_attribute(attr) or "").strip()
+                if value:
+                    return value
+            except Exception:
+                continue
+
+        raise ValueError(f"No extractable text found for ref={ref!r}")
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
