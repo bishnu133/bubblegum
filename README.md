@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="#"><img src="https://img.shields.io/badge/pip%20install-bubblegum--ai-pink.svg" alt="pip install bubblegum-ai"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/phase-7A%20%E2%80%94%20mvp%20hardening-orange.svg" alt="Phase 7A"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/phase-8Q%20%E2%80%94%20mvp%20rc%20readiness-orange.svg" alt="Phase 8Q"/></a>
   <a href="#"><img src="https://img.shields.io/badge/architecture-v0.9%20approved-brightgreen.svg" alt="Architecture Approved"/></a>
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-lightgrey.svg" alt="MIT License"/></a>
 </p>
@@ -478,7 +478,7 @@ Because Bubblegum may send DOM text and hierarchy data to external LLM providers
 
 ## Benchmark Strategy
 
-### Phase 6Q benchmark status
+### Current benchmark status (Phase 8 baseline)
 
 Current deterministic benchmark expectations:
 
@@ -614,12 +614,18 @@ bubblegum/
 
 ## Release/package validation
 
-These checks are intended for maintainers preparing a release candidate (not required for normal package users).
+These checks are intended for maintainers preparing an MVP release candidate (not required for normal package users).
 
 CI-required release checks (current workflow):
 
 ```bash
+# offline-safe package validation (default)
 python scripts/validate_package.py
+
+# strict maintainer/release-mode validation
+python scripts/validate_package.py --strict
+
+# build artifacts
 python -m build
 ```
 
