@@ -29,7 +29,7 @@ pytest --collect-only -q
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 473 tests collected
+- pytest collection: 476 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -68,3 +68,11 @@ Notes:
   - `python -m pip install -e ".[test]"`
 - Strict/build gates require `build` to be available:
   - `python -m pip install build`
+
+
+## OCR callable posture for v0.0.2-alpha
+
+- OCR remains callable-only: integrators may supply their own runtime OCR callable backend.
+- Screenshot OCR processing stays privacy-gated and opt-in (`process_screenshots_for_ocr: true`).
+- No bundled real OCR dependency is required for release readiness.
+- OCR resolver refs are synthetic (`ocr://block/<index>`) and are not adapter-executed yet.

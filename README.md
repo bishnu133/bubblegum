@@ -241,7 +241,21 @@ pytest --bubblegum-config bubblegum.yaml \
 ### Optional OCR callable backend (no bundled OCR dependency)
 
 Bubblegum does not bundle a real OCR engine dependency by default.
-You can provide a runtime callable backend that receives screenshot bytes and returns raw OCR blocks:
+You can provide a runtime callable backend that receives screenshot bytes and returns raw OCR blocks.
+The callable contract is:
+
+- Input: `image_bytes: bytes` (raw screenshot bytes)
+- Output: `list[OCRBlock]` or `list[dict]`
+- Canonical block shape after normalization:
+
+```python
+{
+    "text": str,
+    "bbox": [x1, y1, x2, y2],
+    "confidence": float,
+}
+```
+
 
 ```python
 from bubblegum.core.ocr.backends import CallableOCREngine
@@ -263,7 +277,12 @@ ocr_blocks = build_ocr_blocks_from_screenshot(
 )
 ```
 
-`ocr_blocks` output is normalized into canonical context shape and is safe-by-default: OCR processing still requires explicit opt-in (`process_screenshots_for_ocr: true`).
+`ocr_blocks` output is normalized into canonical context shape and is safe-by-default:
+
+- Screenshot OCR processing runs only when `process_screenshots_for_ocr: true` is explicitly enabled.
+- Bubblegum does **not** bundle a real OCR engine dependency yet.
+- `OCRResolver` consumes normalized `context["ocr_blocks"]` and emits synthetic `ocr://block/<index>` refs.
+- These `ocr://` refs are not adapter-executed yet (resolution/ranking signal only in current architecture).
 
 ## Public API
 

@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Planned for v0.0.2-alpha
+- Phase 10Q release/docs readiness cleanup completed: release checklist collect-only baseline synced to 476, and OCR callable-only contract/privacy gate/synthetic `ocr://` ref limitation documented for v0.0.2-alpha readiness.
 - Appium onboarding documentation improvements across README and examples.
 - Manual mobile smoke guidance clarified (Appium runtime smoke remains manual and non-CI-gated).
 - Release checklist consistency cleanup for reusable pre-release gates.
