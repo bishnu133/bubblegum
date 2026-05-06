@@ -22,7 +22,7 @@ def test_project_identity_unchanged() -> None:
     project = data["project"]
 
     assert project["name"] == "bubblegum-ai"
-    assert project["version"] == "0.0.1"
+    assert project["version"] == "0.0.2a0"
 
 
 def test_required_release_metadata_present() -> None:
