@@ -492,6 +492,99 @@ class TestExtractSDK:
         assert "Element not attached" in result.error.message
 
 
+class TestSDKSelectorPlumbing:
+    def test_act_wires_selector_into_explicit_selector_context(self):
+        from bubblegum.core import sdk
+        from bubblegum.core.schemas import ExecutionResult, ResolvedTarget
+
+        mock_page = MagicMock()
+        mock_page.url = "http://test/"
+        mock_adapter = MagicMock()
+        mock_adapter.collect_context = AsyncMock(return_value=MagicMock(a11y_snapshot='- link "More information"', screenshot=None, screen_signature="sig:a", hierarchy_xml=None))
+        mock_adapter.execute = AsyncMock(return_value=ExecutionResult(success=True, duration_ms=1, element_ref='text="More information"'))
+        mock_adapter.screenshot = AsyncMock(side_effect=Exception("no screenshot in unit test"))
+
+        captured = {}
+
+        async def _ground(intent):
+            captured["explicit_selector"] = intent.context.get("explicit_selector")
+            return ResolvedTarget(ref='text="More information"', confidence=1.0, resolver_name="explicit_selector"), []
+
+        with patch("bubblegum.core.sdk._get_adapter", return_value=mock_adapter), \
+             patch("bubblegum.core.sdk._engine.ground", new=AsyncMock(side_effect=_ground)):
+            result = asyncio.run(sdk.act("Click More information", channel="web", page=mock_page, selector='text="More information"'))
+
+        assert captured["explicit_selector"] == 'text="More information"'
+        assert result.status == "passed"
+
+    def test_verify_wires_selector_into_explicit_selector_context(self):
+        from bubblegum.core import sdk
+        from bubblegum.core.schemas import ResolvedTarget, ValidationResult
+
+        mock_page = MagicMock()
+        mock_page.url = "http://test/"
+        mock_adapter = MagicMock()
+        mock_adapter.collect_context = AsyncMock(return_value=MagicMock(a11y_snapshot='- heading "Example Domain"', screenshot=None, screen_signature="sig:v", hierarchy_xml=None))
+        mock_adapter.validate = AsyncMock(return_value=ValidationResult(passed=True, actual_value="Example Domain", duration_ms=1))
+
+        captured = {}
+
+        async def _ground(intent):
+            captured["explicit_selector"] = intent.context.get("explicit_selector")
+            return ResolvedTarget(ref='text="Example Domain"', confidence=1.0, resolver_name="explicit_selector"), []
+
+        with patch("bubblegum.core.sdk._get_adapter", return_value=mock_adapter), \
+             patch("bubblegum.core.sdk._engine.ground", new=AsyncMock(side_effect=_ground)):
+            result = asyncio.run(
+                sdk.verify(
+                    "Confirm heading text is visible",
+                    channel="web",
+                    page=mock_page,
+                    selector='text="Example Domain"',
+                    assertion_type="text_visible",
+                    expected_value="Example Domain",
+                )
+            )
+
+        assert captured["explicit_selector"] == 'text="Example Domain"'
+        assert result.status == "passed"
+
+    def test_extract_wires_selector_into_explicit_selector_context(self):
+        from bubblegum.core import sdk
+        from bubblegum.core.schemas import ResolvedTarget
+
+        mock_page = MagicMock()
+        mock_page.url = "http://test/"
+        mock_locator = AsyncMock()
+        mock_locator.inner_text = AsyncMock(return_value="Example Domain")
+        mock_page.locator = MagicMock(return_value=mock_locator)
+
+        mock_adapter = MagicMock()
+        mock_adapter.collect_context = AsyncMock(return_value=MagicMock(a11y_snapshot='- heading "Example Domain"', screenshot=None, screen_signature="sig:e", hierarchy_xml=None))
+
+        captured = {}
+
+        async def _ground(intent):
+            captured["explicit_selector"] = intent.context.get("explicit_selector")
+            return ResolvedTarget(ref="h1", confidence=1.0, resolver_name="explicit_selector"), []
+
+        with patch("bubblegum.core.sdk._get_adapter", return_value=mock_adapter), \
+             patch("bubblegum.core.sdk._engine.ground", new=AsyncMock(side_effect=_ground)):
+            result = asyncio.run(
+                sdk.extract(
+                    "Get text of Example Domain heading",
+                    channel="web",
+                    page=mock_page,
+                    selector="h1",
+                )
+            )
+
+        assert captured["explicit_selector"] == "h1"
+        assert result.status == "passed"
+        assert result.target is not None
+        assert result.target.metadata.get("extracted_value") == "Example Domain"
+
+
 # ===========================================================================
 # HTML Report — unit tests
 # ===========================================================================
