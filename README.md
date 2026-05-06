@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="#"><img src="https://img.shields.io/badge/pip%20install-bubblegum--ai-pink.svg" alt="pip install bubblegum-ai"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/phase-8Q%20%E2%80%94%20mvp%20rc%20readiness-orange.svg" alt="Phase 8Q"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/phase-9B%20%E2%80%94%20mvp%20rc%20finalization-orange.svg" alt="Phase 8Q"/></a>
   <a href="#"><img src="https://img.shields.io/badge/architecture-v0.9%20approved-brightgreen.svg" alt="Architecture Approved"/></a>
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-lightgrey.svg" alt="MIT License"/></a>
 </p>

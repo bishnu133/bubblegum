@@ -1,4 +1,4 @@
-# Bubblegum Examples (Phase 8 MVP RC)
+# Bubblegum Examples (Phase 9 MVP RC)
 
 These examples are **minimal templates** to help you wire Bubblegum into existing automation.
 

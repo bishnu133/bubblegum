@@ -34,8 +34,11 @@ jobs:
       - name: Public API tests
         run: pytest tests/unit/test_public_api.py -q
 
-      - name: Validate package
+      - name: Validate package (default)
         run: python scripts/validate_package.py
+
+      - name: Validate package (strict release gate)
+        run: python scripts/validate_package.py --strict
 
       - name: Build distribution artifacts
         run: python -m build
