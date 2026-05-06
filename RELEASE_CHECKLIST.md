@@ -29,7 +29,7 @@ pytest --collect-only -q
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 463 tests collected
+- pytest collection: 472 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
