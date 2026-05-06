@@ -43,9 +43,9 @@ where = ["."]
 include = ["bubblegum*"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
+    "asyncio: marks tests that run with asyncio support",
     "llm: marks tests that call the real LLM API",
     "memory: marks tests that require disk-backed memory fixtures",
     "appium: marks tests that require Appium server/device",

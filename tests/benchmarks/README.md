@@ -1,4 +1,4 @@
-# Benchmark Fixtures (Phase 9 MVP RC Status)
+# Benchmark Fixtures (v0.0.2-alpha planning status)
 
 This directory contains the deterministic benchmark fixture suite under `tests/benchmarks/fixtures`.
 
@@ -6,7 +6,7 @@ This directory contains the deterministic benchmark fixture suite under `tests/b
 
 - `tests/benchmarks/golden_dataset` is retained for historical/legacy scenario composition.
 - `tests/benchmarks/fixtures` is the schema-driven deterministic benchmark contract used for validation and reporting.
-- Current MVP RC status does not remove or mutate legacy datasets.
+- Current baseline status does not remove or mutate legacy datasets.
 
 ## Fixture files
 
@@ -30,7 +30,7 @@ The benchmark runner supports two complementary modes:
 
 ## Current benchmark status
 
-Expected benchmark status for current MVP RC baseline:
+Expected benchmark status for current baseline:
 
 - **static**: 12/12 passed
 - **execute**: total 12, executed 12, skipped 0, passed 12, failed 0
