@@ -51,6 +51,17 @@ class ExplicitSelectorResolver(Resolver):
                 ref=selector,
                 confidence=1.0,
                 resolver_name=self.name,
-                metadata={"source": "explicit_selector", "signals": make_signals(text_match=1.0, uniqueness=1.0)},
+                metadata={
+                    "source": "explicit_selector",
+                    # Keep explicit user-provided selectors deterministic under weighted ranking.
+                    "signals": make_signals(
+                        text_match=1.0,
+                        role_match=1.0,
+                        visibility=1.0,
+                        uniqueness=1.0,
+                        proximity=1.0,
+                        memory=0.0,
+                    ),
+                },
             )
         ]

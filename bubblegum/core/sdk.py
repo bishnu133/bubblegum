@@ -130,6 +130,7 @@ async def act(
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
         action_type=_infer_action_type(instruction, kwargs),
+        context={"explicit_selector": kwargs["selector"]} if kwargs.get("selector") else {},
         options=options,
     )
 
@@ -220,6 +221,7 @@ async def verify(
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
         action_type="verify",
+        context={"explicit_selector": kwargs["selector"]} if kwargs.get("selector") else {},
         options=options,
     )
 
@@ -296,6 +298,7 @@ async def extract(
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
         action_type="extract",
+        context={"explicit_selector": kwargs["selector"]} if kwargs.get("selector") else {},
         options=options,
     )
 

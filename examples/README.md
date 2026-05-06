@@ -26,7 +26,7 @@ You also need a running Appium server and a connected emulator/device.
 
 ## Files
 
-- `playwright_quickstart.py` — async Playwright flow using `recover`, `act`, `verify`, and `extract`.
+- `playwright_quickstart.py` — async Playwright flow using `recover`, `act`, `verify`, and `extract` with explicit smoke selectors for deterministic first-run checks.
 - `appium_quickstart.py` — Appium flow template using `act` and `verify`.
 
 > These examples intentionally avoid real credentials and should be adapted to your app/test env.
@@ -42,5 +42,5 @@ You also need a running Appium server and a connected emulator/device.
 
 ### Quick expectations
 
-- `playwright_quickstart.py` uses `page.set_content(...)` with deterministic local HTML by default, so smoke validation does not require outbound network access. After this path works, adapt it to your real web target (URL/selectors/assertions). The `recover()` block is demonstrative and may require a real app/stale selector to produce a meaningful recovery.
+- `playwright_quickstart.py` uses `page.set_content(...)` with deterministic local HTML by default, so smoke validation does not require outbound network access. The built-in smoke path uses explicit selectors to make first-run `act` / `verify` / `extract` deterministic. After this path works, adapt it to your real web target (URL/selectors/assertions) and try natural-language-only prompts. The `recover()` block is demonstrative and may require a real app/stale selector to produce a meaningful recovery.
 - `appium_quickstart.py` requires a real Appium session (server + device/emulator + compatible capabilities).
