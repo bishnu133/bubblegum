@@ -2,9 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
-
-### Planned for v0.0.2-alpha
+## v0.0.2-alpha
 - Phase 10Q release/docs readiness cleanup completed: release checklist collect-only baseline synced to 476, and OCR callable-only contract/privacy gate/synthetic `ocr://` ref limitation documented for v0.0.2-alpha readiness.
 - Appium onboarding documentation improvements across README and examples.
 - Manual mobile smoke guidance clarified (Appium runtime smoke remains manual and non-CI-gated).
@@ -14,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Phase 10K hybrid web + mobile examples added (`examples/hybrid_web_mobile_example.py`) with README linkage and guidance (docs/examples only; no runtime behavior changes).
 - Phase 10M OCR engine abstraction added (`bubblegum/core/ocr/engine.py`) with deterministic fake engine, OCR block normalization, and mocked screenshot-to-block pipeline helper (no external OCR dependency, no adapter/runtime behavior changes).
 - Phase 10O user-supplied OCR callable backend added (`bubblegum/core/ocr/backends/callable.py`) via `CallableOCREngine`, enabling runtime-provided OCR functions to feed the existing normalized screenshot OCR pipeline (still opt-in, no bundled real OCR dependency).
+- PyPI/TestPyPI publishing remains deferred; release target continues to be GitHub pre-release tagging for `v0.0.2-alpha`.
 
 ## v0.0.1-alpha (MVP RC)
 

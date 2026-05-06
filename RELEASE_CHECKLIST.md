@@ -5,6 +5,7 @@ Historical release note:
 
 Current planning note:
 - v0.0.2-alpha planning keeps Playwright and Appium runtime smoke as manual (non-CI-gated).
+- Package version target for this cycle: `0.0.2a0` (PEP 440) for GitHub pre-release `v0.0.2-alpha`.
 
 ## Pre-release gates (required)
 
@@ -58,6 +59,7 @@ Notes:
 ## Release policy
 
 - Keep package version aligned to the active release phase.
+- For this release cycle, use package version `0.0.2a0` while keeping GitHub tag/title as `v0.0.2-alpha`.
 - Use GitHub pre-release tagging per release plan.
 - PyPI/TestPyPI publishing remains deferred unless explicitly enabled in a future phase.
 
