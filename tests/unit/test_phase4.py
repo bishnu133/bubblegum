@@ -60,7 +60,7 @@ def _make_driver(activity=".MainActivity", page_source=_SIMPLE_XML):
 
 
 def _run_async(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ===========================================================================
