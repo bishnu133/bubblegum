@@ -196,6 +196,7 @@ Runnable templates are available in:
 
 - `examples/playwright_quickstart.py`
 - `examples/appium_quickstart.py`
+- `examples/hybrid_web_mobile_example.py`
 - `examples/README.md`
 
 These are intentionally minimal and avoid credentials/secrets.
@@ -207,6 +208,8 @@ The Appium quickstart is a real-environment template (Appium server + emulator/d
 For quickstart troubleshooting (dependency/proxy issues, Playwright browser setup, Appium server/device requirements), see `examples/README.md`.
 
 For Appium-specific onboarding (real-environment prerequisites, capability checklist, and common startup failures), jump to the Appium setup and troubleshooting sections in `examples/README.md`.
+
+For hybrid web + mobile usage patterns (selector-first + natural-language fallback), see `examples/hybrid_web_mobile_example.py`.
 
 ---
 
