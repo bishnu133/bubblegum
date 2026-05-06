@@ -45,18 +45,17 @@ from bubblegum.core.grounding.engine import GroundingEngine
 from bubblegum.core.grounding.errors import BubblegumError
 from bubblegum.core.grounding.registry import ResolverRegistry
 from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
+from bubblegum.core.parser import extract_expected, infer_action_type
+from bubblegum.core.planner import build_options, build_validation_plan, context_request, make_intent
+from bubblegum.core.recovery import remove_explicit_selector, used_explicit_selector
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
-    ContextRequest,
     ErrorInfo,
-    ExecutionOptions,
     ResolvedTarget,
-    StepIntent,
     StepResult,
-    ValidationPlan,
-    ValidationResult,
 )
+from bubblegum.core.validation import make_verification_result, verification_error, verification_status
 
 logger = logging.getLogger(__name__)
 
@@ -124,18 +123,18 @@ async def act(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     # 1. Build StepIntent
-    options = _build_options(kwargs)
-    intent  = StepIntent(
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    intent  = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
-        action_type=_infer_action_type(instruction, kwargs),
-        context={"explicit_selector": kwargs["selector"]} if kwargs.get("selector") else {},
+        action_type=infer_action_type(instruction, kwargs),
+        selector=kwargs.get("selector"),
         options=options,
     )
 
     # 2. Collect context
-    ctx_request = ContextRequest(include_screenshot=False)
+    ctx_request = context_request()
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
 
@@ -215,17 +214,17 @@ async def verify(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = _build_options(kwargs)
-    intent  = StepIntent(
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    intent  = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
         action_type="verify",
-        context={"explicit_selector": kwargs["selector"]} if kwargs.get("selector") else {},
+        selector=kwargs.get("selector"),
         options=options,
     )
 
-    ctx_request = ContextRequest(include_screenshot=False)
+    ctx_request = context_request()
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
 
@@ -236,31 +235,16 @@ async def verify(
         return _failed_result(instruction, exc, duration_ms)
 
     assertion_type  = kwargs.get("assertion_type", "text_visible")
-    expected_value  = kwargs.get("expected_value") or _extract_expected(instruction)
+    expected_value  = kwargs.get("expected_value") or extract_expected(instruction)
     timeout_ms      = kwargs.get("timeout_ms", options.timeout_ms)
 
-    v_plan = ValidationPlan(
-        assertion_type=assertion_type,
-        expected_value=expected_value,
-        timeout_ms=timeout_ms,
-    )
+    v_plan = build_validation_plan(assertion_type=assertion_type, expected_value=expected_value, timeout_ms=timeout_ms)
     v_result = await adapter.validate(v_plan)
     duration_ms = int((time.monotonic() - t0) * 1000)
 
-    status = "passed" if v_result.passed else "failed"
-    return StepResult(
-        status=status,
-        action=instruction,
-        target=target,
-        confidence=target.confidence,
-        validation=v_result,
-        duration_ms=duration_ms,
-        traces=traces,
-        error=None if v_result.passed else ErrorInfo(
-            error_type="ValidationFailedError",
-            message=f"Validation failed: expected={expected_value!r}, actual={v_result.actual_value!r}",
-        ),
-    )
+    status = verification_status(v_result)
+    error = verification_error(expected_value, v_result)
+    return make_verification_result(status=status, instruction=instruction, target=target, traces=traces, duration_ms=duration_ms, result=v_result, error=error)
 
 
 async def extract(
@@ -294,18 +278,18 @@ async def extract(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = _build_options(kwargs)
-    intent  = StepIntent(
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    intent  = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
         action_type="extract",
-        context={"explicit_selector": kwargs["selector"]} if kwargs.get("selector") else {},
+        selector=kwargs.get("selector"),
         options=options,
     )
 
     # Collect context (no screenshot needed for extract)
-    ctx_request = ContextRequest(include_screenshot=False)
+    ctx_request = context_request()
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
 
@@ -397,17 +381,17 @@ async def recover(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = _build_options(kwargs)
-    step_intent = StepIntent(
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    step_intent = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
-        action_type=_infer_action_type(instruction, kwargs),
+        action_type=infer_action_type(instruction, kwargs),
+        selector=failed_selector,
         options=options,
-        context={"explicit_selector": failed_selector} if failed_selector else {},
     )
 
-    ctx_request = ContextRequest(include_screenshot=False)
+    ctx_request = context_request()
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(step_intent, ui_ctx)
 
@@ -430,17 +414,13 @@ async def recover(
 
     # If the explicit selector worked on first try → "passed" (not "recovered")
     # If we had to fall through to another resolver → "recovered"
-    used_explicit = (
-        target.resolver_name == "explicit_selector"
-        and failed_selector is not None
-        and target.ref == failed_selector
-    )
+    used_explicit = used_explicit_selector(resolver_name=target.resolver_name, failed_selector=failed_selector, ref=target.ref)
 
     duration_ms = int((time.monotonic() - t0) * 1000)
 
     if not exec_result.success:
         # Explicit selector executed but failed (element stale) — try fallback resolvers
-        step_intent.context.pop("explicit_selector", None)
+        remove_explicit_selector(step_intent.context)
         try:
             target, traces = await _engine.ground(step_intent)
         except BubblegumError as exc:
@@ -498,6 +478,24 @@ async def recover(
 # Module-level helpers
 # ---------------------------------------------------------------------------
 
+
+def _build_options(kwargs: dict):
+    return build_options(
+        kwargs,
+        ai_enabled=_config.ai_enabled,
+        max_cost_level=_config.grounding.max_cost_level,
+        memory_ttl_days=_config.grounding.memory_ttl_days,
+        memory_max_failures=_config.grounding.memory_max_failures,
+    )
+
+
+def _infer_action_type(instruction: str, kwargs: dict) -> str:
+    return infer_action_type(instruction, kwargs)
+
+
+def _extract_expected(instruction: str) -> str:
+    return extract_expected(instruction)
+
 def _get_adapter(channel: str, page=None, driver=None):
     """Return the appropriate adapter for the channel.
 
@@ -519,54 +517,6 @@ def _get_adapter(channel: str, page=None, driver=None):
     raise NotImplementedError(
         f"Channel '{channel}' not supported. Use 'web' or 'mobile'."
     )
-
-
-def _build_options(kwargs: dict) -> ExecutionOptions:
-    known = {
-        "timeout_ms",
-        "retry_count",
-        "wait_for",
-        "use_ai",
-        "max_cost_level",
-        "memory_ttl_days",
-        "memory_max_failures",
-    }
-    opts = {k: v for k, v in kwargs.items() if k in known}
-    opts.setdefault("use_ai", _config.ai_enabled)
-    opts.setdefault("max_cost_level", _config.grounding.max_cost_level)
-    opts.setdefault("memory_ttl_days", _config.grounding.memory_ttl_days)
-    opts.setdefault("memory_max_failures", _config.grounding.memory_max_failures)
-    return ExecutionOptions(**opts)
-
-
-def _infer_action_type(instruction: str, kwargs: dict) -> str:
-    """Infer action_type from kwargs or instruction text."""
-    if "action_type" in kwargs:
-        return kwargs["action_type"]
-    lowered = instruction.lower()
-    if any(w in lowered for w in ("type", "enter", "fill", "input")):
-        return "type"
-    if any(w in lowered for w in ("select", "choose", "pick")):
-        return "select"
-    if any(w in lowered for w in ("scroll",)):
-        return "scroll"
-    if any(w in lowered for w in ("verify", "check", "assert", "visible", "present")):
-        return "verify"
-    if any(w in lowered for w in ("extract", "get", "read", "fetch")):
-        return "extract"
-    return "click"  # default
-
-
-def _extract_expected(instruction: str) -> str:
-    """Pull the key noun phrase from a verify instruction as the expected value."""
-    import re
-    cleaned = re.sub(
-        r"^(verify|check|assert|confirm|ensure|see|that)\s+",
-        "",
-        instruction,
-        flags=re.IGNORECASE,
-    ).strip()
-    return cleaned
 
 
 def _merge_context(intent: StepIntent, ui_ctx) -> None:
