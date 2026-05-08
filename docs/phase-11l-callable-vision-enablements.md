@@ -71,8 +71,9 @@ The SDK requests/processes screenshots for callable vision only when **all** are
 2. `privacy.send_screenshots: true`
 3. `privacy.process_screenshots_for_vision: true`
 4. a runtime vision provider is configured (internal/private hook today)
+5. execution options allow high-cost work (`max_cost_level: high`)
 
-If any gate is false, provider invocation is skipped.
+If any gate is false, provider invocation is skipped. Low/medium cost levels skip provider invocation and avoid requesting screenshot solely for provider vision.
 
 ### Example config
 
@@ -83,6 +84,10 @@ grounding:
 privacy:
   send_screenshots: true
   process_screenshots_for_vision: true
+```
+
+```python
+result = await act("Click Login", page=page, max_cost_level="high")
 ```
 
 ---
@@ -125,7 +130,7 @@ Check these first:
 - `privacy.send_screenshots` is false
 - `privacy.process_screenshots_for_vision` is false
 - no provider configured
-- manual `vision_candidates` already present (SDK skips provider to avoid overwrite)
+- manual `vision_candidates` already present (SDK skips provider to avoid overwrite, regardless of cost level)
 - screenshot bytes missing from collected context
 
 If provider throws, pipeline fails-safe and returns no candidates.
@@ -162,6 +167,10 @@ grounding:
 privacy:
   send_screenshots: true
   process_screenshots_for_vision: true
+```
+
+```python
+result = await act("Click Login", page=page, max_cost_level="high")
 ```
 
 Registration/teardown pattern:
