@@ -24,13 +24,13 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q  # baseline now 482 tests
+pytest --collect-only -q  # baseline now 492 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 476 tests collected
+- pytest collection: 492 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
