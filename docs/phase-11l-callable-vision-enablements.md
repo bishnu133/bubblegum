@@ -283,7 +283,11 @@ Minimal lifecycle pattern:
 from bubblegum import configure_vision_provider, clear_vision_provider
 from bubblegum.core.vision.backends import OpenAIVisionProvider
 
-provider = OpenAIVisionProvider(client=my_openai_compatible_client, model="gpt-4.1-mini")
+provider = OpenAIVisionProvider(
+    client=my_openai_compatible_client,
+    model="gpt-4.1-mini",
+    timeout=10.0,
+)
 configure_vision_provider(provider)
 try:
     # run act/verify/extract/recover flows
@@ -295,5 +299,7 @@ finally:
 Notes:
 - Keep privacy/config gates unchanged (`enable_vision`, `send_screenshots`, `process_screenshots_for_vision`).
 - OpenAI SDK is not required for base install; inject client or install optionally.
+- Model/timeout are explicit and validated (`model` non-empty, `timeout` > 0).
+- When using lazy SDK construction (`create_client=True`), timeout is propagated to `OpenAI(timeout=...)`.
 - Provider failures are fail-safe and return no candidates.
 - Do not log or persist raw screenshot bytes.

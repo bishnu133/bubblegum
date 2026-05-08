@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import base64
+import types
+
+import pytest
 
 from bubblegum.core.vision.backends import OpenAIVisionProvider
 from bubblegum.core.vision.engine import VisionCandidate
@@ -27,6 +30,11 @@ class _FakeResponsesAPI:
 class _FakeClient:
     def __init__(self, responses_api: _FakeResponsesAPI) -> None:
         self.responses = responses_api
+
+
+class _FakeNestedResponse:
+    def __init__(self, text: str) -> None:
+        self.output = [{"content": [{"type": "output_text", "text": text}]}]
 
 
 def test_provider_constructs_with_injected_client_and_export_available() -> None:
@@ -89,8 +97,70 @@ def test_empty_image_bytes_returns_empty_without_calling_client() -> None:
 
 
 def test_missing_client_configuration_raises_clear_error() -> None:
-    try:
+    with pytest.raises(ValueError, match="injected client"):
         OpenAIVisionProvider()
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "injected client" in str(exc)
+
+
+def test_invalid_model_and_timeout_raise_clear_errors() -> None:
+    with pytest.raises(ValueError, match="model"):
+        OpenAIVisionProvider(client=_FakeClient(_FakeResponsesAPI()), model="   ")
+    with pytest.raises(ValueError, match="timeout"):
+        OpenAIVisionProvider(client=_FakeClient(_FakeResponsesAPI()), timeout=0)
+    with pytest.raises(ValueError, match="timeout"):
+        OpenAIVisionProvider(client=_FakeClient(_FakeResponsesAPI()), timeout=False)
+
+
+def test_lazy_client_construction_passes_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, float] = {}
+    api = _FakeResponsesAPI()
+
+    class _OpenAI:
+        def __init__(self, *, timeout: float) -> None:
+            captured["timeout"] = timeout
+            self.responses = api
+
+    monkeypatch.setitem(__import__("sys").modules, "openai", types.SimpleNamespace(OpenAI=_OpenAI))
+    provider = OpenAIVisionProvider(create_client=True, timeout=3.5, model="gpt-4.1-mini")
+    provider.detect_targets(b"img", "Click")
+    assert captured["timeout"] == 3.5
+
+
+def test_output_text_variant_and_plain_string_json_supported() -> None:
+    provider = OpenAIVisionProvider(client=_FakeClient(_FakeResponsesAPI(output_text='{"candidates":[{"label":"A","confidence":0.9}]}')))
+    out = provider.detect_targets(b"img", "Click")
+    assert len(out) == 1
+    assert out[0].label == "A"
+
+    class _StringClient:
+        class _Responses:
+            @staticmethod
+            def create(**kwargs):
+                return '{"candidates":[{"label":"B","confidence":0.4}]}'
+
+        responses = _Responses()
+
+    out2 = OpenAIVisionProvider(client=_StringClient()).detect_targets(b"img", "Click")
+    assert len(out2) == 1
+    assert out2[0].label == "B"
+
+
+def test_nested_response_shape_supported() -> None:
+    class _NestedClient:
+        class _Responses:
+            @staticmethod
+            def create(**kwargs):
+                return _FakeNestedResponse('{"candidates":[{"label":"Nested","confidence":0.7}]}')
+
+        responses = _Responses()
+
+    out = OpenAIVisionProvider(client=_NestedClient()).detect_targets(b"img", "Click")
+    assert len(out) == 1
+    assert out[0].label == "Nested"
+
+
+def test_sanitized_error_path_does_not_expose_raw_screenshot_bytes() -> None:
+    raw = b"super-secret-screenshot-bytes"
+    provider = OpenAIVisionProvider(client=_FakeClient(_FakeResponsesAPI(output_text="{bad-json")))
+    out = provider.detect_targets(raw, "Click Login")
+    assert out == []
+    assert all(getattr(c, "text", "") != raw.decode("latin1") for c in out)
