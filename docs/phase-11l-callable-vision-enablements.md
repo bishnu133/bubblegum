@@ -272,3 +272,28 @@ Safety reminders:
 - Keep `vision://...` refs treated as synthetic/non-executable metadata only.
 - Do not log or persist raw screenshot bytes.
 - Real OpenAI/Anthropic/Ollama provider integrations remain deferred.
+
+## Phase 11R optional OpenAI backend usage (mock/network-free tests only)
+
+`OpenAIVisionProvider` is available under `bubblegum.core.vision.backends` as an optional backend.
+
+Minimal lifecycle pattern:
+
+```python
+from bubblegum import configure_vision_provider, clear_vision_provider
+from bubblegum.core.vision.backends import OpenAIVisionProvider
+
+provider = OpenAIVisionProvider(client=my_openai_compatible_client, model="gpt-4.1-mini")
+configure_vision_provider(provider)
+try:
+    # run act/verify/extract/recover flows
+    ...
+finally:
+    clear_vision_provider()
+```
+
+Notes:
+- Keep privacy/config gates unchanged (`enable_vision`, `send_screenshots`, `process_screenshots_for_vision`).
+- OpenAI SDK is not required for base install; inject client or install optionally.
+- Provider failures are fail-safe and return no candidates.
+- Do not log or persist raw screenshot bytes.
