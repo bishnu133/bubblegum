@@ -71,6 +71,7 @@ def test_safe_default_config_loading_no_file(tmp_path, monkeypatch):
     assert cfg.grounding.accept_threshold == 0.85
     assert cfg.grounding.memory_ttl_days == 7
     assert cfg.grounding.memory_max_failures == 3
+    assert cfg.privacy.process_screenshots_for_vision is False
 
 
 def test_yaml_override_via_temp_config_file(tmp_path):
@@ -86,6 +87,7 @@ def test_yaml_override_via_temp_config_file(tmp_path):
                     "memory_max_failures": 9,
                 },
                 "ai": {"enabled": False},
+                "privacy": {"process_screenshots_for_vision": True},
             }
         ),
         encoding="utf-8",
@@ -97,6 +99,7 @@ def test_yaml_override_via_temp_config_file(tmp_path):
     assert cfg.grounding.memory_ttl_days == 21
     assert cfg.grounding.memory_max_failures == 9
     assert cfg.ai.enabled is False
+    assert cfg.privacy.process_screenshots_for_vision is True
 
 
 def test_ocr_vision_flags_respected_via_resolver_eligibility():

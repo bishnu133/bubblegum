@@ -49,6 +49,7 @@ class PrivacyConfig(BaseModel):
     redact_pii:         bool = True
     send_screenshots:   bool = False       # must be True to enable VisionModelResolver
     log_provider_calls: bool = True
+    process_screenshots_for_vision: bool = False  # explicit opt-in for screenshot vision pipeline
     process_screenshots_for_ocr: bool = False  # explicit opt-in for screenshot OCR pipeline
 
 
@@ -190,6 +191,7 @@ privacy:
   redact_pii: true
   send_screenshots: false      # set to true only to enable VisionModelResolver
   log_provider_calls: true
+  process_screenshots_for_vision: false  # explicit opt-in for screenshot vision pipeline
   process_screenshots_for_ocr: false  # explicit opt-in for screenshot OCR pipeline
 
 debug:
