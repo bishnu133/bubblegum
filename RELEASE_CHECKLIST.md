@@ -24,13 +24,13 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q  # baseline now 506 tests
+pytest --collect-only -q  # baseline now 515 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 506 tests collected
+- pytest collection: 515 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -93,3 +93,11 @@ Notes:
 - Callable vision usage/readiness guidance is documented in `docs/phase-11l-callable-vision-enablements.md`.
 - Phase 11L introduces no runtime/API/dependency changes; gates and synthetic `vision://` limitations remain unchanged.
 - Real OpenAI/Anthropic/Ollama vision provider integrations remain deferred pending provider registration lifecycle finalization.
+
+
+## Phase 11N lifecycle/reset checks
+
+- Validate `configure_vision_provider(provider)` accepts VisionProvider-compatible objects and rejects invalid providers clearly.
+- Validate `clear_vision_provider()` is idempotent and used in test teardown/reset paths.
+- Confirm registration/reset do not trigger provider invocation by themselves.
+- Confirm privacy/config gates still fully control screenshot-to-vision execution.

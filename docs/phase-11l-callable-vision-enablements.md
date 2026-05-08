@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 11L is documentation and planning only.
+Phase 11L established docs/planning; Phase 11N finalizes minimal public provider lifecycle registration.
 
 What this phase does:
 - documents how to use callable vision safely and predictably
@@ -231,3 +231,23 @@ Recommended target:
 - include concurrency/lifecycle test plan before exposing a stable public registration contract
 - keep real OpenAI/Anthropic/Ollama provider implementation deferred until registration lifecycle is stable
 
+
+
+## Phase 11N finalized lifecycle API
+
+Public SDK exports now include:
+- `configure_vision_provider(provider)`
+- `clear_vision_provider()`
+
+Lifecycle semantics:
+- Provider must expose callable `detect_targets(image_bytes, instruction, context=None)`.
+- Invalid providers raise clear registration errors (`TypeError`/`ValueError`).
+- `clear_vision_provider()` is idempotent and resets provider to `None`.
+- Registration/reset do not invoke provider and do not alter privacy gates.
+
+Safety invariants remain unchanged:
+- Provider executes only when all screenshot/vision gates pass.
+- Manual `vision_candidates` are not overwritten.
+- Provider exceptions fail-safe to empty candidates.
+- Raw screenshot bytes must not be persisted in traces/metadata.
+- Real OpenAI/Anthropic/Ollama provider integrations remain deferred.
