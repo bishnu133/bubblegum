@@ -215,6 +215,12 @@ For hybrid web + mobile usage patterns (selector-first + natural-language fallba
 
 For callable vision provider lifecycle setup/teardown with required privacy gates, see `examples/vision_callable_provider_example.py` and docs in `docs/phase-11l-callable-vision-enablements.md`.
 
+Optional OpenAI vision backend note:
+- `OpenAIVisionProvider` is available as an optional vision backend under `bubblegum.core.vision.backends`.
+- It requires either an injected compatible client or user-installed OpenAI SDK (not required by base install).
+- It is only used when you explicitly call `configure_vision_provider(...)` and all vision/privacy gates are enabled.
+- No raw screenshot bytes are persisted to traces/metadata by Bubblegum vision plumbing.
+
 ---
 
 ## Pytest reporter fixture integration

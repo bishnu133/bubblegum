@@ -24,13 +24,13 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q  # baseline now 515 tests
+pytest --collect-only -q  # baseline now 521 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 515 tests collected
+- pytest collection: 521 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -107,3 +107,11 @@ Notes:
 - Public lifecycle example is available at `examples/vision_callable_provider_example.py`.
 - Example demonstrates required screenshot-to-vision gates and teardown via `clear_vision_provider()`.
 - Example is deterministic/callable-only with no real provider dependency and no raw screenshot-byte logging/persistence guidance violations.
+
+
+## Phase 11R OpenAI vision backend readiness note
+
+- `OpenAIVisionProvider` coverage is mock-tested only; no real network calls in unit tests.
+- No network benchmark fixtures are required for OpenAI vision backend readiness.
+- No mandatory OpenAI dependency is introduced in base install.
+- Existing vision privacy gates remain unchanged and continue to control screenshot processing.
