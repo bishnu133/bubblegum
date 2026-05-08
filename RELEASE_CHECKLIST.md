@@ -159,3 +159,25 @@ Notes:
 - OpenAI SDK remains user-installed and reads `OPENAI_API_KEY` from environment; no mandatory OpenAI dependency is introduced.
 - Provider-based screenshot-to-vision still requires `max_cost_level: high` plus existing vision/privacy/provider gates.
 - No runtime/API/adapter/resolver/dependency/version changes in this phase.
+
+
+## Phase 13C publish-readiness posture (no publishing)
+
+- Phase 13C adds a manual-only GitHub Actions readiness workflow: `.github/workflows/publish-check.yml`.
+- Workflow trigger is `workflow_dispatch` only.
+- Publishing to TestPyPI/PyPI remains deferred in this phase.
+- No publish credentials/secrets are configured in the workflow.
+- `pypa/gh-action-pypi-publish` is intentionally not used yet.
+
+Expected publish-readiness commands:
+
+```bash
+python -m build
+python -m twine check dist/*
+pytest --collect-only -q  # baseline remains 539 tests
+```
+
+Policy notes:
+- Prefer trusted publishing (GitHub OIDC) in a later explicit publishing phase.
+- Avoid manual token-based publishing wherever possible.
+- Actual TestPyPI publish requires a separate, explicit future phase.

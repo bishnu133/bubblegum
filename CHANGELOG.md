@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- Phase 13C publish-readiness preparation: added manual-only `.github/workflows/publish-check.yml` to run packaging/validation/build/twine/benchmark/targeted-test/collection gates and upload `dist/` artifacts without publishing. Updated release checklist/readiness notes for deferred TestPyPI/PyPI posture and future trusted-publishing recommendation. No runtime/API/adapter/resolver/dependency/version changes.
 - Phase 12D v0.0.2-alpha release-notes/checklist cleanup: finalized release wording and checklist gates for GitHub pre-release readiness. Scope remains documentation-only with no runtime/API/adapter/resolver/dependency/version changes.
 - v0.0.2-alpha release scope summary finalized: callable OCR backend + OCR privacy gating; vision abstraction (`VisionProvider`) + callable backend (`CallableVisionProvider`); optional/dependency-light `OpenAIVisionProvider`; provider registration lifecycle (`configure_vision_provider` / `clear_vision_provider`); SDK screenshot-to-vision wiring with explicit privacy gates; `max_cost_level="high"` gate for provider-based screenshot vision; sanitized OpenAI diagnostics; API-correct manual OpenAI example; no mandatory OCR/OpenAI dependencies.
 - Release/distribution posture reaffirmed: package version remains `0.0.2a0` for GitHub pre-release `v0.0.2-alpha`; PyPI/TestPyPI publishing remains deferred.
