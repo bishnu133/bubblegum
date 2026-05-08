@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- Phase 11F user-supplied vision callable backend added (`bubblegum/core/vision/backends/callable.py`) via `CallableVisionProvider`, enabling runtime-provided vision candidate callables to feed the existing normalized screenshot vision pipeline (still opt-in/privacy-gated, no bundled real vision model dependency).
 - Phase 11D VisionModelResolver injected-candidate MVP implemented: resolver now consumes `intent.context["vision_candidates"]`, normalizes via existing vision engine helpers, emits synthetic `vision://target/<index>` candidates with ranker-compatible signals/metadata, and suppresses weak unrelated matches. No real vision provider/model dependency or adapter-executable vision refs added.
 - Phase 11B vision abstraction scaffold added (`bubblegum/core/vision/engine.py`): `VisionCandidate`, `VisionProvider` protocol, deterministic `FakeVisionProvider`, candidate normalization, and safe screenshot-to-vision pipeline helper (mock/fake only; no bundled real vision model dependency).
 

@@ -238,6 +238,15 @@ pytest --bubblegum-config bubblegum.yaml \
 
 ---
 
+### Optional vision callable backend (no bundled vision model dependency)
+
+Bubblegum does not bundle a real vision model dependency by default.
+You can provide a runtime callable backend via `CallableVisionProvider` that receives screenshot bytes, instruction text, and optional context, and returns raw vision candidates (`list[VisionCandidate]` or `list[dict]`).
+
+- Screenshot processing remains opt-in and privacy-gated.
+- `VisionModelResolver` behavior is unchanged: it consumes injected `intent.context["vision_candidates"]` only.
+- Vision refs remain synthetic (`vision://target/<index>`) and are not adapter-executed.
+
 ### Optional OCR callable backend (no bundled OCR dependency)
 
 Bubblegum does not bundle a real OCR engine dependency by default.
