@@ -88,6 +88,27 @@ The example shows:
 
 It intentionally avoids real OpenAI/Anthropic/Ollama provider dependencies and does not log/store raw screenshot bytes.
 
+
+## Manual OpenAI Vision provider example (Phase 11V)
+
+Optional/manual real-provider example:
+
+- `examples/openai_vision_provider_manual_example.py`
+
+Usage notes:
+- Install optional SDK yourself (not bundled in Bubblegum base install):
+  - `python -m pip install openai`
+- Set API key in environment:
+  - `OPENAI_API_KEY=...`
+- Enable all required gates for screenshot-to-vision execution:
+  - `grounding.enable_vision: true`
+  - `privacy.send_screenshots: true`
+  - `privacy.process_screenshots_for_vision: true`
+- Register provider with `configure_vision_provider(OpenAIVisionProvider(...))`.
+- Always teardown with `clear_vision_provider()` in `finally`.
+
+This example is import-safe, optional/manual, and not executed by test suites/benchmarks.
+
 ## Troubleshooting
 
 - **Dependency install blocked (proxy/network):** If `pip install -e ".[...]"` fails (for example due to proxy restrictions), configure your proxy/index access first, then retry.

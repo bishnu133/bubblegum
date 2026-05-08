@@ -24,13 +24,13 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q  # baseline now 521 tests
+pytest --collect-only -q  # baseline now 526 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 521 tests collected
+- pytest collection: 526 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -120,3 +120,12 @@ Notes:
   - timeout propagation on lazy SDK client construction path
   - response shape parsing for `output_text` and deterministic alternate shapes
   - sanitized fail-safe error paths that do not expose raw screenshot bytes
+
+
+## Phase 11V manual OpenAI vision docs/example readiness note
+
+- Manual optional example is available at `examples/openai_vision_provider_manual_example.py`.
+- Example is import-safe, does not execute network calls on import, and is not part of test/benchmark execution.
+- OpenAI SDK remains user-installed (`python -m pip install openai`); no dependency extras are introduced in this phase.
+- Usage requires `OPENAI_API_KEY`, explicit provider registration, all screenshot/vision privacy gates, and teardown via `clear_vision_provider()`.
+- No runtime/API/adapter/resolver/dependency/version changes are required for this docs/example slice.
