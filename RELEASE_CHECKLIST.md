@@ -20,10 +20,14 @@ python scripts/validate_package.py --strict
 python -m build
 python scripts/run_benchmarks.py
 python scripts/run_benchmarks.py --execute
-pytest tests/unit/test_validate_package.py -q
-pytest tests/unit/test_package_metadata.py -q
-pytest tests/unit/test_packaging_extras.py -q
+python -m py_compile examples/openai_vision_provider_manual_example.py
+pytest tests/unit/test_phase11j_sdk_vision_wiring.py -q
+pytest tests/unit/test_phase11n_vision_provider_registration.py -q
+pytest tests/unit/test_phase11r_openai_vision_provider.py -q
+pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
+pytest tests/unit/test_packaging_extras.py -q
+pytest tests/unit/test_package_metadata.py -q
 pytest --collect-only -q  # baseline now 539 tests
 ```
 
@@ -80,13 +84,15 @@ Notes:
 - OCR resolver refs are synthetic (`ocr://block/<index>`) and are not adapter-executed yet.
 
 
-## Vision abstraction posture for Phase 11J
+## Vision/OCR limitations and gating posture for v0.0.2-alpha
 
 - Vision remains disabled by default and screenshot sharing remains privacy-gated.
 - Screenshot-to-vision processing requires explicit opt-in via `process_screenshots_for_vision: true` (default: `false`).
 - Phase 11B adds abstraction + deterministic fake backend only (no bundled real vision model dependency).
 - Screenshot-to-vision candidate helper is fail-safe and returns empty output on disabled/gated/missing/error states.
 - SDK runtime can optionally auto-wire screenshot-to-vision candidate injection, but only when all gates pass (`enable_vision`, `send_screenshots`, `process_screenshots_for_vision`, provider configured) and remains default-off.
+- Vision resolver refs are synthetic (`vision://target/<index>`) and are non-executable placeholders.
+- Provider-based screenshot vision additionally requires `max_cost_level: high`; low/medium cost levels fail-safe skip provider invocation.
 
 ## Phase 11L docs/readiness note
 
