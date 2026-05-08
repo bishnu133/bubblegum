@@ -60,6 +60,14 @@ Use a hybrid pattern when your suite spans web + mobile and you want determinist
 
 > Note: `playwright_quickstart.py` is self-contained for local smoke (`page.set_content(...)`). Mobile/Appium and hybrid mobile portions require real infrastructure (Appium server + emulator/device + installed app + capabilities).
 
+## Callable vision (Phase 11L docs)
+
+Callable vision enablement guidance (required gates, callable shape, manual injection vs optional SDK wiring, troubleshooting, and lifecycle audit notes) lives in:
+
+- `docs/phase-11l-callable-vision-enablements.md`
+
+This examples folder intentionally does not ship a real vision provider implementation in Phase 11L.
+
 ## Troubleshooting
 
 - **Dependency install blocked (proxy/network):** If `pip install -e ".[...]"` fails (for example due to proxy restrictions), configure your proxy/index access first, then retry.

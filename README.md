@@ -240,6 +240,14 @@ pytest --bubblegum-config bubblegum.yaml \
 
 ---
 
+### Phase 11L callable vision guide
+
+For a complete callable vision enablement guide (gates, output shape, troubleshooting, and future provider lifecycle/API audit), see:
+
+- `docs/phase-11l-callable-vision-enablements.md`
+
+---
+
 ### Optional vision callable backend (no bundled vision model dependency)
 
 Bubblegum does not bundle a real vision model dependency by default.

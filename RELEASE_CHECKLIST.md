@@ -87,3 +87,9 @@ Notes:
 - Phase 11B adds abstraction + deterministic fake backend only (no bundled real vision model dependency).
 - Screenshot-to-vision candidate helper is fail-safe and returns empty output on disabled/gated/missing/error states.
 - SDK runtime can optionally auto-wire screenshot-to-vision candidate injection, but only when all gates pass (`enable_vision`, `send_screenshots`, `process_screenshots_for_vision`, provider configured) and remains default-off.
+
+## Phase 11L docs/readiness note
+
+- Callable vision usage/readiness guidance is documented in `docs/phase-11l-callable-vision-enablements.md`.
+- Phase 11L introduces no runtime/API/dependency changes; gates and synthetic `vision://` limitations remain unchanged.
+- Real OpenAI/Anthropic/Ollama vision provider integrations remain deferred pending provider registration lifecycle finalization.
