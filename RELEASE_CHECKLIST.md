@@ -80,8 +80,10 @@ Notes:
 - OCR resolver refs are synthetic (`ocr://block/<index>`) and are not adapter-executed yet.
 
 
-## Vision abstraction posture for Phase 11B
+## Vision abstraction posture for Phase 11H
 
 - Vision remains disabled by default and screenshot sharing remains privacy-gated.
+- Screenshot-to-vision processing requires explicit opt-in via `process_screenshots_for_vision: true` (default: `false`).
 - Phase 11B adds abstraction + deterministic fake backend only (no bundled real vision model dependency).
 - Screenshot-to-vision candidate helper is fail-safe and returns empty output on disabled/gated/missing/error states.
+- SDK runtime does not auto-wire screenshot processing into resolver context yet; users must manually call the pipeline helper or inject `vision_candidates`.

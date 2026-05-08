@@ -118,6 +118,8 @@ privacy:
   redact_pii:         true
   send_screenshots:   false
   log_provider_calls: true
+  process_screenshots_for_vision: false
+  process_screenshots_for_ocr:    false
 ```
 
 > **No default model is set intentionally.** You must configure both `provider` and `model` to avoid surprise API costs.
@@ -244,6 +246,10 @@ Bubblegum does not bundle a real vision model dependency by default.
 You can provide a runtime callable backend via `CallableVisionProvider` that receives screenshot bytes, instruction text, and optional context, and returns raw vision candidates (`list[VisionCandidate]` or `list[dict]`).
 
 - Screenshot processing remains opt-in and privacy-gated.
+- `enable_vision: true` alone does **not** process screenshots.
+- `send_screenshots: true` grants screenshot capture/sharing permission.
+- `process_screenshots_for_vision: true` is also required before screenshot bytes should be processed into vision candidates.
+- SDK runtime does **not** auto-wire screenshot-to-vision candidate processing yet; users must manually call `build_vision_candidates_from_screenshot(...)` or inject `intent.context["vision_candidates"]`.
 - `VisionModelResolver` behavior is unchanged: it consumes injected `intent.context["vision_candidates"]` only.
 - Vision refs remain synthetic (`vision://target/<index>`) and are not adapter-executed.
 
