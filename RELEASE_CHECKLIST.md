@@ -24,13 +24,13 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q  # baseline now 526 tests
+pytest --collect-only -q  # baseline now 532 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 526 tests collected
+- pytest collection: 532 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -129,3 +129,11 @@ Notes:
 - OpenAI SDK remains user-installed (`python -m pip install openai`); no dependency extras are introduced in this phase.
 - Usage requires `OPENAI_API_KEY`, explicit provider registration, all screenshot/vision privacy gates, and teardown via `clear_vision_provider()`.
 - No runtime/API/adapter/resolver/dependency/version changes are required for this docs/example slice.
+
+
+## Phase 11X diagnostics hardening checks
+
+- Validate OpenAIVisionProvider exposes sanitized diagnostics via `last_diagnostic` / `get_last_diagnostic()`.
+- Validate success path clears diagnostics (`None`).
+- Validate fail-safe `[]` behavior remains unchanged for empty input/client init/request/parse failures.
+- Validate diagnostics never include raw screenshot bytes, base64 payloads, API keys/secrets, full request payloads, or raw provider response bodies.

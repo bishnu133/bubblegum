@@ -222,6 +222,7 @@ Optional OpenAI vision backend note:
 - `timeout` is applied when using optional lazy SDK client creation (`create_client=True`); injected client remains preferred for deterministic tests.
 - It is only used when you explicitly call `configure_vision_provider(...)` and all vision/privacy gates are enabled.
 - No raw screenshot bytes are persisted to traces/metadata by Bubblegum vision plumbing.
+- OpenAIVisionProvider now exposes sanitized failure diagnostics (`last_diagnostic` / `get_last_diagnostic()`), with stable code/stage metadata and no raw screenshot bytes/base64/request payload/API key leakage.
 - Manual real-provider usage example: `examples/openai_vision_provider_manual_example.py` (optional/manual; user installs `openai` and sets `OPENAI_API_KEY`).
 
 ---
