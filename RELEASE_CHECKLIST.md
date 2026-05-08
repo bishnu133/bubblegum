@@ -144,3 +144,12 @@ Notes:
 - Validate success path clears diagnostics (`None`).
 - Validate fail-safe `[]` behavior remains unchanged for empty input/client init/request/parse failures.
 - Validate diagnostics never include raw screenshot bytes, base64 payloads, API keys/secrets, full request payloads, or raw provider response bodies.
+
+
+## Phase 12B docs/example readiness note
+
+- Manual OpenAI example (`examples/openai_vision_provider_manual_example.py`) is API-correct: `configure_runtime(config=BubblegumConfig.model_validate(...))` and no unsupported `api_key=` constructor arg.
+- `python -m py_compile examples/openai_vision_provider_manual_example.py` remains a required safety check.
+- OpenAI SDK remains user-installed and reads `OPENAI_API_KEY` from environment; no mandatory OpenAI dependency is introduced.
+- Provider-based screenshot-to-vision still requires `max_cost_level: high` plus existing vision/privacy/provider gates.
+- No runtime/API/adapter/resolver/dependency/version changes in this phase.

@@ -8,7 +8,7 @@ Requirements (user-installed, not bundled by Bubblegum base install):
     python -m pip install openai
 
 Environment:
-    OPENAI_API_KEY must be set for real provider calls.
+    OPENAI_API_KEY must be set for real provider calls (read by the OpenAI SDK/environment).
 
 Privacy/safety notes:
     - Vision remains opt-in and privacy-gated.
@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 
 from bubblegum import clear_vision_provider, configure_runtime, configure_vision_provider
+from bubblegum.core.config import BubblegumConfig
 from bubblegum.core.vision.backends.openai import OpenAIVisionProvider
 
 
@@ -34,27 +35,28 @@ def manual_openai_vision_setup_example() -> None:
     This function intentionally does not run a real SDK call by default.
     Replace the placeholder action/verify call section in your own environment.
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    if not os.getenv("OPENAI_API_KEY"):
         print("OPENAI_API_KEY is not set; skipping manual OpenAI vision demo.")
         return
 
     # Required privacy/config gates for screenshot-to-vision provider execution.
+    # Cost gate reminder: invoke SDK steps with max_cost_level="high".
     configure_runtime(
-        {
-            "grounding": {"enable_vision": True},
-            "privacy": {
-                "send_screenshots": True,
-                "process_screenshots_for_vision": True,
-            },
-        }
+        config=BubblegumConfig.model_validate(
+            {
+                "grounding": {"enable_vision": True},
+                "privacy": {
+                    "send_screenshots": True,
+                    "process_screenshots_for_vision": True,
+                },
+            }
+        )
     )
 
     provider = OpenAIVisionProvider(
         model="gpt-4.1-mini",
         timeout=20.0,
         create_client=True,
-        api_key=api_key,
     )
 
     configure_vision_provider(provider)
@@ -64,7 +66,7 @@ def manual_openai_vision_setup_example() -> None:
         # app session with screenshot capture available and gates enabled.
         #
         # Example (pseudo):
-        #   result = await act("Click the Sign in button", channel="web", page=page)
+        #   result = await act("Click the Sign in button", channel="web", page=page, max_cost_level="high")
         #   assert result.status in {"passed", "recovered"}
         #
         # Keep raw screenshot bytes out of logs/persistent metadata.
