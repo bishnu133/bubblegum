@@ -25,6 +25,11 @@ class OpenAIVisionProvider:
         timeout: float = 10.0,
         create_client: bool = False,
     ) -> None:
+        model = model.strip()
+        if not model:
+            raise ValueError("OpenAIVisionProvider model must be a non-empty string.")
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or float(timeout) <= 0:
+            raise ValueError("OpenAIVisionProvider timeout must be a positive number.")
         if client is None and not create_client:
             raise ValueError(
                 "OpenAIVisionProvider requires an injected client or create_client=True. "
@@ -32,7 +37,34 @@ class OpenAIVisionProvider:
             )
         self._client = client
         self._model = model
-        self._timeout = timeout
+        self._timeout = float(timeout)
+
+    def _extract_response_text(self, response: Any) -> str | None:
+        if isinstance(response, str):
+            text = response.strip()
+            return text or None
+
+        output_text = getattr(response, "output_text", None)
+        if isinstance(output_text, str):
+            text = output_text.strip()
+            return text or None
+
+        output = getattr(response, "output", None)
+        if isinstance(output, list):
+            for item in output:
+                if not isinstance(item, dict):
+                    continue
+                content = item.get("content")
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") in {"output_text", "text"} and isinstance(block.get("text"), str):
+                        text = block["text"].strip()
+                        if text:
+                            return text
+        return None
 
     def _ensure_client(self) -> Any:
         if self._client is not None:
@@ -80,8 +112,8 @@ class OpenAIVisionProvider:
                 ],
                 response_format={"type": "json_object"},
             )
-            text = getattr(response, "output_text", None)
-            if not isinstance(text, str) or not text.strip():
+            text = self._extract_response_text(response)
+            if not text:
                 return []
             parsed = json.loads(text)
             raw_candidates = parsed.get("candidates") if isinstance(parsed, dict) else None

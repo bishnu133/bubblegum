@@ -218,6 +218,8 @@ For callable vision provider lifecycle setup/teardown with required privacy gate
 Optional OpenAI vision backend note:
 - `OpenAIVisionProvider` is available as an optional vision backend under `bubblegum.core.vision.backends`.
 - It requires either an injected compatible client or user-installed OpenAI SDK (not required by base install).
+- Phase 11T hardening: provider `model` must be non-empty and `timeout` must be a positive number.
+- `timeout` is applied when using optional lazy SDK client creation (`create_client=True`); injected client remains preferred for deterministic tests.
 - It is only used when you explicitly call `configure_vision_provider(...)` and all vision/privacy gates are enabled.
 - No raw screenshot bytes are persisted to traces/metadata by Bubblegum vision plumbing.
 

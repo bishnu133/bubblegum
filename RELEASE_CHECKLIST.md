@@ -109,9 +109,14 @@ Notes:
 - Example is deterministic/callable-only with no real provider dependency and no raw screenshot-byte logging/persistence guidance violations.
 
 
-## Phase 11R OpenAI vision backend readiness note
+## Phase 11R/11T OpenAI vision backend readiness note
 
 - `OpenAIVisionProvider` coverage is mock-tested only; no real network calls in unit tests.
 - No network benchmark fixtures are required for OpenAI vision backend readiness.
 - No mandatory OpenAI dependency is introduced in base install.
 - Existing vision privacy gates remain unchanged and continue to control screenshot processing.
+- Validate Phase 11T hardening behavior:
+  - explicit/validated `model` and `timeout` configuration
+  - timeout propagation on lazy SDK client construction path
+  - response shape parsing for `output_text` and deterministic alternate shapes
+  - sanitized fail-safe error paths that do not expose raw screenshot bytes
