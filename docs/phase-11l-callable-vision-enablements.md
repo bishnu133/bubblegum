@@ -158,7 +158,7 @@ Setup summary:
 - Install OpenAI SDK manually (not bundled by Bubblegum base install):
   - `python -m pip install openai`
 - Export API key:
-  - `OPENAI_API_KEY=...`
+  - `OPENAI_API_KEY=...  (read by OpenAI SDK from environment)`
 - Configure required gates:
 
 ```yaml

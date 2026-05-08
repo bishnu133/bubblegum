@@ -99,7 +99,7 @@ Usage notes:
 - Install optional SDK yourself (not bundled in Bubblegum base install):
   - `python -m pip install openai`
 - Set API key in environment:
-  - `OPENAI_API_KEY=...`
+  - `OPENAI_API_KEY=...` (read by OpenAI SDK from environment)
 - Enable all required gates for screenshot-to-vision execution:
   - `grounding.enable_vision: true`
   - `privacy.send_screenshots: true`
