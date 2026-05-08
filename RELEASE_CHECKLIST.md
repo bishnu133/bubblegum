@@ -24,7 +24,7 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q
+pytest --collect-only -q  # baseline now 482 tests
 ```
 
 Expected baseline for current main:
@@ -78,3 +78,10 @@ Notes:
 - Screenshot OCR processing stays privacy-gated and opt-in (`process_screenshots_for_ocr: true`).
 - No bundled real OCR dependency is required for release readiness.
 - OCR resolver refs are synthetic (`ocr://block/<index>`) and are not adapter-executed yet.
+
+
+## Vision abstraction posture for Phase 11B
+
+- Vision remains disabled by default and screenshot sharing remains privacy-gated.
+- Phase 11B adds abstraction + deterministic fake backend only (no bundled real vision model dependency).
+- Screenshot-to-vision candidate helper is fail-safe and returns empty output on disabled/gated/missing/error states.

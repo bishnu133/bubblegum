@@ -503,6 +503,7 @@ Because Bubblegum may send DOM text and hierarchy data to external LLM providers
 
 - Only the **filtered accessibility tree or hierarchy XML** is sent — not the full raw DOM
 - Screenshots are sent to the vision model **only** when `VisionModelResolver` is explicitly enabled
+- Phase 11B introduces a vision abstraction + deterministic fake backend for testing (`bubblegum.core.vision.engine`), with no bundled real vision model dependency yet.
 - Password fields (`input[type=password]`) are **never** included in any snapshot
 - Fields labelled `secret`, `token`, `api_key`, or similar are **auto-redacted**
 - Email and phone number redaction is configurable via `privacy.redact_pii: true`

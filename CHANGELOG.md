@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+- Phase 11B vision abstraction scaffold added (`bubblegum/core/vision/engine.py`): `VisionCandidate`, `VisionProvider` protocol, deterministic `FakeVisionProvider`, candidate normalization, and safe screenshot-to-vision pipeline helper (mock/fake only; no bundled real vision model dependency).
+
 ## v0.0.2-alpha
 - Phase 10Q release/docs readiness cleanup completed: release checklist collect-only baseline synced to 476, and OCR callable-only contract/privacy gate/synthetic `ocr://` ref limitation documented for v0.0.2-alpha readiness.
 - Appium onboarding documentation improvements across README and examples.
