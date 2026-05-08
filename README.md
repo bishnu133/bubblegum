@@ -249,9 +249,12 @@ You can provide a runtime callable backend via `CallableVisionProvider` that rec
 - `enable_vision: true` alone does **not** process screenshots.
 - `send_screenshots: true` grants screenshot capture/sharing permission.
 - `process_screenshots_for_vision: true` is also required before screenshot bytes should be processed into vision candidates.
-- SDK runtime does **not** auto-wire screenshot-to-vision candidate processing yet; users must manually call `build_vision_candidates_from_screenshot(...)` or inject `intent.context["vision_candidates"]`.
+- SDK runtime now supports optional internal screenshot-to-vision candidate wiring, but it is strictly disabled by default and runs only when **all** gates are true: `enable_vision`, `send_screenshots`, `process_screenshots_for_vision`, and a configured runtime vision provider/callable.
 - `VisionModelResolver` behavior is unchanged: it consumes injected `intent.context["vision_candidates"]` only.
+- If `vision_candidates` are already user-supplied in context, SDK wiring does not overwrite them.
+- No raw screenshot bytes are persisted into resolver metadata/traces by the SDK wiring path.
 - Vision refs remain synthetic (`vision://target/<index>`) and are not adapter-executed.
+- No real bundled vision model dependency is added; runtime callable/provider remains integrator-supplied.
 
 ### Optional OCR callable backend (no bundled OCR dependency)
 
