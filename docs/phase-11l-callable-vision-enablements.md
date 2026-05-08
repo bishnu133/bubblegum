@@ -185,6 +185,38 @@ Safety constraints:
 - `vision://...` refs remain synthetic/non-executable metadata.
 - Keep this path manual/optional; no network unit tests/benchmarks are added in this phase.
 
+
+## OpenAI provider diagnostics (Phase 11X hardening)
+
+When using `OpenAIVisionProvider`, you can inspect sanitized provider diagnostics after a fail-safe `[]` return:
+
+```python
+from bubblegum.core.vision.backends.openai import OpenAIVisionProvider
+
+provider = OpenAIVisionProvider(client=my_client)
+candidates = provider.detect_targets(image_bytes, instruction, context={"channel": "web"})
+if not candidates:
+    print(provider.get_last_diagnostic())
+    # or: print(provider.last_diagnostic)
+```
+
+Diagnostic shape is stable and sanitized:
+- `provider`: `"openai_vision"`
+- `code`: e.g. `empty_image`, `client_init_failed`, `request_failed`, `parse_failed`, `invalid_response`
+- `stage`: e.g. `input`, `client_init`, `request`, `parse`
+- `recoverable`: boolean
+- `message`: short sanitized text
+- `exception_type`: optional class name only
+
+Sanitization policy remains strict:
+- no raw screenshot bytes
+- no base64 image payloads
+- no full request payloads
+- no API keys/secrets/env values
+- no raw provider response bodies
+
+---
+
 ## Synthetic `vision://` references limitation
 
 `VisionModelResolver` emits synthetic refs like `vision://target/<index>`.
