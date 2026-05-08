@@ -251,3 +251,24 @@ Safety invariants remain unchanged:
 - Provider exceptions fail-safe to empty candidates.
 - Raw screenshot bytes must not be persisted in traces/metadata.
 - Real OpenAI/Anthropic/Ollama provider integrations remain deferred.
+
+
+## Phase 11P example: recommended public setup/teardown pattern
+
+Reference example:
+- `examples/vision_callable_provider_example.py`
+
+Recommended lifecycle pattern:
+1. Build provider via `CallableVisionProvider(your_callable)`
+2. Register once for test scope with `configure_vision_provider(provider)`
+3. Ensure required gates are enabled:
+   - `grounding.enable_vision: true`
+   - `privacy.send_screenshots: true`
+   - `privacy.process_screenshots_for_vision: true`
+4. Execute SDK calls (`act`/`verify`)
+5. Always teardown in `finally` (or fixture finalizer) with `clear_vision_provider()`
+
+Safety reminders:
+- Keep `vision://...` refs treated as synthetic/non-executable metadata only.
+- Do not log or persist raw screenshot bytes.
+- Real OpenAI/Anthropic/Ollama provider integrations remain deferred.

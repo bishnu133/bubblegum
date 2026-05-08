@@ -213,6 +213,8 @@ For Appium-specific onboarding (real-environment prerequisites, capability check
 
 For hybrid web + mobile usage patterns (selector-first + natural-language fallback), see `examples/hybrid_web_mobile_example.py`.
 
+For callable vision provider lifecycle setup/teardown with required privacy gates, see `examples/vision_callable_provider_example.py` and docs in `docs/phase-11l-callable-vision-enablements.md`.
+
 ---
 
 ## Pytest reporter fixture integration

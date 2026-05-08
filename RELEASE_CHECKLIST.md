@@ -101,3 +101,9 @@ Notes:
 - Validate `clear_vision_provider()` is idempotent and used in test teardown/reset paths.
 - Confirm registration/reset do not trigger provider invocation by themselves.
 - Confirm privacy/config gates still fully control screenshot-to-vision execution.
+
+## Phase 11P docs/example readiness note
+
+- Public lifecycle example is available at `examples/vision_callable_provider_example.py`.
+- Example demonstrates required screenshot-to-vision gates and teardown via `clear_vision_provider()`.
+- Example is deterministic/callable-only with no real provider dependency and no raw screenshot-byte logging/persistence guidance violations.
