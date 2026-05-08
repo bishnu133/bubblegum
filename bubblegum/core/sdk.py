@@ -586,6 +586,8 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
 def _should_request_vision_screenshot(intent: StepIntent) -> bool:
     if "vision_candidates" in intent.context:
         return False
+    if not _allows_provider_vision_cost(intent):
+        return False
     return bool(
         _config.grounding.enable_vision
         and _config.privacy.send_screenshots
@@ -594,8 +596,14 @@ def _should_request_vision_screenshot(intent: StepIntent) -> bool:
     )
 
 
+def _allows_provider_vision_cost(intent: StepIntent) -> bool:
+    return str(intent.options.max_cost_level).lower() == "high"
+
+
 def _maybe_build_vision_candidates(intent: StepIntent) -> list:
     if "vision_candidates" in intent.context:
+        return []
+    if not _allows_provider_vision_cost(intent):
         return []
     screenshot = intent.context.get("screenshot")
     if not isinstance(screenshot, (bytes, bytearray)):

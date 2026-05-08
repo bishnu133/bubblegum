@@ -24,13 +24,13 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q  # baseline now 532 tests
+pytest --collect-only -q  # baseline now 539 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 532 tests collected
+- pytest collection: 539 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -130,6 +130,13 @@ Notes:
 - Usage requires `OPENAI_API_KEY`, explicit provider registration, all screenshot/vision privacy gates, and teardown via `clear_vision_provider()`.
 - No runtime/API/adapter/resolver/dependency/version changes are required for this docs/example slice.
 
+
+
+## Phase 11Z cost-gating checks
+
+- Validate screenshot-to-vision provider invocation requires `max_cost_level: high` plus all existing vision/privacy/provider gates.
+- Validate low/medium cost levels skip provider invocation and skip screenshot request when screenshot is only needed for provider vision.
+- Validate manual `vision_candidates` stay allowed and are not overwritten/blocked by cost gating.
 
 ## Phase 11X diagnostics hardening checks
 

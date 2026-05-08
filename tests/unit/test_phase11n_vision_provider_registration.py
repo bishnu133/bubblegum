@@ -86,7 +86,7 @@ def test_clear_vision_provider_clears_registration(monkeypatch):
     cfg = BubblegumConfig.model_validate({"grounding": {"enable_vision": True}, "privacy": {"send_screenshots": True, "process_screenshots_for_vision": True}})
     configure_runtime(config=cfg)
 
-    _run_async(act("Click Login", page=object()))
+    _run_async(act("Click Login", page=object(), max_cost_level="high"))
 
     assert provider.calls == 0
     _reset_sdk()
@@ -110,7 +110,49 @@ def test_registered_provider_used_only_when_all_gates_pass(monkeypatch):
     cfg = BubblegumConfig.model_validate({"grounding": {"enable_vision": True}, "privacy": {"send_screenshots": True, "process_screenshots_for_vision": True}})
     configure_runtime(config=cfg)
 
-    _run_async(act("Click Login", page=object()))
+    _run_async(act("Click Login", page=object(), max_cost_level="high"))
+
+    assert adapter.requests[-1].include_screenshot is True
+    assert provider.calls == 1
+    _reset_sdk()
+
+
+def test_registered_provider_not_invoked_when_cost_low(monkeypatch):
+    _, _, adapter = _patch_sdk(monkeypatch)
+    provider = _Provider()
+    configure_vision_provider(provider)
+    cfg = BubblegumConfig.model_validate({"grounding": {"enable_vision": True}, "privacy": {"send_screenshots": True, "process_screenshots_for_vision": True}})
+    configure_runtime(config=cfg)
+
+    _run_async(act("Click Login", page=object(), max_cost_level="low"))
+
+    assert adapter.requests[-1].include_screenshot is False
+    assert provider.calls == 0
+    _reset_sdk()
+
+
+def test_registered_provider_not_invoked_when_cost_medium(monkeypatch):
+    _, _, adapter = _patch_sdk(monkeypatch)
+    provider = _Provider()
+    configure_vision_provider(provider)
+    cfg = BubblegumConfig.model_validate({"grounding": {"enable_vision": True}, "privacy": {"send_screenshots": True, "process_screenshots_for_vision": True}})
+    configure_runtime(config=cfg)
+
+    _run_async(act("Click Login", page=object(), max_cost_level="medium"))
+
+    assert adapter.requests[-1].include_screenshot is False
+    assert provider.calls == 0
+    _reset_sdk()
+
+
+def test_registered_provider_invoked_when_cost_high(monkeypatch):
+    _, _, adapter = _patch_sdk(monkeypatch)
+    provider = _Provider()
+    configure_vision_provider(provider)
+    cfg = BubblegumConfig.model_validate({"grounding": {"enable_vision": True}, "privacy": {"send_screenshots": True, "process_screenshots_for_vision": True}})
+    configure_runtime(config=cfg)
+
+    _run_async(act("Click Login", page=object(), max_cost_level="high"))
 
     assert adapter.requests[-1].include_screenshot is True
     assert provider.calls == 1
@@ -148,7 +190,7 @@ def test_provider_exception_fails_safe(monkeypatch):
     cfg = BubblegumConfig.model_validate({"grounding": {"enable_vision": True}, "privacy": {"send_screenshots": True, "process_screenshots_for_vision": True}})
     configure_runtime(config=cfg)
 
-    result = _run_async(act("Click Login", page=object()))
+    result = _run_async(act("Click Login", page=object(), max_cost_level="high"))
 
     assert result.status == "passed"
     assert provider.calls == 1
