@@ -56,6 +56,7 @@ from bubblegum.core.schemas import (
     StepResult,
 )
 from bubblegum.core.validation import make_verification_result, verification_error, verification_status
+from bubblegum.core.vision.engine import VisionProvider, build_vision_candidates_from_screenshot
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ _engine = GroundingEngine(
     reject_threshold=_config.grounding.reject_threshold,
 )
 _memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for record_*
+_vision_provider: VisionProvider | None = None
 
 
 def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
@@ -93,6 +95,12 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
         reject_threshold=_config.grounding.reject_threshold,
     )
     return _config
+
+
+def _set_vision_provider_for_testing(provider: VisionProvider | None) -> None:
+    """Internal test hook for wiring an optional runtime vision provider."""
+    global _vision_provider
+    _vision_provider = provider
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +143,10 @@ async def act(
 
     # 2. Collect context
     ctx_request = context_request()
+    ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
+    _maybe_inject_vision_candidates(intent)
 
     # 3. Ground
     try:
@@ -225,8 +235,10 @@ async def verify(
     )
 
     ctx_request = context_request()
+    ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
+    _maybe_inject_vision_candidates(intent)
 
     try:
         target, traces = await _engine.ground(intent)
@@ -290,8 +302,10 @@ async def extract(
 
     # Collect context (no screenshot needed for extract)
     ctx_request = context_request()
+    ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
+    _maybe_inject_vision_candidates(intent)
 
     # Ground — find the target element
     try:
@@ -392,8 +406,10 @@ async def recover(
     )
 
     ctx_request = context_request()
+    ctx_request.include_screenshot = _should_request_vision_screenshot(step_intent)
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(step_intent, ui_ctx)
+    _maybe_inject_vision_candidates(step_intent)
 
     # Ground — ExplicitSelectorResolver will win first if selector still works
     try:
@@ -533,6 +549,42 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
     # Runtime config flags exposed in context for resolver eligibility checks.
     intent.context.setdefault("config_ocr_enabled", _config.ocr_enabled)
     intent.context.setdefault("config_vision_enabled", _config.vision_enabled)
+
+
+def _should_request_vision_screenshot(intent: StepIntent) -> bool:
+    if "vision_candidates" in intent.context:
+        return False
+    return bool(
+        _config.grounding.enable_vision
+        and _config.privacy.send_screenshots
+        and _config.privacy.process_screenshots_for_vision
+        and _vision_provider is not None
+    )
+
+
+def _maybe_build_vision_candidates(intent: StepIntent) -> list:
+    if "vision_candidates" in intent.context:
+        return []
+    screenshot = intent.context.get("screenshot")
+    if not isinstance(screenshot, (bytes, bytearray)):
+        return []
+    return build_vision_candidates_from_screenshot(
+        bytes(screenshot),
+        instruction=intent.instruction,
+        provider=_vision_provider,
+        enabled=bool(_config.grounding.enable_vision),
+        privacy_gate=bool(
+            _config.privacy.send_screenshots
+            and _config.privacy.process_screenshots_for_vision
+        ),
+        context={"channel": intent.channel, "platform": intent.platform},
+    )
+
+
+def _maybe_inject_vision_candidates(intent: StepIntent) -> None:
+    candidates = _maybe_build_vision_candidates(intent)
+    if candidates:
+        intent.context["vision_candidates"] = candidates
 
 
 def _failed_result(instruction: str, exc: BubblegumError, duration_ms: int) -> StepResult:

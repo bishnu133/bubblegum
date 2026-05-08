@@ -24,13 +24,13 @@ pytest tests/unit/test_validate_package.py -q
 pytest tests/unit/test_package_metadata.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_public_api.py -q
-pytest --collect-only -q  # baseline now 497 tests
+pytest --collect-only -q  # baseline now 506 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 497 tests collected
+- pytest collection: 506 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -80,10 +80,10 @@ Notes:
 - OCR resolver refs are synthetic (`ocr://block/<index>`) and are not adapter-executed yet.
 
 
-## Vision abstraction posture for Phase 11H
+## Vision abstraction posture for Phase 11J
 
 - Vision remains disabled by default and screenshot sharing remains privacy-gated.
 - Screenshot-to-vision processing requires explicit opt-in via `process_screenshots_for_vision: true` (default: `false`).
 - Phase 11B adds abstraction + deterministic fake backend only (no bundled real vision model dependency).
 - Screenshot-to-vision candidate helper is fail-safe and returns empty output on disabled/gated/missing/error states.
-- SDK runtime does not auto-wire screenshot processing into resolver context yet; users must manually call the pipeline helper or inject `vision_candidates`.
+- SDK runtime can optionally auto-wire screenshot-to-vision candidate injection, but only when all gates pass (`enable_vision`, `send_screenshots`, `process_screenshots_for_vision`, provider configured) and remains default-off.
