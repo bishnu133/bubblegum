@@ -1,5 +1,6 @@
-"""Vision abstraction primitives (Phase 11B)."""
+"""Vision abstraction primitives (Phase 11B/11F)."""
 
+from .backends import CallableVisionProvider
 from .engine import (
     FakeVisionProvider,
     VisionCandidate,
@@ -9,6 +10,7 @@ from .engine import (
 )
 
 __all__ = [
+    "CallableVisionProvider",
     "VisionCandidate",
     "VisionProvider",
     "FakeVisionProvider",
