@@ -68,6 +68,26 @@ Callable vision enablement guidance (required gates, callable shape, manual inje
 
 This examples folder intentionally does not ship a real vision provider implementation in Phase 11L.
 
+
+## Public vision provider registration example (Phase 11P)
+
+Use this when you want an end-to-end, no-external-dependency example of public vision provider lifecycle setup/teardown with a deterministic callable backend:
+
+- `examples/vision_callable_provider_example.py`
+
+The example shows:
+- public setup with `configure_vision_provider(...)`
+- required gates all enabled:
+  - `grounding.enable_vision: true`
+  - `privacy.send_screenshots: true`
+  - `privacy.process_screenshots_for_vision: true`
+- deterministic callable signature `(image_bytes, instruction, context)`
+- deterministic `VisionCandidate`/`dict` candidate output
+- teardown with `clear_vision_provider()` in `finally`
+- note that `vision://...` refs are synthetic/non-executable
+
+It intentionally avoids real OpenAI/Anthropic/Ollama provider dependencies and does not log/store raw screenshot bytes.
+
 ## Troubleshooting
 
 - **Dependency install blocked (proxy/network):** If `pip install -e ".[...]"` fails (for example due to proxy restrictions), configure your proxy/index access first, then retry.
