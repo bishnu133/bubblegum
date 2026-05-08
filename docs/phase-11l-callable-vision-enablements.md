@@ -143,6 +143,48 @@ Phase 11L policy remains: screenshot-derived candidate injection is allowed only
 
 ---
 
+
+## Real OpenAI Vision manual usage (optional; docs/example only)
+
+Reference example:
+- `examples/openai_vision_provider_manual_example.py`
+
+Setup summary:
+- Install OpenAI SDK manually (not bundled by Bubblegum base install):
+  - `python -m pip install openai`
+- Export API key:
+  - `OPENAI_API_KEY=...`
+- Configure required gates:
+
+```yaml
+grounding:
+  enable_vision: true
+privacy:
+  send_screenshots: true
+  process_screenshots_for_vision: true
+```
+
+Registration/teardown pattern:
+
+```python
+from bubblegum import configure_vision_provider, clear_vision_provider
+from bubblegum.core.vision.backends.openai import OpenAIVisionProvider
+
+configure_vision_provider(
+    OpenAIVisionProvider(model="gpt-4.1-mini", timeout=20.0, create_client=True)
+)
+try:
+    # run your SDK flow in a real app session
+    ...
+finally:
+    clear_vision_provider()
+```
+
+Safety constraints:
+- Do not log/persist raw screenshot bytes.
+- `vision://...` refs remain synthetic/non-executable metadata.
+- Keep this path manual/optional; no network unit tests/benchmarks are added in this phase.
+
 ## Synthetic `vision://` references limitation
 
 `VisionModelResolver` emits synthetic refs like `vision://target/<index>`.
