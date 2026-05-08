@@ -1,0 +1,61 @@
+name: Publish Readiness Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish-readiness:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build/check/test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install build twine
+
+      - name: Validate package (default)
+        run: python scripts/validate_package.py
+
+      - name: Validate package (strict release gate)
+        run: python scripts/validate_package.py --strict
+
+      - name: Build distribution artifacts
+        run: python -m build
+
+      - name: Twine metadata/README rendering check
+        run: python -m twine check dist/*
+
+      - name: Benchmark static validation
+        run: python scripts/run_benchmarks.py
+
+      - name: Benchmark execute validation
+        run: python scripts/run_benchmarks.py --execute
+
+      - name: Package metadata tests
+        run: pytest tests/unit/test_package_metadata.py -q
+
+      - name: Packaging extras tests
+        run: pytest tests/unit/test_packaging_extras.py -q
+
+      - name: Public API tests
+        run: pytest tests/unit/test_public_api.py -q
+
+      - name: Pytest collection check
+        run: pytest --collect-only -q
+
+      - name: Upload distribution artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-artifacts
+          path: dist/
+          if-no-files-found: error
