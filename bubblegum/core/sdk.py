@@ -35,6 +35,7 @@ Phase 3 — record_success() / record_failure() wired into act() and recover()
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
 from datetime import datetime, timezone
@@ -101,6 +102,37 @@ def _set_vision_provider_for_testing(provider: VisionProvider | None) -> None:
     """Internal test hook for wiring an optional runtime vision provider."""
     global _vision_provider
     _vision_provider = provider
+
+
+def _validate_vision_provider(provider: VisionProvider) -> None:
+    detect_targets = getattr(provider, "detect_targets", None)
+    if not callable(detect_targets):
+        raise TypeError("Vision provider must define callable detect_targets(image_bytes, instruction, context=None).")
+
+    signature = inspect.signature(detect_targets)
+    params = list(signature.parameters.values())
+    positional = [
+        p
+        for p in params
+        if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    has_varargs = any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in params)
+
+    if len(positional) < 2 and not has_varargs:
+        raise ValueError("Vision provider detect_targets must accept image_bytes and instruction parameters.")
+
+
+def configure_vision_provider(provider: VisionProvider) -> None:
+    """Register a runtime vision provider used by optional screenshot-to-vision wiring."""
+    _validate_vision_provider(provider)
+    global _vision_provider
+    _vision_provider = provider
+
+
+def clear_vision_provider() -> None:
+    """Clear the registered runtime vision provider. Safe to call repeatedly."""
+    global _vision_provider
+    _vision_provider = None
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,15 @@ Public MVP API re-exports:
 - configure_runtime
 """
 
-from bubblegum.core.sdk import act, configure_runtime, extract, recover, verify
+from bubblegum.core.sdk import (
+    act,
+    clear_vision_provider,
+    configure_runtime,
+    configure_vision_provider,
+    extract,
+    recover,
+    verify,
+)
 
 __all__ = [
     "act",
@@ -16,6 +24,8 @@ __all__ = [
     "extract",
     "recover",
     "configure_runtime",
+    "configure_vision_provider",
+    "clear_vision_provider",
     "__version__",
 ]
 

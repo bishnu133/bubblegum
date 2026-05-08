@@ -246,6 +246,26 @@ For a complete callable vision enablement guide (gates, output shape, troublesho
 
 - `docs/phase-11l-callable-vision-enablements.md`
 
+#### Phase 11N public provider lifecycle API
+
+Bubblegum now exposes a minimal public runtime lifecycle API for optional vision wiring:
+
+```python
+from bubblegum import configure_vision_provider, clear_vision_provider
+from bubblegum.core.vision.backends.callable import CallableVisionProvider
+
+configure_vision_provider(CallableVisionProvider(my_vision_callable))
+# ... run steps ...
+clear_vision_provider()  # idempotent reset
+```
+
+Guardrails remain unchanged:
+- Registration does not request screenshots or invoke providers by itself.
+- Provider invocation remains default-off and requires all gates:
+  `enable_vision`, `send_screenshots`, `process_screenshots_for_vision`, and registered provider.
+- Manual `vision_candidates` still take precedence over provider output.
+- Provider exceptions remain fail-safe (no hard grounding crash from provider errors).
+
 ---
 
 ### Optional vision callable backend (no bundled vision model dependency)
