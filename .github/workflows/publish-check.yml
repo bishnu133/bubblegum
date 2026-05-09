@@ -28,6 +28,9 @@ jobs:
       - name: Validate package (strict release gate)
         run: python scripts/validate_package.py --strict
 
+      - name: Clean build artifacts
+        run: rm -rf dist build *.egg-info
+
       - name: Build distribution artifacts
         run: python -m build
 

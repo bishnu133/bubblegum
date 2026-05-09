@@ -17,6 +17,7 @@ python -m pip install -e ".[test]"
 python -m pip install build
 python scripts/validate_package.py
 python scripts/validate_package.py --strict
+rm -rf dist build *.egg-info  # avoids stale artifacts from prior builds
 python -m build
 python scripts/run_benchmarks.py
 python scripts/run_benchmarks.py --execute
