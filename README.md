@@ -216,6 +216,16 @@ For hybrid web + mobile usage patterns (selector-first + natural-language fallba
 For callable vision provider lifecycle setup/teardown with required privacy gates, see `examples/vision_callable_provider_example.py` and docs in `docs/phase-11l-callable-vision-enablements.md`.
 
 
+
+
+Adoption/docs MVP links:
+- Adoption guide: `docs/adoption.md`
+- Web natural-language quickstart: `examples/web_nl_quickstart.py`
+- OCR callable hydration pattern: `examples/ocr_callable_hydration_example.py`
+- Report artifacts example: `examples/report_artifacts_example.py`
+- Pytest plugin usage: `docs/pytest-plugin.md`
+- CI usage snippet: `docs/ci.md`
+
 Distribution posture note:
 - Current distribution path is GitHub releases (latest pre-release: `v0.0.3-alpha`).
 - PyPI/TestPyPI publishing is intentionally deferred until a later explicit release phase.
