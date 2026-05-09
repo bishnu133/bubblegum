@@ -32,6 +32,17 @@ def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _safe_diag(diagnostics: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in diagnostics.items():
+        if key in _UNSAFE_METADATA_KEYS:
+            continue
+        if key in {"hierarchy_xml", "a11y_snapshot", "candidate_dump", "candidates"}:
+            continue
+        out[key] = value
+    return out
+
+
 def _pick_text(metadata: dict[str, Any], *keys: str) -> str | None:
     for key in keys:
         value = metadata.get(key)
@@ -123,7 +134,7 @@ class VisualRefHydrator:
                 status="hydrated",
                 target=hydrated_target,
                 reason="hydrated_text_ref",
-                diagnostics={"scheme": "ocr", "strategy": "text"},
+                diagnostics={"source": "ocr", "strategy": "text", "channel": intent.channel},
                 original_ref=ref,
                 hydrated_ref=hydrated_target.ref,
             )
@@ -151,7 +162,7 @@ class VisualRefHydrator:
                 status="hydrated",
                 target=hydrated_target,
                 reason="hydrated_visual_ref",
-                diagnostics={"scheme": "vision", "strategy": strategy},
+                diagnostics={"source": "vision", "strategy": strategy, "channel": intent.channel},
                 original_ref=ref,
                 hydrated_ref=hydrated_target.ref,
             )
@@ -228,7 +239,7 @@ class VisualRefHydrator:
                     status="hydrated",
                     target=hydrated_target,
                     reason="hydrated_mobile_visual_ref",
-                    diagnostics={"scheme": source, "strategy": strategy, "match_attr": xml_attr},
+                    diagnostics={"source": source, "strategy": strategy, "match_field": xml_attr, "channel": intent.channel},
                     original_ref=ref,
                     hydrated_ref=hydrated_ref,
                 )
@@ -237,7 +248,12 @@ class VisualRefHydrator:
                     status="not_hydrated",
                     target=None,
                     reason="mobile_visual_hydration_ambiguous_match",
-                    diagnostics={"source": source, "match_attr": xml_attr, "matches": len(matches)},
+                    diagnostics={
+                        "source": source,
+                        "match_field": xml_attr,
+                        "match_count": len(matches),
+                        "channel": intent.channel,
+                    },
                     original_ref=ref,
                     hydrated_ref=None,
                 )
@@ -246,7 +262,7 @@ class VisualRefHydrator:
             status="not_hydrated",
             target=None,
             reason="mobile_visual_hydration_no_match",
-            diagnostics={"source": source},
+            diagnostics={"source": source, "match_count": 0, "channel": intent.channel},
             original_ref=ref,
             hydrated_ref=None,
         )
@@ -256,7 +272,7 @@ class VisualRefHydrator:
             status="not_hydrated",
             target=None,
             reason="unsupported_visual_ref_hydration",
-            diagnostics={"scheme": scheme},
+            diagnostics={"source": scheme},
             original_ref=ref,
             hydrated_ref=None,
         )
@@ -280,4 +296,4 @@ class VisualRefHydrator:
                 "hydration_confidence": hydration_confidence,
             }
         )
-        return target.model_copy(update={"ref": hydrated_ref, "metadata": enriched_metadata})
+        return target.model_copy(update={"ref": hydrated_ref, "metadata": _safe_metadata(enriched_metadata)})

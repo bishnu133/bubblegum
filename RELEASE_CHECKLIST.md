@@ -29,13 +29,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 567 tests
+pytest --collect-only -q  # baseline now 574 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 567 tests collected
+- pytest collection: 574 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -194,3 +194,10 @@ Policy notes:
 - Mobile visual hydration remains fail-safe/deferred.
 - No bbox proximity or center-click fallback is enabled.
 - Phase 13K extends deterministic mobile hydration via hierarchy XML exact matching (`text` -> `content-desc` -> `resource-id`) with stable fail-safe reasons for no hierarchy/invalid hierarchy/no-match/ambiguous/unsupported metadata.
+
+
+## Hydration diagnostics posture (Phase 13M)
+
+- Hydration diagnostics surfaced in SDK result paths must remain non-sensitive.
+- Never include hierarchy XML, snapshots, screenshot/image bytes, base64, raw payloads, provider request/response bodies, secrets, or candidate dumps.
+- Allowed hydration fields: status/reason/original_ref/hydrated_ref/channel/source/strategy and match_field/match_count (only where applicable).
