@@ -32,9 +32,10 @@ See: `examples/hybrid_web_mobile_example.py`.
 
 Use direct NL mode after fallback/hybrid prove stable for your app:
 
-- bias to deterministic-first execution behavior
-- keep report artifact generation on every pipeline run
-- gate cost-sensitive provider flows with config and privacy controls
+- keep deterministic-first principles where possible, while allowing configured fallback tiers
+- understand that resolver/fallback paths depend on runtime config, cost level, provider setup, and privacy gates
+- keep report artifact generation on every pipeline run for observability
+- gate cost-sensitive provider flows with explicit config and privacy controls
 
 See: `examples/web_nl_quickstart.py`.
 

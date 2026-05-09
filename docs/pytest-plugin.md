@@ -42,3 +42,11 @@ async def test_checkout_smoke(page):
 - HTML report: readable test session summary + step traces.
 - JSON report: structured output for analytics and downstream ingestion.
 - Hydration diagnostics/analytics fields are sanitized for reporting.
+
+
+## Additional available/reserved flags
+
+- `--bubblegum-ai` — available/reserved for future AI-related pytest behavior toggles.
+- `--bubblegum-memory` — available/reserved for future memory-related pytest behavior toggles.
+
+These flags are currently optional and are not required for report generation flows above.
