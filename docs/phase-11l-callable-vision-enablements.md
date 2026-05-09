@@ -239,6 +239,7 @@ Current MVP behavior is conservative and fail-safe:
 - hydration does not request new screenshots
 - hydration does not call providers
 - no bbox center-click fallback is performed by default
+- mobile deterministic hydration now supports hierarchy XML exact matching by `text`, `content-desc`, and `resource-id` (in that priority), producing Appium-executable JSON XPath refs when exactly one match exists
 - unresolved synthetic visual refs fail safe with clear non-sensitive diagnostics
 
 ---

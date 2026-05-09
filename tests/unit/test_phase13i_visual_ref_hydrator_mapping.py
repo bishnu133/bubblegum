@@ -41,11 +41,11 @@ def test_vision_visual_ref_label_only_hydrates_to_text_ref_web():
     assert out.target.metadata["hydration_strategy"] == "text"
 
 
-def test_visual_ref_on_mobile_remains_not_hydrated():
+def test_visual_ref_on_mobile_without_hierarchy_remains_not_hydrated():
     target = ResolvedTarget(ref="vision://target/0", confidence=0.8, resolver_name="vision_model", metadata={"label": "Login"})
     out = VisualRefHydrator().hydrate(target=target, intent=_intent("mobile"))
     assert out.status == "not_hydrated"
-    assert out.reason == "mobile_visual_hydration_not_supported"
+    assert out.reason == "mobile_visual_hydration_no_hierarchy"
 
 
 def test_hydration_metadata_and_diagnostics_are_sanitized():
