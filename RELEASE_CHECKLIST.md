@@ -225,6 +225,7 @@ python -m py_compile examples/ocr_callable_hydration_example.py
 python -m py_compile examples/report_artifacts_example.py
 python -m py_compile examples/openai_vision_provider_manual_example.py
 python examples/report_artifacts_example.py
+python examples/ocr_callable_hydration_example.py
 ```
 
 Notes:

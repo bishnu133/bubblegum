@@ -21,6 +21,17 @@ pip install -e ".[all]"
 - `playwright_quickstart.py` — deterministic selector-first local smoke (self-contained HTML).
 - `web_nl_quickstart.py` — local natural-language flow (`act` + `verify` + `extract`) with report output.
 
+Run commands:
+
+```bash
+# Prerequisite for web_nl_quickstart.py
+pip install -e ".[web]"
+python -m playwright install chromium
+
+# Run local natural-language Playwright quickstart
+python examples/web_nl_quickstart.py
+```
+
 ## Mobile
 
 - `appium_quickstart.py` — Android/Appium template (real infrastructure required).
@@ -31,13 +42,27 @@ pip install -e ".[all]"
 
 ## OCR / Vision
 
-- `ocr_callable_hydration_example.py` — deterministic fake OCR callable + hydration metadata pattern.
-- `vision_callable_provider_example.py` — callable vision provider lifecycle example.
-- `openai_vision_provider_manual_example.py` — optional/manual OpenAI provider setup.
+- `ocr_callable_hydration_example.py` — deterministic fake OCR callable + hydration metadata pattern (no external OCR/provider/network required).
+- `vision_callable_provider_example.py` — callable vision provider lifecycle example (infrastructure/manual integration pattern).
+- `openai_vision_provider_manual_example.py` — optional/manual OpenAI provider setup (`OPENAI_API_KEY` + user-installed SDK required).
+
+Run commands:
+
+```bash
+# No external OCR/provider/network required
+python examples/ocr_callable_hydration_example.py
+```
 
 ## Reporting
 
 - `report_artifacts_example.py` — writes JSON + HTML reports from sample `StepResult` data.
+
+Run commands:
+
+```bash
+# No browser/device/provider required
+python examples/report_artifacts_example.py
+```
 
 ## Pytest / CI docs
 
