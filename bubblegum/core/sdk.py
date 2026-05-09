@@ -190,7 +190,7 @@ async def act(
         duration_ms = int((time.monotonic() - t0) * 1000)
         return _failed_result(instruction, exc, duration_ms)
 
-    target, hydration_error = _maybe_hydrate_visual_target(intent=intent, target=target)
+    target, hydration_error, _hydration_meta = _maybe_hydrate_visual_target(intent=intent, target=target)
     if hydration_error is not None:
         duration_ms = int((time.monotonic() - t0) * 1000)
         return StepResult(
@@ -362,7 +362,7 @@ async def extract(
         duration_ms = int((time.monotonic() - t0) * 1000)
         return _failed_result(instruction, exc, duration_ms)
 
-    target, hydration_error = _maybe_hydrate_visual_target(intent=intent, target=target)
+    target, hydration_error, _hydration_meta = _maybe_hydrate_visual_target(intent=intent, target=target)
     if hydration_error is not None:
         duration_ms = int((time.monotonic() - t0) * 1000)
         return StepResult(
@@ -711,19 +711,60 @@ async def _capture_screenshot(adapter, label: str) -> list[ArtifactRef]:
         return []
 
 
-def _maybe_hydrate_visual_target(*, intent: StepIntent, target: ResolvedTarget) -> tuple[ResolvedTarget, ErrorInfo | None]:
+def _hydration_surface_metadata(*, intent: StepIntent, hydration) -> dict[str, Any]:
+    diagnostics = dict(getattr(hydration, "diagnostics", {}) or {})
+    blocked = {
+        "hierarchy_xml",
+        "a11y_snapshot",
+        "screenshot",
+        "screenshot_bytes",
+        "image_bytes",
+        "base64",
+        "raw_payload",
+        "provider_request",
+        "provider_response",
+        "api_key",
+        "secret",
+        "secrets",
+        "candidates",
+        "candidate_dump",
+    }
+    diagnostics = {k: v for k, v in diagnostics.items() if k not in blocked}
+    out: dict[str, Any] = {
+        "hydration_status": hydration.status,
+        "hydration_reason": hydration.reason,
+        "hydration_original_ref": hydration.original_ref,
+        "hydration_hydrated_ref": hydration.hydrated_ref,
+        "hydration_channel": intent.channel,
+    }
+    if isinstance(diagnostics.get("strategy"), str):
+        out["hydration_strategy"] = diagnostics["strategy"]
+    if isinstance(diagnostics.get("source"), str):
+        out["hydration_source"] = diagnostics["source"]
+    if isinstance(diagnostics.get("match_field"), str):
+        out["match_field"] = diagnostics["match_field"]
+    if hydration.reason in {"mobile_visual_hydration_ambiguous_match", "mobile_visual_hydration_no_match"}:
+        if isinstance(diagnostics.get("match_count"), int):
+            out["match_count"] = diagnostics["match_count"]
+    return out
+
+
+def _maybe_hydrate_visual_target(*, intent: StepIntent, target: ResolvedTarget) -> tuple[ResolvedTarget, ErrorInfo | None, dict[str, Any] | None]:
     if not is_visual_ref(target.ref):
-        return target, None
+        return target, None, None
 
     hydration = _visual_ref_hydrator.hydrate(target=target, intent=intent)
+    hydration_meta = _hydration_surface_metadata(intent=intent, hydration=hydration)
     if hydration.status == "hydrated" and hydration.target is not None:
-        return hydration.target, None
+        enriched_target = hydration.target.model_copy(update={"metadata": {**hydration.target.metadata, **hydration_meta}})
+        return enriched_target, None, hydration_meta
 
     return target, ErrorInfo(
         error_type="VisualRefHydrationError",
         message=(
             f"Visual ref hydration failed ({hydration.reason}) for ref {hydration.original_ref!r}. "
-            "Synthetic visual refs are non-executable until deterministically hydrated."
+            "Synthetic visual refs are non-executable until deterministically hydrated. "
+            f"hydration={hydration_meta}"
         ),
         resolver_name=target.resolver_name,
-    )
+    ), hydration_meta
