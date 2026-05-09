@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from typing import Any, Literal
+import xml.etree.ElementTree as ET
 
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 
@@ -48,6 +50,18 @@ def _role_ref(role: str, name: str) -> str:
     return f'role={safe_role}[name="{safe_name}"]'
 
 
+def _xpath_literal(value: str) -> str:
+    if "'" not in value:
+        return f"'{value}'"
+    parts = value.split("'")
+    concat_args = ', "\'", '.join(f"'{p}'" for p in parts)
+    return f"concat({concat_args})"
+
+
+def _xpath_ref_for_attr(attr: str, value: str) -> str:
+    return json.dumps({"by": "xpath", "value": f"//*[@{attr}={_xpath_literal(value)}]"})
+
+
 @dataclass(frozen=True)
 class HydrationResult:
     status: HydrationStatus
@@ -80,17 +94,19 @@ class VisualRefHydrator:
                 hydrated_ref=ref,
             )
 
+        metadata = _safe_metadata(dict(target.metadata))
+
+        if intent.channel == "mobile":
+            return self._hydrate_mobile(target=target, ref=ref, metadata=metadata, intent=intent)
         if intent.channel != "web":
             return HydrationResult(
                 status="not_hydrated",
                 target=None,
-                reason="mobile_visual_hydration_not_supported",
+                reason="unsupported_visual_ref_hydration",
                 diagnostics={"channel": intent.channel},
                 original_ref=ref,
                 hydrated_ref=None,
             )
-
-        metadata = _safe_metadata(dict(target.metadata))
 
         if ref.startswith("ocr://"):
             text = _pick_text(metadata, "matched_text", "text")
@@ -141,6 +157,99 @@ class VisualRefHydrator:
             )
 
         return self._failsafe(ref=ref, scheme="unknown")
+
+    def _hydrate_mobile(
+        self,
+        *,
+        target: ResolvedTarget,
+        ref: str,
+        metadata: dict[str, Any],
+        intent: StepIntent,
+    ) -> HydrationResult:
+        hierarchy_xml = intent.context.get("hierarchy_xml")
+        if not isinstance(hierarchy_xml, str) or not hierarchy_xml.strip():
+            return HydrationResult(
+                status="not_hydrated",
+                target=None,
+                reason="mobile_visual_hydration_no_hierarchy",
+                diagnostics={"channel": intent.channel},
+                original_ref=ref,
+                hydrated_ref=None,
+            )
+
+        if ref.startswith("ocr://"):
+            source = "ocr"
+            lookup = _pick_text(metadata, "matched_text", "text")
+        elif ref.startswith("vision://"):
+            source = "vision"
+            lookup = _pick_text(metadata, "matched_text", "label", "text")
+        else:
+            return self._failsafe(ref=ref, scheme="unknown")
+
+        if not lookup:
+            return HydrationResult(
+                status="not_hydrated",
+                target=None,
+                reason="mobile_visual_hydration_unsupported_metadata",
+                diagnostics={"source": source},
+                original_ref=ref,
+                hydrated_ref=None,
+            )
+
+        try:
+            root = ET.fromstring(hierarchy_xml)
+        except ET.ParseError:
+            return HydrationResult(
+                status="not_hydrated",
+                target=None,
+                reason="mobile_visual_hydration_invalid_hierarchy",
+                diagnostics={"source": source},
+                original_ref=ref,
+                hydrated_ref=None,
+            )
+
+        priorities: list[tuple[str, str, str]] = [
+            ("text", "text", "mobile_text"),
+            ("content-desc", "content-desc", "mobile_content_desc"),
+            ("resource-id", "resource-id", "mobile_resource_id"),
+        ]
+        for xml_attr, xpath_attr, strategy in priorities:
+            matches = [el for el in root.iter() if (el.get(xml_attr) or "").strip() == lookup]
+            if len(matches) == 1:
+                hydrated_ref = _xpath_ref_for_attr(xpath_attr, lookup)
+                hydrated_target = self._hydrated_target(
+                    target=target,
+                    hydrated_ref=hydrated_ref,
+                    source=source,
+                    strategy=strategy,
+                    metadata=metadata,
+                )
+                return HydrationResult(
+                    status="hydrated",
+                    target=hydrated_target,
+                    reason="hydrated_mobile_visual_ref",
+                    diagnostics={"scheme": source, "strategy": strategy, "match_attr": xml_attr},
+                    original_ref=ref,
+                    hydrated_ref=hydrated_ref,
+                )
+            if len(matches) > 1:
+                return HydrationResult(
+                    status="not_hydrated",
+                    target=None,
+                    reason="mobile_visual_hydration_ambiguous_match",
+                    diagnostics={"source": source, "match_attr": xml_attr, "matches": len(matches)},
+                    original_ref=ref,
+                    hydrated_ref=None,
+                )
+
+        return HydrationResult(
+            status="not_hydrated",
+            target=None,
+            reason="mobile_visual_hydration_no_match",
+            diagnostics={"source": source},
+            original_ref=ref,
+            hydrated_ref=None,
+        )
 
     def _failsafe(self, *, ref: str, scheme: str) -> HydrationResult:
         return HydrationResult(
