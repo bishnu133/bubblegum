@@ -19,6 +19,7 @@ python scripts/validate_package.py
 python scripts/validate_package.py --strict
 rm -rf dist build *.egg-info  # avoids stale artifacts from prior builds
 python -m build
+python -m twine check dist/*
 python scripts/run_benchmarks.py
 python scripts/run_benchmarks.py --execute
 pytest tests/unit/test_phase13g_visual_ref_hydrator.py -q
