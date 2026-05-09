@@ -126,3 +126,41 @@ def test_json_report_redacts_unsafe_hydration_metadata(tmp_path):
     assert "raw_payload" not in md
     assert "provider_response" not in md
     assert "candidate_dump" not in md
+
+
+def test_json_report_includes_hydration_analytics_summary(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="passed",
+            action="Click Login",
+            confidence=0.9,
+            target=ResolvedTarget(
+                ref='text="Login"',
+                confidence=0.9,
+                resolver_name="ocr",
+                metadata={
+                    "hydration_status": "hydrated",
+                    "hydration_source": "ocr",
+                    "hydration_strategy": "text",
+                    "hydration_channel": "web",
+                    "hydration_reason": "hydrated_text_ref",
+                    "hydration_original_ref": "ocr://block/1",
+                },
+            ),
+        ),
+        StepResult(status="failed", action="Submit", confidence=0.4),
+    ]
+
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    hs = payload["analytics"]["hydration_summary"]
+    assert hs["total_events"] == 1
+    assert hs["status_counts"]["hydrated"] == 1
+    assert hs["status_counts"]["not_hydrated"] == 0
+    assert hs["status_counts"]["blocked"] == 0
+    assert hs["by_source"] == {"ocr": 1}
+    assert hs["by_strategy"] == {"text": 1}
+    assert hs["by_channel"] == {"web": 1}
+    assert hs["by_reason"] == {"hydrated_text_ref": 1}
