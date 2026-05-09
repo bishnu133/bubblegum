@@ -243,6 +243,9 @@ Current MVP behavior is conservative and fail-safe:
 - unresolved synthetic visual refs fail safe with clear non-sensitive diagnostics
 - hydration diagnostics are visible at SDK StepResult surface (sanitized hydration metadata) for visual-ref hydration success/failure paths
 - hydration diagnostics remain sanitized: no raw hierarchy XML, screenshots/image bytes, base64/raw payloads, provider request/response bodies, or secrets
+- JSON reports preserve hydration diagnostics when present on `StepResult.target.metadata`.
+- HTML reports show a compact hydration diagnostics section only when hydration metadata exists.
+- Reporting layer applies additional non-leakage guardrails to hydration fields as defense-in-depth.
 
 ---
 

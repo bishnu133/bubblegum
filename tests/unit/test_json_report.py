@@ -71,3 +71,58 @@ def test_empty_results_payload(tmp_path):
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["analytics"]["total"] == 0
     assert payload["results"] == []
+
+
+def test_json_report_preserves_safe_hydration_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    target = ResolvedTarget(
+        ref='text="Login"',
+        confidence=0.9,
+        resolver_name="ocr",
+        metadata={
+            "hydration_status": "hydrated",
+            "hydration_reason": "hydrated_text_ref",
+            "hydration_source": "ocr",
+            "hydration_strategy": "text",
+            "hydration_channel": "web",
+            "hydration_original_ref": "ocr://block/0",
+            "hydration_hydrated_ref": 'text="Login"',
+        },
+    )
+    result = StepResult(status="passed", action="Click Login", target=target, confidence=0.9)
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]
+    assert md["hydration_status"] == "hydrated"
+    assert md["hydration_reason"] == "hydrated_text_ref"
+
+
+def test_json_report_redacts_unsafe_hydration_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    target = ResolvedTarget(
+        ref='text="Login"',
+        confidence=0.9,
+        resolver_name="ocr",
+        metadata={
+            "hydration_status": "not_hydrated",
+            "match_count": 2,
+            "hierarchy_xml": "<root/>",
+            "screenshot_bytes": "abc",
+            "base64": "zzz",
+            "raw_payload": "secret",
+            "provider_response": "body",
+            "candidate_dump": ["x"],
+        },
+    )
+    result = StepResult(status="failed", action="Click Login", target=target, confidence=0.9)
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]
+    assert md["hydration_status"] == "not_hydrated"
+    assert md["match_count"] == "2"
+    assert "hierarchy_xml" not in md
+    assert "screenshot_bytes" not in md
+    assert "base64" not in md
+    assert "raw_payload" not in md
+    assert "provider_response" not in md
+    assert "candidate_dump" not in md

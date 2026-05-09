@@ -177,7 +177,7 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline remains 557 tests
+pytest --collect-only -q  # baseline now 574 tests
 ```
 
 Policy notes:
@@ -201,3 +201,4 @@ Policy notes:
 - Hydration diagnostics surfaced in SDK result paths must remain non-sensitive.
 - Never include hierarchy XML, snapshots, screenshot/image bytes, base64, raw payloads, provider request/response bodies, secrets, or candidate dumps.
 - Allowed hydration fields: status/reason/original_ref/hydrated_ref/channel/source/strategy and match_field/match_count (only where applicable).
+- Reporting layer (JSON/HTML) must apply non-leakage guardrails and never emit hierarchy XML, screenshot/image bytes, base64/raw payloads, provider bodies, secrets, or candidate dumps.

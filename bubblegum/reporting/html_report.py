@@ -44,6 +44,35 @@ _CONF_HIGH   = "#22c55e"   # >= 0.85
 _CONF_MEDIUM = "#f59e0b"   # >= 0.70
 _CONF_LOW    = "#ef4444"   # < 0.70
 
+_SAFE_HYDRATION_FIELDS = (
+    "hydration_status",
+    "hydration_reason",
+    "hydration_source",
+    "hydration_strategy",
+    "hydration_channel",
+    "hydration_original_ref",
+    "hydration_hydrated_ref",
+    "match_field",
+    "match_count",
+)
+
+_UNSAFE_HYDRATION_KEYS = {
+    "hierarchy_xml",
+    "a11y_snapshot",
+    "screenshot",
+    "screenshot_bytes",
+    "image_bytes",
+    "base64",
+    "raw_payload",
+    "provider_body",
+    "provider_request",
+    "provider_response",
+    "secret",
+    "secrets",
+    "candidate_dump",
+    "candidates",
+}
+
 
 def _conf_colour(conf: float) -> str:
     if conf >= 0.85:
@@ -59,6 +88,29 @@ def _badge(text: str, colour: str) -> str:
         f'background:{colour};color:#fff;font-weight:600;font-size:0.78rem;">'
         f'{html.escape(text)}</span>'
     )
+
+
+def safe_hydration_metadata(metadata: dict) -> dict[str, str]:
+    """Return report-safe hydration metadata for JSON/HTML surfaces."""
+    if not isinstance(metadata, dict):
+        return {}
+    if any(key in metadata for key in _UNSAFE_HYDRATION_KEYS):
+        metadata = {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS}
+
+    out: dict[str, str] = {}
+    for key in _SAFE_HYDRATION_FIELDS:
+        value = metadata.get(key)
+        if value is None:
+            continue
+        out[key] = str(value)
+    return out
+
+
+def sanitize_reporting_metadata(metadata: dict) -> dict:
+    """Remove known unsafe fields from report surfaces."""
+    if not isinstance(metadata, dict):
+        return {}
+    return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS}
 
 
 def _screenshot_thumb(path: str) -> str:
@@ -112,6 +164,33 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'</tr>'
             for t in result.traces
         )
+
+    hydration_html = ""
+    hydration = safe_hydration_metadata(result.target.metadata if result.target else {})
+    if hydration:
+        labels = [
+            ("Status", "hydration_status"),
+            ("Reason", "hydration_reason"),
+            ("Source", "hydration_source"),
+            ("Strategy", "hydration_strategy"),
+            ("Channel", "hydration_channel"),
+            ("Original ref", "hydration_original_ref"),
+            ("Hydrated ref", "hydration_hydrated_ref"),
+            ("Match field", "match_field"),
+            ("Match count", "match_count"),
+        ]
+        hydration_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(hydration[key])}</li>'
+            for label, key in labels
+            if key in hydration
+        )
+        hydration_html = (
+            f'<details style="margin-top:8px;">'
+            f'<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Hydration diagnostics</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{hydration_rows}</ul>'
+            f'</details>'
+        )
+    if result.traces:
         traces_html = (
             f'<details style="margin-top:8px;">'
             f'<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Resolver traces ({len(result.traces)})</summary>'
@@ -143,6 +222,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       </div>
       {error_html}
       {screenshot_html}
+      {hydration_html}
       {traces_html}
     </div>
     """
