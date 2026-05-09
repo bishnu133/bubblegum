@@ -232,7 +232,14 @@ Sanitization policy remains strict:
 
 These refs are for resolver/ranking metadata flow only and are **not** adapter-executable selectors.
 
-Any future adapter-executable mapping for vision output requires a separate design/implementation phase.
+Phase 13G introduces a dedicated hydration boundary (`VisualRefHydrator`) between grounding and adapter execution.
+Current MVP behavior is conservative and fail-safe:
+- synthetic visual refs are detected (`vision://...`, `ocr://...`)
+- adapters still do not execute synthetic visual refs directly
+- hydration does not request new screenshots
+- hydration does not call providers
+- no bbox center-click fallback is performed by default
+- unresolved synthetic visual refs fail safe with clear non-sensitive diagnostics
 
 ---
 

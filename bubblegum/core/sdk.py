@@ -44,6 +44,7 @@ from typing import Any
 from bubblegum.core.config import BubblegumConfig
 from bubblegum.core.grounding.engine import GroundingEngine
 from bubblegum.core.grounding.errors import BubblegumError
+from bubblegum.core.grounding.hydrator import VisualRefHydrator, is_visual_ref
 from bubblegum.core.grounding.registry import ResolverRegistry
 from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
 from bubblegum.core.parser import extract_expected, infer_action_type
@@ -54,6 +55,7 @@ from bubblegum.core.schemas import (
     ArtifactRef,
     ErrorInfo,
     ResolvedTarget,
+    StepIntent,
     StepResult,
 )
 from bubblegum.core.validation import make_verification_result, verification_error, verification_status
@@ -73,6 +75,7 @@ _engine = GroundingEngine(
 )
 _memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for record_*
 _vision_provider: VisionProvider | None = None
+_visual_ref_hydrator = VisualRefHydrator()
 
 
 def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
@@ -186,6 +189,19 @@ async def act(
     except BubblegumError as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         return _failed_result(instruction, exc, duration_ms)
+
+    target, hydration_error = _maybe_hydrate_visual_target(intent=intent, target=target)
+    if hydration_error is not None:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            status="failed",
+            action=instruction,
+            target=None,
+            confidence=0.0,
+            duration_ms=duration_ms,
+            traces=traces,
+            error=hydration_error,
+        )
 
     # 4. Build ActionPlan and execute
     plan = ActionPlan(
@@ -345,6 +361,19 @@ async def extract(
     except BubblegumError as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         return _failed_result(instruction, exc, duration_ms)
+
+    target, hydration_error = _maybe_hydrate_visual_target(intent=intent, target=target)
+    if hydration_error is not None:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            status="failed",
+            action=instruction,
+            target=None,
+            confidence=0.0,
+            duration_ms=duration_ms,
+            traces=traces,
+            error=hydration_error,
+        )
 
     # Extract text content from the resolved element ref
     timeout_ms = options.timeout_ms
@@ -680,3 +709,21 @@ async def _capture_screenshot(adapter, label: str) -> list[ArtifactRef]:
     except Exception as exc:
         logger.warning("Screenshot capture failed after %r: %s", label, exc)
         return []
+
+
+def _maybe_hydrate_visual_target(*, intent: StepIntent, target: ResolvedTarget) -> tuple[ResolvedTarget, ErrorInfo | None]:
+    if not is_visual_ref(target.ref):
+        return target, None
+
+    hydration = _visual_ref_hydrator.hydrate(target=target, intent=intent)
+    if hydration.status == "hydrated" and hydration.target is not None:
+        return hydration.target, None
+
+    return target, ErrorInfo(
+        error_type="VisualRefHydrationError",
+        message=(
+            f"Visual ref hydration failed ({hydration.reason}) for ref {hydration.original_ref!r}. "
+            "Synthetic visual refs are non-executable until deterministically hydrated."
+        ),
+        resolver_name=target.resolver_name,
+    )

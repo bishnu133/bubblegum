@@ -29,13 +29,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 539 tests
+pytest --collect-only -q  # baseline now 548 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 539 tests collected
+- pytest collection: 548 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -93,6 +93,8 @@ Notes:
 - Screenshot-to-vision candidate helper is fail-safe and returns empty output on disabled/gated/missing/error states.
 - SDK runtime can optionally auto-wire screenshot-to-vision candidate injection, but only when all gates pass (`enable_vision`, `send_screenshots`, `process_screenshots_for_vision`, provider configured) and remains default-off.
 - Vision resolver refs are synthetic (`vision://target/<index>`) and are non-executable placeholders.
+- Phase 13G introduces a VisualRefHydrator SDK boundary so synthetic visual refs are never sent directly to adapters unless deterministically hydrated.
+- No bbox center-click fallback is enabled by default; unsupported visual-ref hydration fails safe.
 - Provider-based screenshot vision additionally requires `max_cost_level: high`; low/medium cost levels fail-safe skip provider invocation.
 
 ## Phase 11L docs/readiness note
@@ -175,7 +177,7 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline remains 539 tests
+pytest --collect-only -q  # baseline remains 548 tests
 ```
 
 Policy notes:
