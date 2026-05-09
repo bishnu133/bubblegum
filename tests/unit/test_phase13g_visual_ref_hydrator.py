@@ -32,7 +32,7 @@ def test_non_visual_target_returns_noop_and_unmutated_target():
     assert out.hydrated_ref == target.ref
 
 
-def test_visual_target_returns_failsafe_not_hydrated_with_stable_reason():
+def test_visual_target_without_mapping_returns_failsafe_not_hydrated_with_stable_reason():
     target = ResolvedTarget(ref="ocr://block/0", confidence=0.8, resolver_name="ocr", metadata={"bbox": [1, 2, 3, 4]})
     out = VisualRefHydrator().hydrate(target=target, intent=_intent())
 

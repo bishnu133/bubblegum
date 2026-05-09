@@ -360,6 +360,7 @@ Recommended lifecycle pattern:
 
 Safety reminders:
 - Keep `vision://...` refs treated as synthetic/non-executable metadata only.
+- Phase 13I note: deterministic web-only hydration may convert supported synthetic visual refs into executable web `role=...` / `text="..."` refs when sufficient metadata exists; no bbox/center-click fallback and mobile hydration remains deferred.
 - Do not log or persist raw screenshot bytes.
 - Real OpenAI/Anthropic/Ollama provider integrations remain deferred.
 
