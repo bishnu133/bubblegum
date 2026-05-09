@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+
+## v0.0.3-alpha
+- Release scope finalized for GitHub pre-release `v0.0.3-alpha` with package version `0.0.3a0` (PEP 440).
+- Phase 13 feature track included: VisualRefHydrator safe boundary/fail-safe behavior, deterministic web hydration (OCR/vision metadata), deterministic mobile hydration (`hierarchy_xml` text/content-desc/resource-id), sanitized SDK hydration diagnostics, JSON/HTML hydration diagnostics reporting, and hydration analytics summary.
+- Publish-check hygiene from Phase 13C/13E retained for clean artifact verification (`rm -rf dist build *.egg-info` before `python -m build`).
+- No runtime behavior changes, no public API breaking changes, no dependency changes in this release-prep slice.
+- PyPI/TestPyPI publishing remains deferred; release target remains GitHub pre-release only.
+
 - Phase 13Q hydration diagnostics analytics summary MVP: reporting analytics now include `hydration_summary` aggregate categorical counts (`total_events`, status/source/strategy/channel/reason) derived from report-safe hydration metadata only. Excludes refs and raw/sensitive payload-bearing fields. Reporting-only scope with no SDK/public-API/runtime/adapter/resolver/provider/dependency/version changes.
 - Phase 13O hydration diagnostics reporting MVP: JSON reporting preserves sanitized hydration metadata with report-layer non-leakage guardrails; HTML reporting now renders a compact per-step hydration diagnostics section only when hydration metadata exists. Reporting-only scope with no SDK/public-API/runtime/adapter/resolver/provider/dependency/version changes.
 - Phase 13M hydration diagnostics visibility MVP: SDK hydration boundary for visual refs now surfaces stable non-sensitive hydration metadata (status/reason/original_ref/hydrated_ref/channel/source/strategy plus match_field and match_count for ambiguous/no-match cases) on StepResult-facing outputs without changing hydration decisions or execution behavior. Sanitization excludes hierarchy XML, screenshots/bytes, base64/raw payloads, secrets, and candidate dumps. No public API/adapter/resolver/provider/dependency/version changes.
