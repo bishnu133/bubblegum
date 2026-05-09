@@ -29,13 +29,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 548 tests
+pytest --collect-only -q  # baseline now 557 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 548 tests collected
+- pytest collection: 557 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -177,10 +177,19 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline remains 548 tests
+pytest --collect-only -q  # baseline remains 557 tests
 ```
 
 Policy notes:
 - Prefer trusted publishing (GitHub OIDC) in a later explicit publishing phase.
 - Avoid manual token-based publishing wherever possible.
 - Actual TestPyPI publish requires a separate, explicit future phase.
+
+
+## Phase 13I deterministic hydration checks
+
+- Phase 13I adds deterministic web-only visual-ref hydration in SDK boundary via `VisualRefHydrator`.
+- OCR synthetic refs may hydrate to executable web text refs when text metadata is present.
+- Vision synthetic refs may hydrate to executable web role+name or text refs when deterministic metadata is present.
+- Mobile visual hydration remains fail-safe/deferred.
+- No bbox proximity or center-click fallback is enabled.

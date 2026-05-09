@@ -80,3 +80,78 @@ def test_non_visual_execution_path_remains_unchanged(monkeypatch):
     assert result.status == "passed"
     assert len(adapter.executed_targets) == 1
     assert adapter.executed_targets[0].ref == 'text="Login"'
+
+
+def test_sdk_executes_hydrated_ocr_ref_not_original(monkeypatch):
+    sdk, adapter = _patch_sdk(monkeypatch, ref="ocr://block/0", resolver_name="ocr")
+
+    class _Hydrator:
+        def hydrate(self, *, target, intent):
+            return SimpleNamespace(
+                status="hydrated",
+                target=ResolvedTarget(
+                    ref='text="Login"',
+                    confidence=target.confidence,
+                    resolver_name=target.resolver_name,
+                    metadata={"hydrated_from_ref": target.ref, "hydration_strategy": "text"},
+                ),
+                reason="hydrated_text_ref",
+                diagnostics={},
+                original_ref=target.ref,
+                hydrated_ref='text="Login"',
+            )
+
+    monkeypatch.setattr(sdk, "_visual_ref_hydrator", _Hydrator())
+    result = _run_async(sdk.act("Click Login", page=object()))
+    assert result.status == "passed"
+    assert adapter.executed_targets[0].ref == 'text="Login"'
+
+
+def test_sdk_executes_hydrated_vision_ref_not_original(monkeypatch):
+    sdk, adapter = _patch_sdk(monkeypatch, ref="vision://target/0", resolver_name="vision_model")
+
+    class _Hydrator:
+        def hydrate(self, *, target, intent):
+            return SimpleNamespace(
+                status="hydrated",
+                target=ResolvedTarget(
+                    ref='role=button[name="Login"]',
+                    confidence=target.confidence,
+                    resolver_name=target.resolver_name,
+                    metadata={"hydrated_from_ref": target.ref, "hydration_strategy": "role_text"},
+                ),
+                reason="hydrated_visual_ref",
+                diagnostics={},
+                original_ref=target.ref,
+                hydrated_ref='role=button[name="Login"]',
+            )
+
+    monkeypatch.setattr(sdk, "_visual_ref_hydrator", _Hydrator())
+    result = _run_async(sdk.act("Click Login", page=object()))
+    assert result.status == "passed"
+    assert adapter.executed_targets[0].ref == 'role=button[name="Login"]'
+
+
+def test_sdk_extract_uses_hydrated_ref(monkeypatch):
+    sdk, adapter = _patch_sdk(monkeypatch, ref="ocr://block/0", resolver_name="ocr")
+
+    class _Hydrator:
+        def hydrate(self, *, target, intent):
+            return SimpleNamespace(
+                status="hydrated",
+                target=ResolvedTarget(
+                    ref='text="Login"',
+                    confidence=target.confidence,
+                    resolver_name=target.resolver_name,
+                    metadata={"hydrated_from_ref": target.ref, "hydration_strategy": "text"},
+                ),
+                reason="hydrated_text_ref",
+                diagnostics={},
+                original_ref=target.ref,
+                hydrated_ref='text="Login"',
+            )
+
+    monkeypatch.setattr(sdk, "_visual_ref_hydrator", _Hydrator())
+    result = _run_async(sdk.extract("Get Login text", channel="mobile", driver=object()))
+    assert result.status == "passed"
+    assert adapter.executed_targets[-1].ref == 'text="Login"'
