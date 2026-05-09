@@ -246,6 +246,8 @@ Current MVP behavior is conservative and fail-safe:
 - JSON reports preserve hydration diagnostics when present on `StepResult.target.metadata`.
 - HTML reports show a compact hydration diagnostics section only when hydration metadata exists.
 - Reporting layer applies additional non-leakage guardrails to hydration fields as defense-in-depth.
+- Report analytics may include aggregate hydration diagnostics summary (`hydration_summary`) using categorical counts only (status/source/strategy/channel/reason).
+- Hydration analytics must exclude refs (`hydration_original_ref`/`hydration_hydrated_ref`) and all raw/sensitive payload-bearing fields.
 
 ---
 

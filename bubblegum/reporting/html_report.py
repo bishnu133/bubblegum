@@ -25,6 +25,7 @@ from __future__ import annotations
 import base64
 import html
 from collections import Counter
+from typing import Any
 from pathlib import Path
 from typing import Sequence
 
@@ -370,6 +371,11 @@ def _summary_card(label: str, count: int, colour: str) -> str:
     )
 
 
+def _count_categorical_field(counter: Counter[str], value: Any) -> None:
+    if isinstance(value, str) and value:
+        counter[value] += 1
+
+
 def build_report_analytics(results: Sequence[StepResult]) -> dict:
     """
     Build aggregate analytics for a list of StepResult objects.
@@ -380,6 +386,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
       - resolver_win_counts
       - confidence_summary {count,min,max,average,buckets}
       - error_type_counts
+      - hydration_summary {total_events,status_counts,by_source,by_strategy,by_channel,by_reason}
     """
     status_counts = Counter(
         {"passed": 0, "recovered": 0, "failed": 0, "skipped": 0}
@@ -389,6 +396,13 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
 
     confidences: list[float] = []
     confidence_buckets = {"high": 0, "medium": 0, "low": 0}
+
+    hydration_status_counts: Counter[str] = Counter({"hydrated": 0, "not_hydrated": 0, "blocked": 0})
+    hydration_by_source: Counter[str] = Counter()
+    hydration_by_strategy: Counter[str] = Counter()
+    hydration_by_channel: Counter[str] = Counter()
+    hydration_by_reason: Counter[str] = Counter()
+    hydration_total_events = 0
 
     for result in results:
         status_counts[result.status] += 1
@@ -408,6 +422,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         else:
             confidence_buckets["low"] += 1
 
+        metadata = result.target.metadata if result.target else {}
+        hydration = safe_hydration_metadata(metadata)
+        status = hydration.get("hydration_status")
+        if isinstance(status, str) and status:
+            hydration_total_events += 1
+            if status in hydration_status_counts:
+                hydration_status_counts[status] += 1
+            _count_categorical_field(hydration_by_source, hydration.get("hydration_source"))
+            _count_categorical_field(hydration_by_strategy, hydration.get("hydration_strategy"))
+            _count_categorical_field(hydration_by_channel, hydration.get("hydration_channel"))
+            _count_categorical_field(hydration_by_reason, hydration.get("hydration_reason"))
+
     conf_count = len(confidences)
     confidence_summary = {
         "count": conf_count,
@@ -416,6 +442,14 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "average": (sum(confidences) / conf_count) if conf_count else None,
         "buckets": confidence_buckets,
     }
+    hydration_summary = {
+        "total_events": hydration_total_events,
+        "status_counts": dict(hydration_status_counts),
+        "by_source": dict(hydration_by_source),
+        "by_strategy": dict(hydration_by_strategy),
+        "by_channel": dict(hydration_by_channel),
+        "by_reason": dict(hydration_by_reason),
+    }
 
     return {
         "total": len(results),
@@ -423,4 +457,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "resolver_win_counts": dict(resolver_win_counts),
         "confidence_summary": confidence_summary,
         "error_type_counts": dict(error_type_counts),
+        "hydration_summary": hydration_summary,
     }

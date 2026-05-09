@@ -29,13 +29,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 574 tests
+pytest --collect-only -q  # baseline now 579 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 574 tests collected
+- pytest collection: 579 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -177,7 +177,7 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline now 574 tests
+pytest --collect-only -q  # baseline now 579 tests
 ```
 
 Policy notes:
@@ -202,3 +202,4 @@ Policy notes:
 - Never include hierarchy XML, snapshots, screenshot/image bytes, base64, raw payloads, provider request/response bodies, secrets, or candidate dumps.
 - Allowed hydration fields: status/reason/original_ref/hydrated_ref/channel/source/strategy and match_field/match_count (only where applicable).
 - Reporting layer (JSON/HTML) must apply non-leakage guardrails and never emit hierarchy XML, screenshot/image bytes, base64/raw payloads, provider bodies, secrets, or candidate dumps.
+- Reporting hydration analytics (Phase 13Q) must remain aggregate/categorical only (status/source/strategy/channel/reason) and must not include refs or raw/sensitive payload fields.
