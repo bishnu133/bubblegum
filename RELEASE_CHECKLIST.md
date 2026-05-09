@@ -30,6 +30,9 @@ pytest tests/unit/test_phase13o_hydration_reporting.py -q
 pytest tests/unit/test_phase13q_hydration_analytics.py -q
 pytest tests/unit/test_json_report.py -q
 pytest tests/unit/test_phase1b.py -q -k "report"
+python -m py_compile examples/web_nl_quickstart.py
+python -m py_compile examples/ocr_callable_hydration_example.py
+python -m py_compile examples/report_artifacts_example.py
 python -m py_compile examples/openai_vision_provider_manual_example.py
 pytest tests/unit/test_phase11j_sdk_vision_wiring.py -q
 pytest tests/unit/test_phase11n_vision_provider_registration.py -q
@@ -212,3 +215,19 @@ Policy notes:
 - Allowed hydration fields: status/reason/original_ref/hydrated_ref/channel/source/strategy and match_field/match_count (only where applicable).
 - Reporting layer (JSON/HTML) must apply non-leakage guardrails and never emit hierarchy XML, screenshot/image bytes, base64/raw payloads, provider bodies, secrets, or candidate dumps.
 - Reporting hydration analytics (Phase 13Q) must remain aggregate/categorical only (status/source/strategy/channel/reason) and must not include refs or raw/sensitive payload fields.
+
+
+## Phase 14C adoption smoke-kit verification (manual, docs/examples)
+
+```bash
+python -m py_compile examples/web_nl_quickstart.py
+python -m py_compile examples/ocr_callable_hydration_example.py
+python -m py_compile examples/report_artifacts_example.py
+python -m py_compile examples/openai_vision_provider_manual_example.py
+python examples/report_artifacts_example.py
+```
+
+Notes:
+- Keep collect-only baseline at 584 unless tests are intentionally added in a future slice.
+- This Phase 14C track is docs/examples-only and does not change runtime/API/dependencies/version.
+
