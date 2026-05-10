@@ -87,6 +87,19 @@ _UNSAFE_RETRY_KEYS = {
 }
 
 
+_UNSAFE_WAIT_KEYS = {
+    "wait_stack",
+    "wait_traceback",
+    "wait_exception",
+    "wait_payload",
+    "wait_request",
+    "wait_response",
+    "wait_secret",
+    "wait_secrets",
+    "wait_candidate_dump",
+}
+
+
 def _conf_colour(conf: float) -> str:
     if conf >= 0.85:
         return _CONF_HIGH
@@ -123,7 +136,7 @@ def sanitize_reporting_metadata(metadata: dict) -> dict:
     """Remove known unsafe fields from report surfaces."""
     if not isinstance(metadata, dict):
         return {}
-    return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS and k not in _UNSAFE_RETRY_KEYS}
+    return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS and k not in _UNSAFE_RETRY_KEYS and k not in _UNSAFE_WAIT_KEYS}
 
 
 def _screenshot_thumb(path: str) -> str:
@@ -204,6 +217,27 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{hydration_rows}</ul>'
             f'</details>'
         )
+    wait_html = ""
+    if target_metadata.get("wait_used") is True:
+        wait_mode = target_metadata.get("wait_mode", "unknown")
+        wait_outcome = target_metadata.get("wait_outcome", "unknown")
+        wait_adapter = target_metadata.get("wait_adapter", "unknown")
+        wait_duration_ms = target_metadata.get("wait_duration_ms")
+        wait_duration_row = ""
+        if wait_duration_ms is not None:
+            wait_duration_row = f'<li><strong>Duration:</strong> {html.escape(str(wait_duration_ms))} ms</li>'
+        wait_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Wait</summary>'
+            '<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">'
+            f'<li><strong>Used:</strong> true</li>'
+            f'<li><strong>Mode:</strong> {html.escape(str(wait_mode))}</li>'
+            f'<li><strong>Outcome:</strong> {html.escape(str(wait_outcome))}</li>'
+            f'<li><strong>Adapter:</strong> {html.escape(str(wait_adapter))}</li>'
+            f'{wait_duration_row}'
+            '</ul></details>'
+        )
+
     retry_html = ""
     retry_attempts = target_metadata.get("retry_attempts")
     if retry_attempts is not None:
@@ -253,6 +287,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {error_html}
       {screenshot_html}
       {hydration_html}
+      {wait_html}
       {retry_html}
       {traces_html}
     </div>

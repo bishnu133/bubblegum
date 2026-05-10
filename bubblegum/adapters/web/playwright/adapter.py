@@ -156,11 +156,23 @@ class PlaywrightAdapter(BaseAdapter):
         last_exc: Exception | None = None
         last_transient = False
 
+        wait_for = getattr(plan.options, "wait_for", None)
+        wait_mode = str(wait_for).strip().lower() if wait_for else None
+        wait_used = bool(wait_mode)
+
         while True:
             attempts += 1
             try:
                 locator = self._resolve_locator(ref)
-                await self._wait_for_mode(locator, getattr(plan.options, "wait_for", None), timeout)
+                wait_start = time.monotonic()
+                await self._wait_for_mode(locator, wait_for, timeout)
+                wait_duration_ms = int((time.monotonic() - wait_start) * 1000)
+                if wait_used:
+                    target.metadata["wait_used"] = True
+                    target.metadata["wait_mode"] = wait_mode
+                    target.metadata["wait_outcome"] = "success"
+                    target.metadata["wait_adapter"] = "playwright"
+                    target.metadata["wait_duration_ms"] = wait_duration_ms
                 await self._execute_action(plan=plan, locator=locator, timeout=timeout)
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
@@ -187,6 +199,11 @@ class PlaywrightAdapter(BaseAdapter):
                     continue
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 logger.error("Execution failed for ref=%r: %s", ref, exc)
+                if wait_used:
+                    target.metadata["wait_used"] = True
+                    target.metadata["wait_mode"] = wait_mode
+                    target.metadata["wait_outcome"] = "failed"
+                    target.metadata["wait_adapter"] = "playwright"
                 target.metadata["retry_attempts"] = max(0, attempts - 1)
                 target.metadata["retry_transient"] = bool(last_transient)
                 target.metadata["retry_reason"] = _sanitize_retry_reason(exc)

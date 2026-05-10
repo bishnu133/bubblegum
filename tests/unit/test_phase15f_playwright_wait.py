@@ -54,9 +54,13 @@ def _run(wait_for=None, retry_count=0, failures=None, enabled=True):
 
 
 def test_wait_visible_success():
-    result, locator, _ = _run(wait_for="visible")
+    result, locator, target = _run(wait_for="visible")
     assert result.success is True
     assert ("visible", 1234) in locator.wait_calls
+    assert target.metadata["wait_used"] is True
+    assert target.metadata["wait_mode"] == "visible"
+    assert target.metadata["wait_outcome"] == "success"
+    assert target.metadata["wait_adapter"] == "playwright"
 
 
 def test_wait_attached_success():
@@ -73,16 +77,18 @@ def test_wait_enabled_success():
 
 
 def test_no_wait_for_preserves_existing_path():
-    result, locator, _ = _run(wait_for=None)
+    result, locator, target = _run(wait_for=None)
     assert result.success is True
     assert locator.calls == 1
     assert locator.wait_calls == []
+    assert "wait_used" not in target.metadata
 
 
 def test_unsupported_wait_mode_fails_clearly():
-    result, _, _ = _run(wait_for="hidden")
+    result, _, target = _run(wait_for="hidden")
     assert result.success is False
     assert "Unsupported wait_for mode for Playwright" in (result.error or "")
+    assert target.metadata["wait_outcome"] == "failed"
 
 
 def test_retry_behavior_still_works_with_wait():
