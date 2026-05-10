@@ -57,6 +57,7 @@ _TRANSIENT_ERROR_MARKERS = (
 
 _MAX_RETRY_CAP = 1
 _RETRY_DELAY_SECONDS = 0.05
+_WAIT_STATES = {"visible", "attached"}
 
 
 def _is_transient_execution_error(exc: Exception) -> bool:
@@ -159,6 +160,7 @@ class PlaywrightAdapter(BaseAdapter):
             attempts += 1
             try:
                 locator = self._resolve_locator(ref)
+                await self._wait_for_mode(locator, getattr(plan.options, "wait_for", None), timeout)
                 await self._execute_action(plan=plan, locator=locator, timeout=timeout)
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
@@ -195,6 +197,27 @@ class PlaywrightAdapter(BaseAdapter):
                     element_ref=ref,
                     error=str(exc),
                 )
+
+    async def _wait_for_mode(self, locator, wait_for: str | None, timeout: int) -> None:
+        if not wait_for:
+            return
+
+        mode = str(wait_for).strip().lower()
+        if mode in _WAIT_STATES:
+            await locator.wait_for(state=mode, timeout=timeout)
+            return
+
+        if mode == "enabled":
+            await locator.wait_for(state="attached", timeout=timeout)
+            handle = await locator.element_handle(timeout=timeout)
+            if handle is None:
+                raise TimeoutError("Element handle not found for enabled wait")
+            is_enabled = await handle.is_enabled()
+            if not is_enabled:
+                raise TimeoutError("Element not enabled")
+            return
+
+        raise ValueError(f"Unsupported wait_for mode for Playwright: {wait_for}")
 
     async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:
         if plan.action_type in ("click", "tap"):

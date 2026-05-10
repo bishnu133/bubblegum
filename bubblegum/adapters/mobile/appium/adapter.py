@@ -176,6 +176,7 @@ class AppiumAdapter(BaseAdapter):
             attempts += 1
             try:
                 element = self._find_element(ref)
+                self._wait_for_mode(ref=ref, element=element, wait_for=getattr(plan.options, "wait_for", None), timeout_ms=getattr(plan.options, "timeout_ms", 10_000))
                 self._execute_action(plan=plan, element=element)
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
@@ -213,6 +214,30 @@ class AppiumAdapter(BaseAdapter):
                     element_ref=str(ref),
                     error=str(exc)
                 )
+
+    def _wait_for_mode(self, ref, element, wait_for: str | None, timeout_ms: int) -> None:
+        if not wait_for:
+            return
+
+        mode = str(wait_for).strip().lower()
+        if mode == "present":
+            return
+
+        if mode == "visible":
+            if element.is_displayed():
+                return
+
+            timeout_sec = max(0.0, float(timeout_ms) / 1000.0)
+            deadline = time.monotonic() + timeout_sec
+            while time.monotonic() < deadline:
+                time.sleep(0.05)
+                refreshed = self._find_element(ref)
+                if refreshed.is_displayed():
+                    return
+
+            raise TimeoutError("Element not visible")
+
+        raise ValueError(f"Unsupported wait_for mode for Appium: {wait_for}")
 
     def _execute_action(self, plan: ActionPlan, element) -> None:
         if plan.action_type in ("tap", "click"):
