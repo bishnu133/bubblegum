@@ -4,8 +4,8 @@ Historical release note:
 - `v0.0.1-alpha` is already released.
 
 Current planning note:
-- v0.0.3-alpha planning keeps Playwright and Appium runtime smoke as manual (non-CI-gated).
-- Package version target for this cycle: `0.0.3a0` (PEP 440) for GitHub pre-release `v0.0.3-alpha`.
+- v0.0.4-alpha planning keeps Playwright and Appium runtime smoke as manual (non-CI-gated).
+- Package version target for this cycle: `0.0.4a0` (PEP 440) for GitHub pre-release `v0.0.4-alpha`.
 
 ## Pre-release gates (required)
 
@@ -47,13 +47,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 608 tests
+pytest --collect-only -q  # baseline now 611 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 608 tests collected
+- pytest collection: 611 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -64,7 +64,7 @@ python examples/playwright_quickstart.py
 ```
 
 Notes:
-- Keep this as manual smoke for v0.0.3-alpha.
+- Keep this as manual smoke for v0.0.4-alpha.
 - Do not add runtime Playwright browser execution as required CI gate yet.
 
 ## Manual Appium checklist (not CI-gated)
@@ -77,12 +77,12 @@ Before running `examples/appium_quickstart.py`, verify:
 
 Notes:
 - Appium quickstart is intentionally a real-infrastructure template.
-- Do not gate CI on mobile runtime infra for v0.0.3-alpha.
+- Do not gate CI on mobile runtime infra for v0.0.4-alpha.
 
 ## Release policy
 
 - Keep package version aligned to the active release phase.
-- For this release cycle, use package version `0.0.3a0` while keeping GitHub tag/title as `v0.0.3-alpha`.
+- For this release cycle, use package version `0.0.4a0` while keeping GitHub tag/title as `v0.0.4-alpha`.
 - Use GitHub pre-release tagging per release plan.
 - PyPI/TestPyPI publishing remains deferred unless explicitly enabled in a future phase.
 
@@ -95,7 +95,7 @@ Notes:
   - `python -m pip install build`
 
 
-## OCR callable posture for v0.0.3-alpha
+## OCR callable posture for v0.0.4-alpha
 
 - OCR remains callable-only: integrators may supply their own runtime OCR callable backend.
 - Screenshot OCR processing stays privacy-gated and opt-in (`process_screenshots_for_ocr: true`).
@@ -103,7 +103,7 @@ Notes:
 - OCR resolver refs are synthetic (`ocr://block/<index>`) and are not adapter-executed yet.
 
 
-## Vision/OCR limitations and gating posture for v0.0.3-alpha
+## Vision/OCR limitations and gating posture for v0.0.4-alpha
 
 - Vision remains disabled by default and screenshot sharing remains privacy-gated.
 - Screenshot-to-vision processing requires explicit opt-in via `process_screenshots_for_vision: true` (default: `false`).
@@ -195,7 +195,7 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline now 586 tests
+pytest --collect-only -q  # baseline now 611 tests
 ```
 
 Policy notes:
@@ -235,5 +235,5 @@ python examples/ocr_callable_hydration_example.py
 ```
 
 Notes:
-- Keep collect-only baseline at 584 unless tests are intentionally added in a future slice.
+- Keep collect-only baseline at 611 unless tests are intentionally added in a future slice.
 - This Phase 14C track is docs/examples-only and does not change runtime/API/dependencies/version.

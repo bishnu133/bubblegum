@@ -1,6 +1,6 @@
 # Adoption Guide (Phase 14C MVP)
 
-This guide defines a **fallback-first** rollout for Bubblegum `0.0.3a0` with GitHub pre-release tag `v0.0.3-alpha`.
+This guide defines a **fallback-first** rollout for Bubblegum `0.0.4a0` with GitHub pre-release tag `v0.0.4-alpha`.
 
 ## 1) Recommended rollout ladder
 

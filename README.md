@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/bubblegum-ai/bubblegum/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-GitHub%20Actions-blue.svg" alt="CI workflow"/></a>
-  <a href="https://github.com/bubblegum-ai/bubblegum/releases/tag/v0.0.3-alpha"><img src="https://img.shields.io/badge/release-v0.0.3--alpha-orange.svg" alt="v0.0.3-alpha release"/></a>
+  <a href="https://github.com/bubblegum-ai/bubblegum/releases/tag/v0.0.4-alpha"><img src="https://img.shields.io/badge/release-v0.0.4--alpha-orange.svg" alt="v0.0.4-alpha release"/></a>
   <a href="https://github.com/bubblegum-ai/bubblegum"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="https://github.com/bubblegum-ai/bubblegum/blob/main/README.md#quick-start"><img src="https://img.shields.io/badge/pip%20install-bubblegum--ai-pink.svg" alt="pip install bubblegum-ai"/></a>
   <a href="https://github.com/bubblegum-ai/bubblegum/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-lightgrey.svg" alt="MIT License"/></a>
@@ -227,7 +227,7 @@ Adoption/docs MVP links:
 - CI usage snippet: `docs/ci.md`
 
 Distribution posture note:
-- Current distribution path is GitHub releases (latest pre-release: `v0.0.3-alpha`).
+- Current distribution path is GitHub releases (latest pre-release: `v0.0.4-alpha`).
 - PyPI/TestPyPI publishing is intentionally deferred until a later explicit release phase.
 
 Optional OpenAI vision backend note:

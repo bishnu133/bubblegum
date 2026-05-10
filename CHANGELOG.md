@@ -11,6 +11,20 @@ All notable changes to this project will be documented in this file.
 - Phase 14E docs/examples polish pass: added explicit run commands for key local examples, clarified direct-NL adoption wording around config/cost/provider/privacy-gated fallback behavior, and documented reserved pytest plugin flags (`--bubblegum-ai`, `--bubblegum-memory`). Docs/examples-only scope with no runtime/API/dependency/version changes.
 - Phase 14C adoption/examples smoke-kit docs MVP added: `docs/adoption.md`, `docs/pytest-plugin.md`, `docs/ci.md`, plus new examples `examples/web_nl_quickstart.py`, `examples/ocr_callable_hydration_example.py`, and `examples/report_artifacts_example.py`. Updated `README.md`, `examples/README.md`, and `RELEASE_CHECKLIST.md` with adoption links and verification commands. Docs/examples-only scope with no runtime/API/dependency/version changes.
 
+## v0.0.4-alpha
+- Release scope finalized for GitHub pre-release `v0.0.4-alpha` with package version `0.0.4a0` (PEP 440).
+- Scope includes:
+  - Phase 14 adoption docs/examples polish
+  - Phase 15B adapter-level transient retry MVP
+  - Phase 15D retry observability metadata/reporting
+  - Phase 15F adapter-level explicit `wait_for` MVP
+  - Phase 15H wait observability metadata/reporting
+- No SDK public API changes.
+- No schema changes.
+- No dependency changes.
+- No provider/LLM/OCR/vision retry behavior changes.
+- PyPI/TestPyPI publishing remains deferred; release target remains GitHub pre-release only.
+
 ## v0.0.3-alpha
 - Release scope finalized for GitHub pre-release `v0.0.3-alpha` with package version `0.0.3a0` (PEP 440).
 - Phase 13 feature track included: VisualRefHydrator safe boundary/fail-safe behavior, deterministic web hydration (OCR/vision metadata), deterministic mobile hydration (`hierarchy_xml` text/content-desc/resource-id), sanitized SDK hydration diagnostics, JSON/HTML hydration diagnostics reporting, and hydration analytics summary.
