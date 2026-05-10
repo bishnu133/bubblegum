@@ -239,3 +239,35 @@ python examples/ocr_callable_hydration_example.py
 Notes:
 - Keep collect-only baseline at 611 unless tests are intentionally added in a future slice.
 - This Phase 14C track is docs/examples-only and does not change runtime/API/dependencies/version.
+
+## Phase 17C real smoke kit verification (manual, docs/examples MVP)
+
+Recommended first-run order:
+
+```bash
+# 1) Infra-free OCR hydration example
+python examples/ocr_callable_hydration_example.py
+
+# 2) Infra-free report artifacts example
+python examples/report_artifacts_example.py
+
+# 3) Playwright local NL smoke (manual browser setup required)
+python -m pip install -e ".[web]"
+python -m playwright install chromium
+python examples/web_nl_quickstart.py
+```
+
+Expected report artifacts:
+- `artifacts/report-artifacts-example.json`
+- `artifacts/report-artifacts-example.html`
+- `artifacts/web-nl-quickstart.json`
+- `artifacts/web-nl-quickstart.html`
+
+Manual-only (not CI-gated):
+- Appium/mobile smoke (`examples/appium_quickstart.py`) requires server + device/emulator + app/capabilities.
+- Optional OpenAI provider smoke (`examples/openai_vision_provider_manual_example.py`) requires user-installed `openai`, `OPENAI_API_KEY`, and network for real provider calls.
+
+Policy:
+- Keep runtime library behavior/API/schema/dependencies/version unchanged for this docs/examples slice.
+- Keep Playwright/Appium/OpenAI smoke out of required CI gates.
+- PyPI/TestPyPI publishing remains deferred.

@@ -49,3 +49,34 @@ jobs:
 - `.github/workflows/publish-check.yml` is a **manual, non-publishing readiness workflow**.
 - TestPyPI/PyPI publication remains deferred in this track.
 - Keep release/distribution focus on GitHub pre-release posture until a dedicated publishing phase.
+
+## Real smoke kit usage with CI posture
+
+Recommended operator flow:
+
+1. Run infra-free smoke examples locally (fast signal).
+2. Run Playwright example manually where browser setup is available.
+3. Keep Appium/OpenAI provider smoke manual and non-CI-gated for this phase.
+
+Infra-free commands:
+
+```bash
+python examples/ocr_callable_hydration_example.py
+python examples/report_artifacts_example.py
+```
+
+Playwright local smoke commands:
+
+```bash
+python -m pip install -e ".[web]"
+python -m playwright install chromium
+python examples/web_nl_quickstart.py
+```
+
+Expected report artifact paths:
+- `artifacts/report-artifacts-example.json`
+- `artifacts/report-artifacts-example.html`
+- `artifacts/web-nl-quickstart.json`
+- `artifacts/web-nl-quickstart.html`
+
+These report outputs are local JSON/HTML observability artifacts and can be uploaded using `actions/upload-artifact`.
