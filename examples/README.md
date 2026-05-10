@@ -32,6 +32,13 @@ python examples/ocr_callable_hydration_example.py
 python examples/report_artifacts_example.py
 ```
 
+Optional helper runner (dependency-free, infra-free defaults):
+
+```bash
+python scripts/smoke_examples.py --dry-run
+python scripts/smoke_examples.py
+```
+
 Playwright local smoke commands:
 
 ```bash
