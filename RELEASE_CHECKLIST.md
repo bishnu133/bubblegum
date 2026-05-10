@@ -41,13 +41,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 584 tests
+pytest --collect-only -q  # baseline now 586 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 584 tests collected
+- pytest collection: 586 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -189,7 +189,7 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline now 584 tests
+pytest --collect-only -q  # baseline now 586 tests
 ```
 
 Policy notes:

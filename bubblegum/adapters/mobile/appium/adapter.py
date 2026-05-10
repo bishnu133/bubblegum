@@ -52,6 +52,29 @@ from bubblegum.core.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+_TRANSIENT_ERROR_MARKERS = (
+    "stale element reference",
+    "no such element",
+    "element not interactable",
+    "timeout",
+    "could not be located",
+)
+
+_MAX_RETRY_CAP = 1
+_RETRY_DELAY_SECONDS = 0.05
+
+
+def _is_transient_execution_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _retry_budget(retry_count: int | None) -> int:
+    if retry_count is None:
+        return 0
+    return max(0, min(int(retry_count), _MAX_RETRY_CAP))
+
+
 
 _ARTIFACTS_DIR = Path("artifacts")
 
@@ -130,49 +153,65 @@ class AppiumAdapter(BaseAdapter):
         t0 = time.monotonic()
         ref = target.ref
 
-        try:
-            element = self._find_element(ref)
+        retries = _retry_budget(getattr(plan.options, "retry_count", 0))
+        attempts = 0
+        last_exc: Exception | None = None
+        last_transient = False
 
-            if plan.action_type in ("tap", "click"):
-                element.click()
+        while True:
+            attempts += 1
+            try:
+                element = self._find_element(ref)
+                self._execute_action(plan=plan, element=element)
 
-            elif plan.action_type == "type":
-                value = plan.input_value or ""
-                element.clear()
-                element.send_keys(value)
+                duration_ms = int((time.monotonic() - t0) * 1000)
+                return ExecutionResult(
+                    success=True,
+                    duration_ms=duration_ms,
+                    element_ref=str(ref)
+                )
+            except Exception as exc:
+                last_exc = exc
+                last_transient = _is_transient_execution_error(exc)
+                if attempts <= retries and last_transient:
+                    logger.info(
+                        "AppiumAdapter.execute transient failure (attempt %s/%s): %s",
+                        attempts,
+                        retries + 1,
+                        exc,
+                    )
+                    time.sleep(_RETRY_DELAY_SECONDS)
+                    continue
 
-            elif plan.action_type == "scroll":
-                # Scroll the element into view using TouchAction-free approach.
-                # Uses Appium W3C Actions if available; falls back to scrollIntoView.
-                self._scroll_to_element(element)
-
-            elif plan.action_type == "swipe":
-                # Swipe from element position in the direction encoded in input_value.
-                # input_value: "up" | "down" | "left" | "right"  (default: "up")
-                direction = (plan.input_value or "up").lower()
-                self._swipe_from_element(element, direction)
-
-            else:
-                logger.warning(
-                    "AppiumAdapter.execute: unsupported action_type=%s — no-op",
-                    plan.action_type,
+                duration_ms = int((time.monotonic() - t0) * 1000)
+                logger.error("AppiumAdapter.execute failed ref=%r: %s", ref, exc)
+                return ExecutionResult(
+                    success=False,
+                    duration_ms=duration_ms,
+                    element_ref=str(ref),
+                    error=str(exc)
                 )
 
-            duration_ms = int((time.monotonic() - t0) * 1000)
-            return ExecutionResult(
-                success=True,
-                duration_ms=duration_ms,
-                element_ref=str(ref),
-            )
+    def _execute_action(self, plan: ActionPlan, element) -> None:
+        if plan.action_type in ("tap", "click"):
+            element.click()
 
-        except Exception as exc:
-            duration_ms = int((time.monotonic() - t0) * 1000)
-            logger.error("AppiumAdapter.execute failed ref=%r: %s", ref, exc)
-            return ExecutionResult(
-                success=False,
-                duration_ms=duration_ms,
-                element_ref=str(ref),
-                error=str(exc),
+        elif plan.action_type == "type":
+            value = plan.input_value or ""
+            element.clear()
+            element.send_keys(value)
+
+        elif plan.action_type == "scroll":
+            self._scroll_to_element(element)
+
+        elif plan.action_type == "swipe":
+            direction = (plan.input_value or "up").lower()
+            self._swipe_from_element(element, direction)
+
+        else:
+            logger.warning(
+                "AppiumAdapter.execute: unsupported action_type=%s — no-op",
+                plan.action_type,
             )
 
     async def validate(self, plan: ValidationPlan) -> ValidationResult:

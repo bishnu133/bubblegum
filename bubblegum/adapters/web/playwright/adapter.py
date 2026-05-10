@@ -22,6 +22,7 @@ Phase 1A — fully implemented.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -42,6 +43,33 @@ from bubblegum.core.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+_TRANSIENT_ERROR_MARKERS = (
+    "timeout",
+    "timed out",
+    "not attached",
+    "detached",
+    "target closed",
+    "intercepts pointer events",
+    "click intercepted",
+    "not visible",
+    "not enabled",
+)
+
+_MAX_RETRY_CAP = 1
+_RETRY_DELAY_SECONDS = 0.05
+
+
+def _is_transient_execution_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _retry_budget(retry_count: int | None) -> int:
+    if retry_count is None:
+        return 0
+    return max(0, min(int(retry_count), _MAX_RETRY_CAP))
+
+
 
 _ARTIFACTS_DIR = Path("artifacts")
 
@@ -104,45 +132,63 @@ class PlaywrightAdapter(BaseAdapter):
         ref = target.ref
         timeout = plan.options.timeout_ms
 
-        try:
-            locator = self._resolve_locator(ref)
+        retries = _retry_budget(getattr(plan.options, "retry_count", 0))
+        attempts = 0
+        last_exc: Exception | None = None
+        last_transient = False
 
-            if plan.action_type in ("click", "tap"):
-                await locator.click(timeout=timeout)
+        while True:
+            attempts += 1
+            try:
+                locator = self._resolve_locator(ref)
+                await self._execute_action(plan=plan, locator=locator, timeout=timeout)
 
-            elif plan.action_type == "type":
-                value = plan.input_value or ""
-                await locator.fill(value, timeout=timeout)
-
-            elif plan.action_type == "select":
-                value = plan.input_value or ""
-                await locator.select_option(value, timeout=timeout)
-
-            elif plan.action_type == "scroll":
-                # Scroll the element into view
-                await locator.scroll_into_view_if_needed(timeout=timeout)
-
-            else:
-                logger.warning(
-                    "PlaywrightAdapter.execute: unsupported action_type=%s — no-op",
-                    plan.action_type,
+                duration_ms = int((time.monotonic() - t0) * 1000)
+                return ExecutionResult(
+                    success=True,
+                    duration_ms=duration_ms,
+                    element_ref=ref
+                )
+            except Exception as exc:
+                last_exc = exc
+                last_transient = _is_transient_execution_error(exc)
+                if attempts <= retries and last_transient:
+                    logger.info(
+                        "PlaywrightAdapter.execute transient failure (attempt %s/%s): %s",
+                        attempts,
+                        retries + 1,
+                        exc,
+                    )
+                    await asyncio.sleep(_RETRY_DELAY_SECONDS)
+                    continue
+                duration_ms = int((time.monotonic() - t0) * 1000)
+                logger.error("Execution failed for ref=%r: %s", ref, exc)
+                return ExecutionResult(
+                    success=False,
+                    duration_ms=duration_ms,
+                    element_ref=ref,
+                    error=str(exc)
                 )
 
-            duration_ms = int((time.monotonic() - t0) * 1000)
-            return ExecutionResult(
-                success=True,
-                duration_ms=duration_ms,
-                element_ref=ref,
-            )
+    async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:
+        if plan.action_type in ("click", "tap"):
+            await locator.click(timeout=timeout)
 
-        except Exception as exc:
-            duration_ms = int((time.monotonic() - t0) * 1000)
-            logger.error("Execution failed for ref=%r: %s", ref, exc)
-            return ExecutionResult(
-                success=False,
-                duration_ms=duration_ms,
-                element_ref=ref,
-                error=str(exc),
+        elif plan.action_type == "type":
+            value = plan.input_value or ""
+            await locator.fill(value, timeout=timeout)
+
+        elif plan.action_type == "select":
+            value = plan.input_value or ""
+            await locator.select_option(value, timeout=timeout)
+
+        elif plan.action_type == "scroll":
+            await locator.scroll_into_view_if_needed(timeout=timeout)
+
+        else:
+            logger.warning(
+                "PlaywrightAdapter.execute: unsupported action_type=%s — no-op",
+                plan.action_type,
             )
 
     async def validate(self, plan: ValidationPlan) -> ValidationResult:
