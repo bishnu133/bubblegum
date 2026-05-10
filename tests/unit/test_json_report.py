@@ -164,3 +164,59 @@ def test_json_report_includes_hydration_analytics_summary(tmp_path):
     assert hs["by_strategy"] == {"text": 1}
     assert hs["by_channel"] == {"web": 1}
     assert hs["by_reason"] == {"hydrated_text_ref": 1}
+
+
+def test_json_report_preserves_safe_retry_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Click",
+        confidence=1.0,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=1.0,
+            resolver_name="x",
+            metadata={
+                "retry_attempts": 1,
+                "retry_transient": True,
+                "retry_reason": "timeout",
+                "retry_adapter": "playwright",
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]
+    assert md["retry_attempts"] == 1
+    assert md["retry_transient"] is True
+    assert md["retry_reason"] == "timeout"
+    assert md["retry_adapter"] == "playwright"
+
+
+def test_json_report_redacts_unsafe_retry_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="failed",
+        action="Click",
+        confidence=0.2,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.2,
+            resolver_name="x",
+            metadata={
+                "retry_attempts": 1,
+                "retry_reason": "timeout",
+                "retry_stack": "Traceback ...",
+                "retry_payload": "secret",
+                "retry_secrets": "token",
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]
+    assert md["retry_attempts"] == 1
+    assert md["retry_reason"] == "timeout"
+    assert "retry_stack" not in md
+    assert "retry_payload" not in md
+    assert "retry_secrets" not in md

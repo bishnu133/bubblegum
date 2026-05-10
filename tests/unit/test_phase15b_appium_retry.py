@@ -32,6 +32,9 @@ def test_appium_transient_fail_once_then_pass_retries_once(monkeypatch):
 
     assert result.success is True
     assert calls["n"] == 2
+    assert target.metadata["retry_attempts"] == 1
+    assert target.metadata["retry_transient"] is True
+    assert target.metadata["retry_adapter"] == "appium"
 
 
 def test_appium_permanent_error_not_retried(monkeypatch):
@@ -51,6 +54,8 @@ def test_appium_permanent_error_not_retried(monkeypatch):
 
     assert result.success is False
     assert calls["n"] == 1
+    assert target.metadata["retry_attempts"] == 0
+    assert target.metadata["retry_transient"] is False
 
 
 def test_appium_retry_budget_capped_to_one(monkeypatch):
@@ -70,3 +75,4 @@ def test_appium_retry_budget_capped_to_one(monkeypatch):
 
     assert result.success is False
     assert calls["n"] == 2
+    assert target.metadata["retry_attempts"] == 1

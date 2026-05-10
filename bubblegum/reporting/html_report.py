@@ -74,6 +74,18 @@ _UNSAFE_HYDRATION_KEYS = {
     "candidates",
 }
 
+_UNSAFE_RETRY_KEYS = {
+    "retry_stack",
+    "retry_traceback",
+    "retry_exception",
+    "retry_payload",
+    "retry_request",
+    "retry_response",
+    "retry_secret",
+    "retry_secrets",
+    "retry_candidate_dump",
+}
+
 
 def _conf_colour(conf: float) -> str:
     if conf >= 0.85:
@@ -111,7 +123,7 @@ def sanitize_reporting_metadata(metadata: dict) -> dict:
     """Remove known unsafe fields from report surfaces."""
     if not isinstance(metadata, dict):
         return {}
-    return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS}
+    return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS and k not in _UNSAFE_RETRY_KEYS}
 
 
 def _screenshot_thumb(path: str) -> str:
@@ -167,7 +179,8 @@ def _render_step(idx: int, result: StepResult) -> str:
         )
 
     hydration_html = ""
-    hydration = safe_hydration_metadata(result.target.metadata if result.target else {})
+    target_metadata = sanitize_reporting_metadata(result.target.metadata if result.target else {})
+    hydration = safe_hydration_metadata(target_metadata)
     if hydration:
         labels = [
             ("Status", "hydration_status"),
@@ -190,6 +203,22 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Hydration diagnostics</summary>'
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{hydration_rows}</ul>'
             f'</details>'
+        )
+    retry_html = ""
+    retry_attempts = target_metadata.get("retry_attempts")
+    if retry_attempts is not None:
+        retry_transient = target_metadata.get("retry_transient")
+        retry_reason = target_metadata.get("retry_reason", "none")
+        retry_adapter = target_metadata.get("retry_adapter", "unknown")
+        retry_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Retry</summary>'
+            '<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">'
+            f'<li><strong>Attempts:</strong> {html.escape(str(retry_attempts))}</li>'
+            f'<li><strong>Transient:</strong> {html.escape(str(retry_transient))}</li>'
+            f'<li><strong>Reason:</strong> {html.escape(str(retry_reason))}</li>'
+            f'<li><strong>Adapter:</strong> {html.escape(str(retry_adapter))}</li>'
+            '</ul></details>'
         )
     if result.traces:
         traces_html = (
@@ -224,6 +253,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {error_html}
       {screenshot_html}
       {hydration_html}
+      {retry_html}
       {traces_html}
     </div>
     """
