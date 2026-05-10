@@ -92,6 +92,13 @@ python -m playwright install chromium
 python examples/web_nl_quickstart.py
 ```
 
+Optional helper runner (executes infra-free examples only by default):
+
+```bash
+python scripts/smoke_examples.py --dry-run
+python scripts/smoke_examples.py
+```
+
 Manual-only extensions:
 - Appium/mobile smoke remains manual (server + emulator/device + app/capability setup required).
 - Optional OpenAI provider smoke remains manual (`openai` installed by user + `OPENAI_API_KEY` + network).

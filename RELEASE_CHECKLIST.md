@@ -41,6 +41,9 @@ python -m py_compile examples/web_nl_quickstart.py
 python -m py_compile examples/ocr_callable_hydration_example.py
 python -m py_compile examples/report_artifacts_example.py
 python -m py_compile examples/openai_vision_provider_manual_example.py
+python -m py_compile scripts/smoke_examples.py
+python scripts/smoke_examples.py --dry-run  # optional helper preview
+python scripts/smoke_examples.py  # optional infra-free smoke runner
 pytest tests/unit/test_phase11j_sdk_vision_wiring.py -q
 pytest tests/unit/test_phase11n_vision_provider_registration.py -q
 pytest tests/unit/test_phase11r_openai_vision_provider.py -q
