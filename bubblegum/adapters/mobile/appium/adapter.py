@@ -172,11 +172,23 @@ class AppiumAdapter(BaseAdapter):
         last_exc: Exception | None = None
         last_transient = False
 
+        wait_for = getattr(plan.options, "wait_for", None)
+        wait_mode = str(wait_for).strip().lower() if wait_for else None
+        wait_used = bool(wait_mode)
+
         while True:
             attempts += 1
             try:
                 element = self._find_element(ref)
-                self._wait_for_mode(ref=ref, element=element, wait_for=getattr(plan.options, "wait_for", None), timeout_ms=getattr(plan.options, "timeout_ms", 10_000))
+                wait_start = time.monotonic()
+                self._wait_for_mode(ref=ref, element=element, wait_for=wait_for, timeout_ms=getattr(plan.options, "timeout_ms", 10_000))
+                wait_duration_ms = int((time.monotonic() - wait_start) * 1000)
+                if wait_used:
+                    target.metadata["wait_used"] = True
+                    target.metadata["wait_mode"] = wait_mode
+                    target.metadata["wait_outcome"] = "success"
+                    target.metadata["wait_adapter"] = "appium"
+                    target.metadata["wait_duration_ms"] = wait_duration_ms
                 self._execute_action(plan=plan, element=element)
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
@@ -204,6 +216,11 @@ class AppiumAdapter(BaseAdapter):
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 logger.error("AppiumAdapter.execute failed ref=%r: %s", ref, exc)
+                if wait_used:
+                    target.metadata["wait_used"] = True
+                    target.metadata["wait_mode"] = wait_mode
+                    target.metadata["wait_outcome"] = "failed"
+                    target.metadata["wait_adapter"] = "appium"
                 target.metadata["retry_attempts"] = max(0, attempts - 1)
                 target.metadata["retry_transient"] = bool(last_transient)
                 target.metadata["retry_reason"] = _sanitize_retry_reason(exc)

@@ -220,3 +220,61 @@ def test_json_report_redacts_unsafe_retry_metadata(tmp_path):
     assert "retry_stack" not in md
     assert "retry_payload" not in md
     assert "retry_secrets" not in md
+
+
+def test_json_report_preserves_safe_wait_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Click",
+        confidence=1.0,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=1.0,
+            resolver_name="x",
+            metadata={
+                "wait_used": True,
+                "wait_mode": "visible",
+                "wait_outcome": "success",
+                "wait_adapter": "playwright",
+                "wait_duration_ms": 10,
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]
+    assert md["wait_used"] is True
+    assert md["wait_mode"] == "visible"
+    assert md["wait_outcome"] == "success"
+    assert md["wait_adapter"] == "playwright"
+
+
+def test_json_report_redacts_unsafe_wait_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="failed",
+        action="Click",
+        confidence=0.2,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.2,
+            resolver_name="x",
+            metadata={
+                "wait_used": True,
+                "wait_mode": "visible",
+                "wait_outcome": "failed",
+                "wait_adapter": "appium",
+                "wait_stack": "Traceback ...",
+                "wait_payload": "secret",
+                "wait_secrets": "token",
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]
+    assert md["wait_mode"] == "visible"
+    assert "wait_stack" not in md
+    assert "wait_payload" not in md
+    assert "wait_secrets" not in md

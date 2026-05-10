@@ -43,9 +43,13 @@ def _run(monkeypatch, wait_for=None, retry_count=0, first_error=None, displayed=
 
 
 def test_wait_present_success(monkeypatch):
-    result, calls, _ = _run(monkeypatch, wait_for="present")
+    result, calls, target = _run(monkeypatch, wait_for="present")
     assert result.success is True
     assert calls["n"] == 1
+    assert target.metadata["wait_used"] is True
+    assert target.metadata["wait_mode"] == "present"
+    assert target.metadata["wait_outcome"] == "success"
+    assert target.metadata["wait_adapter"] == "appium"
 
 
 def test_wait_visible_success(monkeypatch):
@@ -55,15 +59,17 @@ def test_wait_visible_success(monkeypatch):
 
 
 def test_no_wait_for_preserves_existing_path(monkeypatch):
-    result, calls, _ = _run(monkeypatch, wait_for=None)
+    result, calls, target = _run(monkeypatch, wait_for=None)
     assert result.success is True
     assert calls["n"] == 1
+    assert "wait_used" not in target.metadata
 
 
 def test_unsupported_wait_mode_fails_clearly(monkeypatch):
-    result, _, _ = _run(monkeypatch, wait_for="enabled")
+    result, _, target = _run(monkeypatch, wait_for="enabled")
     assert result.success is False
     assert "Unsupported wait_for mode for Appium" in (result.error or "")
+    assert target.metadata["wait_outcome"] == "failed"
 
 
 def test_retry_behavior_still_works_with_wait(monkeypatch):

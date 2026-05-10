@@ -35,6 +35,7 @@ pytest tests/unit/test_phase15b_appium_retry.py -q
 pytest tests/unit/test_phase15d_retry_observability.py -q
 pytest tests/unit/test_phase15f_playwright_wait.py -q
 pytest tests/unit/test_phase15f_appium_wait.py -q
+pytest tests/unit/test_phase15h_wait_observability.py -q
 python -m py_compile examples/web_nl_quickstart.py
 python -m py_compile examples/ocr_callable_hydration_example.py
 python -m py_compile examples/report_artifacts_example.py
@@ -46,13 +47,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 595 tests
+pytest --collect-only -q  # baseline now 608 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 595 tests collected
+- pytest collection: 608 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
