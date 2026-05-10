@@ -75,7 +75,36 @@ pytest --bubblegum-config bubblegum.yaml \
 
 For non-pytest usage, see `examples/report_artifacts_example.py`.
 
-## 8) Deferred from this track (v0.0.4-alpha planning)
+## 8) Real smoke kit (adoption-first)
+
+Run these in order for a minimal, deterministic smoke pass:
+
+```bash
+# 1) infra-free OCR hydration pattern
+python examples/ocr_callable_hydration_example.py
+
+# 2) infra-free report artifact generation
+python examples/report_artifacts_example.py
+
+# 3) local Playwright NL smoke (browser prerequisite required)
+python -m pip install -e ".[web]"
+python -m playwright install chromium
+python examples/web_nl_quickstart.py
+```
+
+Manual-only extensions:
+- Appium/mobile smoke remains manual (server + emulator/device + app/capability setup required).
+- Optional OpenAI provider smoke remains manual (`openai` installed by user + `OPENAI_API_KEY` + network).
+
+Expected local outputs:
+- `artifacts/report-artifacts-example.json`
+- `artifacts/report-artifacts-example.html`
+- `artifacts/web-nl-quickstart.json`
+- `artifacts/web-nl-quickstart.html`
+
+These are local JSON/HTML report artifacts suitable for CI upload and team triage.
+
+## 9) Deferred from this track (v0.0.4-alpha planning)
 
 This adoption/docs track intentionally defers:
 

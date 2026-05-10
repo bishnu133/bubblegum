@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- Phase 17C real smoke kit docs/examples MVP: expanded `examples/README.md`, `docs/adoption.md`, `docs/ci.md`, and `RELEASE_CHECKLIST.md` with a consolidated smoke-kit run order, explicit infra-free command block, Playwright prerequisite/run block, manual Appium/OpenAI notes, infra matrix clarity, and expected local `artifacts/` JSON/HTML report outputs. Docs/examples-only scope; no runtime/API/schema/dependency/version changes.
 - Phase 17A roadmap reset/planning documentation added: introduced `docs/phase-17a-roadmap-reset-v0.0.5-alpha.md` and updated README roadmap/project status language to align post-`v0.0.4-alpha` direction toward `v0.0.5-alpha`. Planning/docs-only scope; no runtime/API/schema/dependency/version changes.
 - Phase 17A follow-up docs consistency cleanup: aligned `RELEASE_CHECKLIST.md` current-cycle wording to the post-`v0.0.4-alpha` roadmap reset (latest completed release remains `v0.0.4-alpha`; next planning target is `v0.0.5-alpha`), and expanded Phase 17A deferred-item traceability plus explicit Phase 17B audit-only recommendation. Docs/planning-only scope; no runtime/API/schema/dependency/version changes.
 
