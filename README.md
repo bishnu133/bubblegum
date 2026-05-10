@@ -592,16 +592,18 @@ Because Bubblegum may send DOM text and hierarchy data to external LLM providers
 
 ## Roadmap
 
-| Phase | Duration | Name | Key Deliverables |
-|---|---|---|---|
-| **Phase 0** *(current)* | 2–3 wks | Foundation | All 13 Pydantic schemas, Resolver base, ResolverRegistry, GroundingEngine, BaseAdapter, error taxonomy, golden benchmark scaffold |
-| **Phase 1A** | 2 wks | Web core | Playwright adapter, `act()` + `verify()`, ExplicitSelectorResolver, AccessibilityTreeResolver, ExactTextResolver |
-| **Phase 1B** | 2 wks | Web complete | FuzzyTextResolver, `extract()`, screenshots, MemoryCacheResolver (SQLite), HTML report |
-| **Phase 2** | 3–4 wks | Web AI fallback | LLM provider abstraction, LLMGroundingResolver, confidence scoring, `recover()` |
-| **Phase 3** | 2–3 wks | Memory self-healing | Screen fingerprinting, staleness checks, replay without AI on repeat runs |
-| **Phase 4** | 4–5 wks | Android Appium | Appium adapter, AppiumHierarchyResolver, tap/type/scroll/verify |
-| **Phase 5** | 2–3 wks | Reporting + CI | Full HTML report, pytest plugin, per-resolver trace artifact, benchmark runner |
-| **Phase 6** | 3–4 wks | iOS + advanced AI | XCUITest driver, OCRResolver, VisionModelResolver, shadow DOM, community resolver docs |
+Phase roadmap has been reset after `v0.0.4-alpha`.
+
+- Planning phase: **Phase 17A — Post-v0.0.4 roadmap reset and v0.0.5-alpha planning**
+- Planning doc: `docs/phase-17a-roadmap-reset-v0.0.5-alpha.md`
+- Current release target: `v0.0.5-alpha`
+
+Planned `v0.0.5-alpha` scope themes:
+
+1. release/packaging confidence,
+2. deterministic quality gates,
+3. docs/operator clarity,
+4. no SDK/API/schema breaking changes.
 
 ---
 
@@ -772,9 +774,9 @@ Publishing is not automated yet in CI.
 |---|---|
 | Architecture version | v0.9 — Final Approved |
 | Implementation readiness | 92% — Overall rating 9.2 / 10 |
-| Current phase | **Phase 0: Foundation** |
-| Next step | Implement all 13 Pydantic schemas, Resolver base, ResolverRegistry, GroundingEngine skeleton, golden benchmark scaffold |
-| Locked decisions | Positioning, public API, resolver chain, cost policy, memory staleness, artifact output format, benchmark dataset |
+| Current phase | **Phase 17A: Post-v0.0.4 roadmap reset and v0.0.5-alpha planning** |
+| Next step | Execute the first v0.0.5-alpha slices: release-checklist sync, roadmap/docs consistency pass, and targeted packaging/reporting regression checks |
+| Locked decisions | Keep fallback-first posture, preserve privacy/cost gates, no breaking SDK/API/schema changes, GitHub pre-release-first distribution |
 
 ---
 

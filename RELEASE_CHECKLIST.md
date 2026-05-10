@@ -3,9 +3,10 @@
 Historical release note:
 - `v0.0.1-alpha` is already released.
 
-Current planning note:
-- v0.0.4-alpha planning keeps Playwright and Appium runtime smoke as manual (non-CI-gated).
-- Package version target for this cycle: `0.0.4a0` (PEP 440) for GitHub pre-release `v0.0.4-alpha`.
+Current planning note (post-v0.0.4-alpha roadmap reset):
+- Latest completed pre-release remains `v0.0.4-alpha` with package version `0.0.4a0` (PEP 440).
+- Next planning target is `v0.0.5-alpha` (planning-only; not released).
+- Keep Playwright and Appium runtime smoke as manual (non-CI-gated) until a dedicated follow-up adoption/smoke audit phase lands.
 
 ## Pre-release gates (required)
 
@@ -82,7 +83,8 @@ Notes:
 ## Release policy
 
 - Keep package version aligned to the active release phase.
-- For this release cycle, use package version `0.0.4a0` while keeping GitHub tag/title as `v0.0.4-alpha`.
+- For the latest completed release cycle (`v0.0.4-alpha`), package version is `0.0.4a0` and GitHub tag/title remains `v0.0.4-alpha`.
+- For the next planning cycle (`v0.0.5-alpha`), do not change package version/tag until a later explicit release-prep phase.
 - Use GitHub pre-release tagging per release plan.
 - PyPI/TestPyPI publishing remains deferred unless explicitly enabled in a future phase.
 
