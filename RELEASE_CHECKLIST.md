@@ -33,6 +33,8 @@ pytest tests/unit/test_phase1b.py -q -k "report"
 pytest tests/unit/test_phase15b_playwright_retry.py -q
 pytest tests/unit/test_phase15b_appium_retry.py -q
 pytest tests/unit/test_phase15d_retry_observability.py -q
+pytest tests/unit/test_phase15f_playwright_wait.py -q
+pytest tests/unit/test_phase15f_appium_wait.py -q
 python -m py_compile examples/web_nl_quickstart.py
 python -m py_compile examples/ocr_callable_hydration_example.py
 python -m py_compile examples/report_artifacts_example.py
