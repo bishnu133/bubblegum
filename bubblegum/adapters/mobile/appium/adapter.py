@@ -75,6 +75,20 @@ def _retry_budget(retry_count: int | None) -> int:
     return max(0, min(int(retry_count), _MAX_RETRY_CAP))
 
 
+def _sanitize_retry_reason(exc: Exception) -> str:
+    text = str(exc).strip().splitlines()[0] if str(exc).strip() else exc.__class__.__name__
+    lower = text.lower()
+    if "stale element reference" in lower:
+        return "stale_element_reference"
+    if "no such element" in lower or "could not be located" in lower:
+        return "no_such_element"
+    if "element not interactable" in lower:
+        return "element_not_interactable"
+    if "timeout" in lower:
+        return "timeout"
+    return "non_transient_error"
+
+
 
 _ARTIFACTS_DIR = Path("artifacts")
 
@@ -165,6 +179,10 @@ class AppiumAdapter(BaseAdapter):
                 self._execute_action(plan=plan, element=element)
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
+                target.metadata["retry_attempts"] = max(0, attempts - 1)
+                target.metadata["retry_transient"] = bool(last_transient)
+                target.metadata["retry_reason"] = _sanitize_retry_reason(last_exc) if last_exc else "none"
+                target.metadata["retry_adapter"] = "appium"
                 return ExecutionResult(
                     success=True,
                     duration_ms=duration_ms,
@@ -185,6 +203,10 @@ class AppiumAdapter(BaseAdapter):
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 logger.error("AppiumAdapter.execute failed ref=%r: %s", ref, exc)
+                target.metadata["retry_attempts"] = max(0, attempts - 1)
+                target.metadata["retry_transient"] = bool(last_transient)
+                target.metadata["retry_reason"] = _sanitize_retry_reason(exc)
+                target.metadata["retry_adapter"] = "appium"
                 return ExecutionResult(
                     success=False,
                     duration_ms=duration_ms,

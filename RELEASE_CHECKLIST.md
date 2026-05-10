@@ -30,6 +30,9 @@ pytest tests/unit/test_phase13o_hydration_reporting.py -q
 pytest tests/unit/test_phase13q_hydration_analytics.py -q
 pytest tests/unit/test_json_report.py -q
 pytest tests/unit/test_phase1b.py -q -k "report"
+pytest tests/unit/test_phase15b_playwright_retry.py -q
+pytest tests/unit/test_phase15b_appium_retry.py -q
+pytest tests/unit/test_phase15d_retry_observability.py -q
 python -m py_compile examples/web_nl_quickstart.py
 python -m py_compile examples/ocr_callable_hydration_example.py
 python -m py_compile examples/report_artifacts_example.py
@@ -41,13 +44,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 586 tests
+pytest --collect-only -q  # baseline now 595 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 586 tests collected
+- pytest collection: 595 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -231,4 +234,3 @@ python examples/ocr_callable_hydration_example.py
 Notes:
 - Keep collect-only baseline at 584 unless tests are intentionally added in a future slice.
 - This Phase 14C track is docs/examples-only and does not change runtime/API/dependencies/version.
-

@@ -70,6 +70,24 @@ def _retry_budget(retry_count: int | None) -> int:
     return max(0, min(int(retry_count), _MAX_RETRY_CAP))
 
 
+def _sanitize_retry_reason(exc: Exception) -> str:
+    text = str(exc).strip().splitlines()[0] if str(exc).strip() else exc.__class__.__name__
+    lower = text.lower()
+    if "timeout" in lower or "timed out" in lower:
+        return "timeout"
+    if "not attached" in lower or "detached" in lower:
+        return "detached"
+    if "target closed" in lower:
+        return "target_closed"
+    if "intercepts pointer events" in lower or "click intercepted" in lower:
+        return "click_intercepted"
+    if "not visible" in lower:
+        return "not_visible"
+    if "not enabled" in lower:
+        return "not_enabled"
+    return "non_transient_error"
+
+
 
 _ARTIFACTS_DIR = Path("artifacts")
 
@@ -144,10 +162,14 @@ class PlaywrightAdapter(BaseAdapter):
                 await self._execute_action(plan=plan, locator=locator, timeout=timeout)
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
+                target.metadata["retry_attempts"] = max(0, attempts - 1)
+                target.metadata["retry_transient"] = bool(last_transient)
+                target.metadata["retry_reason"] = _sanitize_retry_reason(last_exc) if last_exc else "none"
+                target.metadata["retry_adapter"] = "playwright"
                 return ExecutionResult(
                     success=True,
                     duration_ms=duration_ms,
-                    element_ref=ref
+                    element_ref=ref,
                 )
             except Exception as exc:
                 last_exc = exc
@@ -163,11 +185,15 @@ class PlaywrightAdapter(BaseAdapter):
                     continue
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 logger.error("Execution failed for ref=%r: %s", ref, exc)
+                target.metadata["retry_attempts"] = max(0, attempts - 1)
+                target.metadata["retry_transient"] = bool(last_transient)
+                target.metadata["retry_reason"] = _sanitize_retry_reason(exc)
+                target.metadata["retry_adapter"] = "playwright"
                 return ExecutionResult(
                     success=False,
                     duration_ms=duration_ms,
                     element_ref=ref,
-                    error=str(exc)
+                    error=str(exc),
                 )
 
     async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:

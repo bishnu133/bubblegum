@@ -33,6 +33,9 @@ def test_playwright_transient_fail_once_then_pass_retries_once():
 
     assert result.success is True
     assert locator.calls == 2
+    assert target.metadata["retry_attempts"] == 1
+    assert target.metadata["retry_transient"] is True
+    assert target.metadata["retry_adapter"] == "playwright"
 
 
 def test_playwright_permanent_error_not_retried():
@@ -45,6 +48,8 @@ def test_playwright_permanent_error_not_retried():
 
     assert result.success is False
     assert locator.calls == 1
+    assert target.metadata["retry_attempts"] == 0
+    assert target.metadata["retry_transient"] is False
 
 
 def test_playwright_retry_budget_capped_to_one():
@@ -60,3 +65,4 @@ def test_playwright_retry_budget_capped_to_one():
 
     assert result.success is False
     assert locator.calls == 2
+    assert target.metadata["retry_attempts"] == 1
