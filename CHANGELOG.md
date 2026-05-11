@@ -3,11 +3,6 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
-- Phase 17G checklist baseline sync for v0.0.5-alpha readiness: updated `RELEASE_CHECKLIST.md` collect-only baseline references from 611 to 615 to match current post-Phase-17E test collection. Docs-only scope; no runtime/API/schema/dependency/version changes.
-- Phase 17E dependency-free infra-free smoke runner MVP: added `scripts/smoke_examples.py` to run only infra-free examples by default (`examples/ocr_callable_hydration_example.py`, `examples/report_artifacts_example.py`), print manual-only Playwright/Appium/OpenAI commands, and support `--dry-run` previews with zero execution. Added lightweight unit tests and docs/checklist references. No runtime/API/schema/dependency/version changes.
-- Phase 17C real smoke kit docs/examples MVP: expanded `examples/README.md`, `docs/adoption.md`, `docs/ci.md`, and `RELEASE_CHECKLIST.md` with a consolidated smoke-kit run order, explicit infra-free command block, Playwright prerequisite/run block, manual Appium/OpenAI notes, infra matrix clarity, and expected local `artifacts/` JSON/HTML report outputs. Docs/examples-only scope; no runtime/API/schema/dependency/version changes.
-- Phase 17A roadmap reset/planning documentation added: introduced `docs/phase-17a-roadmap-reset-v0.0.5-alpha.md` and updated README roadmap/project status language to align post-`v0.0.4-alpha` direction toward `v0.0.5-alpha`. Planning/docs-only scope; no runtime/API/schema/dependency/version changes.
-- Phase 17A follow-up docs consistency cleanup: aligned `RELEASE_CHECKLIST.md` current-cycle wording to the post-`v0.0.4-alpha` roadmap reset (latest completed release remains `v0.0.4-alpha`; next planning target is `v0.0.5-alpha`), and expanded Phase 17A deferred-item traceability plus explicit Phase 17B audit-only recommendation. Docs/planning-only scope; no runtime/API/schema/dependency/version changes.
 
 - Phase 15H wait observability metadata/reporting MVP: adapter execute paths now emit safe wait metadata on existing `StepResult.target.metadata` (`wait_used`, `wait_mode`, `wait_outcome`, `wait_adapter`, optional `wait_duration_ms`) only when `wait_for` is configured. JSON/HTML reporting preserves and safely renders wait metadata while redacting unsafe wait diagnostics fields. Observability-only scope; no wait behavior/retry behavior/schema/public-API/dependency/version changes.
 
@@ -16,6 +11,24 @@ All notable changes to this project will be documented in this file.
 - Phase 15B adapter-level transient retry/wait MVP: added conservative execute-only transient retry helpers in Playwright and Appium adapters (retry budget capped to 1, transient-message classification only, no resolver/grounding/provider retries). Added focused unit tests for transient/pass, permanent/fail, and retry-budget behavior. No public API/schema/dependency/version changes.
 - Phase 14E docs/examples polish pass: added explicit run commands for key local examples, clarified direct-NL adoption wording around config/cost/provider/privacy-gated fallback behavior, and documented reserved pytest plugin flags (`--bubblegum-ai`, `--bubblegum-memory`). Docs/examples-only scope with no runtime/API/dependency/version changes.
 - Phase 14C adoption/examples smoke-kit docs MVP added: `docs/adoption.md`, `docs/pytest-plugin.md`, `docs/ci.md`, plus new examples `examples/web_nl_quickstart.py`, `examples/ocr_callable_hydration_example.py`, and `examples/report_artifacts_example.py`. Updated `README.md`, `examples/README.md`, and `RELEASE_CHECKLIST.md` with adoption links and verification commands. Docs/examples-only scope with no runtime/API/dependency/version changes.
+
+## v0.0.5-alpha
+- Release scope finalized for GitHub pre-release `v0.0.5-alpha` with package version `0.0.5a0` (PEP 440).
+- Scope includes:
+  - Phase 17A roadmap reset and `v0.0.5-alpha` planning
+  - Phase 17B real smoke kit/adoption readiness audit
+  - Phase 17C real smoke kit docs/examples MVP
+  - Phase 17D smoke runner audit
+  - Phase 17E dependency-free infra-free smoke runner MVP
+  - Phase 17F smoke runner post-merge verification
+  - Phase 17G release checklist collect-only baseline sync to 615
+  - Phase 18B release metadata/docs/checklist preparation
+- No runtime behavior changes.
+- No SDK public API changes.
+- No schema changes.
+- No dependency changes.
+- No provider/network/browser/device CI smoke added.
+- PyPI/TestPyPI publishing remains deferred; release target remains GitHub pre-release only.
 
 ## v0.0.4-alpha
 - Release scope finalized for GitHub pre-release `v0.0.4-alpha` with package version `0.0.4a0` (PEP 440).

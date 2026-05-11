@@ -3,9 +3,9 @@
 Historical release note:
 - `v0.0.1-alpha` is already released.
 
-Current planning note (post-v0.0.4-alpha roadmap reset):
-- Latest completed pre-release remains `v0.0.4-alpha` with package version `0.0.4a0` (PEP 440).
-- Next planning target is `v0.0.5-alpha` (planning-only; not released).
+Current release-prep note (Phase 18B):
+- Latest completed pre-release remains `v0.0.4-alpha` (historical prior release).
+- Active package version target is `0.0.5a0` (PEP 440) for GitHub pre-release `v0.0.5-alpha`.
 - Keep Playwright and Appium runtime smoke as manual (non-CI-gated) until a dedicated follow-up adoption/smoke audit phase lands.
 
 ## Pre-release gates (required)
@@ -68,7 +68,7 @@ python examples/playwright_quickstart.py
 ```
 
 Notes:
-- Keep this as manual smoke for v0.0.4-alpha.
+- Keep this as manual smoke for v0.0.5-alpha.
 - Do not add runtime Playwright browser execution as required CI gate yet.
 
 ## Manual Appium checklist (not CI-gated)
@@ -81,13 +81,13 @@ Before running `examples/appium_quickstart.py`, verify:
 
 Notes:
 - Appium quickstart is intentionally a real-infrastructure template.
-- Do not gate CI on mobile runtime infra for v0.0.4-alpha.
+- Do not gate CI on mobile runtime infra for v0.0.5-alpha.
 
 ## Release policy
 
 - Keep package version aligned to the active release phase.
-- For the latest completed release cycle (`v0.0.4-alpha`), package version is `0.0.4a0` and GitHub tag/title remains `v0.0.4-alpha`.
-- For the next planning cycle (`v0.0.5-alpha`), do not change package version/tag until a later explicit release-prep phase.
+- For the latest completed historical release cycle (`v0.0.4-alpha`), package version was `0.0.4a0`.
+- For this release-prep cycle, package version target is `0.0.5a0` and GitHub pre-release tag/title target is `v0.0.5-alpha`.
 - Use GitHub pre-release tagging per release plan.
 - PyPI/TestPyPI publishing remains deferred unless explicitly enabled in a future phase.
 
@@ -100,7 +100,7 @@ Notes:
   - `python -m pip install build`
 
 
-## OCR callable posture for v0.0.4-alpha
+## OCR callable posture for v0.0.5-alpha
 
 - OCR remains callable-only: integrators may supply their own runtime OCR callable backend.
 - Screenshot OCR processing stays privacy-gated and opt-in (`process_screenshots_for_ocr: true`).
@@ -108,7 +108,7 @@ Notes:
 - OCR resolver refs are synthetic (`ocr://block/<index>`) and are not adapter-executed yet.
 
 
-## Vision/OCR limitations and gating posture for v0.0.4-alpha
+## Vision/OCR limitations and gating posture for v0.0.5-alpha
 
 - Vision remains disabled by default and screenshot sharing remains privacy-gated.
 - Screenshot-to-vision processing requires explicit opt-in via `process_screenshots_for_vision: true` (default: `false`).
