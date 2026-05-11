@@ -8,7 +8,12 @@ from pathlib import Path
 from typing import Sequence
 
 from bubblegum.core.schemas import StepResult
-from bubblegum.reporting.html_report import build_report_analytics, safe_hydration_metadata, sanitize_reporting_metadata
+from bubblegum.reporting.html_report import (
+    build_report_analytics,
+    safe_graph_signals_metadata,
+    safe_hydration_metadata,
+    sanitize_reporting_metadata,
+)
 
 
 def _safe_result_dump(result: StepResult) -> dict:
@@ -19,10 +24,14 @@ def _safe_result_dump(result: StepResult) -> dict:
         if isinstance(metadata, dict):
             metadata = sanitize_reporting_metadata(metadata)
             hydration = safe_hydration_metadata(metadata)
+            graph_signals = safe_graph_signals_metadata(metadata)
             for key in list(metadata.keys()):
                 if key.startswith("hydration_") or key in {"match_field", "match_count"}:
                     metadata.pop(key, None)
+            metadata.pop("graph_signals", None)
             metadata.update(hydration)
+            if graph_signals:
+                metadata["graph_signals"] = graph_signals
             target["metadata"] = metadata
     return payload
 
