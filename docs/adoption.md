@@ -1,6 +1,6 @@
 # Adoption Guide (Phase 14C MVP)
 
-This guide defines a **fallback-first** rollout for Bubblegum `0.0.4a0` with GitHub pre-release tag `v0.0.4-alpha`.
+This guide defines a **fallback-first** rollout for Bubblegum `0.0.5a0` with GitHub pre-release tag `v0.0.5-alpha`.
 
 ## 1) Recommended rollout ladder
 
@@ -111,7 +111,7 @@ Expected local outputs:
 
 These are local JSON/HTML report artifacts suitable for CI upload and team triage.
 
-## 9) Deferred from this track (v0.0.4-alpha planning)
+## 9) Deferred from this track (v0.0.5-alpha planning)
 
 This adoption/docs track intentionally defers:
 
