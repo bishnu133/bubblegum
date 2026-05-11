@@ -1,6 +1,7 @@
 # Changelog
 
 - Phase 19E-B metadata-only graph diagnostics MVP: added internal `graph_signals` helper to compute compact, deterministic, JSON-safe graph-context diagnostics (`label_for_match`, `same_row_match`, `same_container_match`, `nearby_label_match`, `role_match_with_graph_context`, `unique_in_scope`, `visible_enabled_match`) and emitted these under `metadata["graph_signals"]` in AccessibilityTreeResolver and AppiumHierarchyResolver candidates. No engine/ranker/confidence/threshold changes, no resolver priority/order changes, no SDK/API/schema/dependency/version changes, and no adapter runtime behavior changes.
+- Phase 19E-D graph signal reporting/analytics MVP: report surfaces now preserve sanitized `metadata["graph_signals"]` in JSON output, redact unsafe graph diagnostic payload keys, render an optional compact per-step “Graph Signals” section in HTML reports, and add aggregate `graph_signal_summary` analytics (`total_events`, `presence_counts`, `reason_counts`, `field_true_counts`). Reporting-only scope; no scoring/ranker/confidence/engine/resolver/API/schema/dependency/version changes.
 
 All notable changes to this project will be documented in this file.
 

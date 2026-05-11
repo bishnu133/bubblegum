@@ -278,3 +278,38 @@ def test_json_report_redacts_unsafe_wait_metadata(tmp_path):
     assert "wait_stack" not in md
     assert "wait_payload" not in md
     assert "wait_secrets" not in md
+
+
+def test_json_report_graph_signals_preserved_and_redacted(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Click",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "graph_signals": {
+                    "label_for_match": True,
+                    "same_row_match": False,
+                    "score_hint": 0.286,
+                    "reason": "ok",
+                    "hierarchy_xml": "<xml/>",
+                    "raw_payload": {"secret": "x"},
+                    "full_graph": {"nodes": []},
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    gs = payload["results"][0]["target"]["metadata"]["graph_signals"]
+    assert gs["label_for_match"] is True
+    assert gs["same_row_match"] is False
+    assert gs["score_hint"] == 0.286
+    assert gs["reason"] == "ok"
+    assert "hierarchy_xml" not in gs
+    assert "raw_payload" not in gs
+    assert "full_graph" not in gs

@@ -99,6 +99,37 @@ _UNSAFE_WAIT_KEYS = {
     "wait_candidate_dump",
 }
 
+_SAFE_GRAPH_SIGNAL_FIELDS = (
+    "label_for_match",
+    "same_row_match",
+    "same_container_match",
+    "nearby_label_match",
+    "role_match_with_graph_context",
+    "unique_in_scope",
+    "visible_enabled_match",
+    "score_hint",
+    "reason",
+)
+
+_UNSAFE_GRAPH_KEYS = {
+    "snapshot",
+    "a11y_snapshot",
+    "hierarchy_xml",
+    "raw_xml",
+    "screenshot",
+    "screenshot_bytes",
+    "image_bytes",
+    "base64",
+    "raw_payload",
+    "provider_payload",
+    "provider_request",
+    "provider_response",
+    "graph_dump",
+    "full_graph",
+    "nodes",
+    "edges",
+}
+
 
 def _conf_colour(conf: float) -> str:
     if conf >= 0.85:
@@ -137,6 +168,21 @@ def sanitize_reporting_metadata(metadata: dict) -> dict:
     if not isinstance(metadata, dict):
         return {}
     return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS and k not in _UNSAFE_RETRY_KEYS and k not in _UNSAFE_WAIT_KEYS}
+
+
+def safe_graph_signals_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact report-safe graph signal metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("graph_signals")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_GRAPH_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_GRAPH_SIGNAL_FIELDS:
+        if key in redacted:
+            out[key] = redacted[key]
+    return out
 
 
 def _screenshot_thumb(path: str) -> str:
@@ -217,6 +263,20 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{hydration_rows}</ul>'
             f'</details>'
         )
+    graph_html = ""
+    graph_signals = safe_graph_signals_metadata(target_metadata)
+    if graph_signals:
+        graph_rows = "".join(
+            f'<li><strong>{html.escape(key)}:</strong> {html.escape(str(graph_signals[key]))}</li>'
+            for key in _SAFE_GRAPH_SIGNAL_FIELDS
+            if key in graph_signals
+        )
+        graph_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Graph Signals</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{graph_rows}</ul>'
+            '</details>'
+        )
     wait_html = ""
     if target_metadata.get("wait_used") is True:
         wait_mode = target_metadata.get("wait_mode", "unknown")
@@ -287,6 +347,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {error_html}
       {screenshot_html}
       {hydration_html}
+      {graph_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -452,6 +513,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
       - confidence_summary {count,min,max,average,buckets}
       - error_type_counts
       - hydration_summary {total_events,status_counts,by_source,by_strategy,by_channel,by_reason}
+      - graph_signal_summary {total_events,presence_counts,reason_counts,field_true_counts}
     """
     status_counts = Counter(
         {"passed": 0, "recovered": 0, "failed": 0, "skipped": 0}
@@ -468,6 +530,10 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     hydration_by_channel: Counter[str] = Counter()
     hydration_by_reason: Counter[str] = Counter()
     hydration_total_events = 0
+    graph_signal_presence_counts: Counter[str] = Counter()
+    graph_signal_reason_counts: Counter[str] = Counter()
+    graph_signal_true_counts: Counter[str] = Counter()
+    graph_signal_total_events = 0
 
     for result in results:
         status_counts[result.status] += 1
@@ -489,6 +555,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
 
         metadata = result.target.metadata if result.target else {}
         hydration = safe_hydration_metadata(metadata)
+        graph_signals = safe_graph_signals_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -498,6 +565,16 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             _count_categorical_field(hydration_by_strategy, hydration.get("hydration_strategy"))
             _count_categorical_field(hydration_by_channel, hydration.get("hydration_channel"))
             _count_categorical_field(hydration_by_reason, hydration.get("hydration_reason"))
+        if graph_signals:
+            graph_signal_total_events += 1
+            reason = graph_signals.get("reason")
+            _count_categorical_field(graph_signal_reason_counts, reason)
+            for key in _SAFE_GRAPH_SIGNAL_FIELDS:
+                if key in graph_signals:
+                    graph_signal_presence_counts[key] += 1
+            for key, value in graph_signals.items():
+                if isinstance(value, bool) and value:
+                    graph_signal_true_counts[key] += 1
 
     conf_count = len(confidences)
     confidence_summary = {
@@ -515,6 +592,12 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "by_channel": dict(hydration_by_channel),
         "by_reason": dict(hydration_by_reason),
     }
+    graph_signal_summary = {
+        "total_events": graph_signal_total_events,
+        "presence_counts": dict(graph_signal_presence_counts),
+        "reason_counts": dict(graph_signal_reason_counts),
+        "field_true_counts": dict(graph_signal_true_counts),
+    }
 
     return {
         "total": len(results),
@@ -523,4 +606,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "confidence_summary": confidence_summary,
         "error_type_counts": dict(error_type_counts),
         "hydration_summary": hydration_summary,
+        "graph_signal_summary": graph_signal_summary,
     }
