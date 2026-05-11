@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- Phase 17G checklist baseline sync for v0.0.5-alpha readiness: updated `RELEASE_CHECKLIST.md` collect-only baseline references from 611 to 615 to match current post-Phase-17E test collection. Docs-only scope; no runtime/API/schema/dependency/version changes.
 - Phase 17E dependency-free infra-free smoke runner MVP: added `scripts/smoke_examples.py` to run only infra-free examples by default (`examples/ocr_callable_hydration_example.py`, `examples/report_artifacts_example.py`), print manual-only Playwright/Appium/OpenAI commands, and support `--dry-run` previews with zero execution. Added lightweight unit tests and docs/checklist references. No runtime/API/schema/dependency/version changes.
 - Phase 17C real smoke kit docs/examples MVP: expanded `examples/README.md`, `docs/adoption.md`, `docs/ci.md`, and `RELEASE_CHECKLIST.md` with a consolidated smoke-kit run order, explicit infra-free command block, Playwright prerequisite/run block, manual Appium/OpenAI notes, infra matrix clarity, and expected local `artifacts/` JSON/HTML report outputs. Docs/examples-only scope; no runtime/API/schema/dependency/version changes.
 - Phase 17A roadmap reset/planning documentation added: introduced `docs/phase-17a-roadmap-reset-v0.0.5-alpha.md` and updated README roadmap/project status language to align post-`v0.0.4-alpha` direction toward `v0.0.5-alpha`. Planning/docs-only scope; no runtime/API/schema/dependency/version changes.
