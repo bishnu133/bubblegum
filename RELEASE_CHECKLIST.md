@@ -50,6 +50,7 @@ pytest tests/unit/test_phase11r_openai_vision_provider.py -q
 pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_phase19c_normalized_element.py -q  # Phase 19C normalized element MVP internal model checks
 pytest tests/unit/test_phase19d_element_graph.py -q  # Phase 19D internal UI Element Graph MVP checks
+pytest tests/unit/test_phase19e_graph_signals.py -q  # Phase 19E-B metadata-only graph signal diagnostics checks
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
@@ -282,4 +283,3 @@ Policy:
 - Confirm `docs/phase-19b-object-intelligence-benchmark.md` exists and clearly separates capability benchmarking from regression testing.
 - Confirm benchmark design section includes required baselines, metrics, failure taxonomy, and mobile benchmark slice taxonomy.
 - Confirm this phase makes no runtime/API/schema/dependency/version changes.
-
