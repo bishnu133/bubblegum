@@ -51,13 +51,13 @@ pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 611 tests
+pytest --collect-only -q  # baseline now 615 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 611 tests collected
+- pytest collection: 615 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -200,7 +200,7 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline now 611 tests
+pytest --collect-only -q  # baseline now 615 tests
 ```
 
 Policy notes:
@@ -240,7 +240,7 @@ python examples/ocr_callable_hydration_example.py
 ```
 
 Notes:
-- Keep collect-only baseline at 611 unless tests are intentionally added in a future slice.
+- Keep collect-only baseline at 615 unless tests are intentionally added in a future slice.
 - This Phase 14C track is docs/examples-only and does not change runtime/API/dependencies/version.
 
 ## Phase 17C real smoke kit verification (manual, docs/examples MVP)
