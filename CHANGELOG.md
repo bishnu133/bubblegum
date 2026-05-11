@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 - Phase 14E docs/examples polish pass: added explicit run commands for key local examples, clarified direct-NL adoption wording around config/cost/provider/privacy-gated fallback behavior, and documented reserved pytest plugin flags (`--bubblegum-ai`, `--bubblegum-memory`). Docs/examples-only scope with no runtime/API/dependency/version changes.
 - Phase 14C adoption/examples smoke-kit docs MVP added: `docs/adoption.md`, `docs/pytest-plugin.md`, `docs/ci.md`, plus new examples `examples/web_nl_quickstart.py`, `examples/ocr_callable_hydration_example.py`, and `examples/report_artifacts_example.py`. Updated `README.md`, `examples/README.md`, and `RELEASE_CHECKLIST.md` with adoption links and verification commands. Docs/examples-only scope with no runtime/API/dependency/version changes.
 
+- Phase 19D UI Element Graph MVP added internal `ElementGraph` over `NormalizedElement` (`bubblegum/core/elements/graph.py`) with deterministic parent/child/sibling/nearby/label_for/same_row/same_container relationships and safe query helpers (`get_element`, `children_of`, `parent_of`, `siblings_of`, `nearby`, `labels_for`, `controls_for_label`, `elements_with_text`, `elements_by_role`) plus JSON-safe summary export. Added unit coverage for graph construction, deterministic relations, lookup helpers, unknown-id safety, and serialization safety. No resolver/ranker/adapter runtime integration, no SDK public API changes, no dependency/version changes.
+
 ## v0.0.5-alpha
 - Release scope finalized for GitHub pre-release `v0.0.5-alpha` with package version `0.0.5a0` (PEP 440).
 - Scope includes:

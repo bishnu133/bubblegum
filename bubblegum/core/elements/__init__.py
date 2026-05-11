@@ -1,5 +1,6 @@
 """Internal normalized cross-platform element models (Phase 19C MVP)."""
 
+from .graph import ElementGraph
 from .normalized import (
     NormalizedBounds,
     NormalizedElement,
@@ -8,6 +9,7 @@ from .normalized import (
 )
 
 __all__ = [
+    "ElementGraph",
     "NormalizedBounds",
     "NormalizedElement",
     "normalize_web_entry",
