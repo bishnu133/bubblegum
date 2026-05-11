@@ -49,16 +49,17 @@ pytest tests/unit/test_phase11n_vision_provider_registration.py -q
 pytest tests/unit/test_phase11r_openai_vision_provider.py -q
 pytest tests/unit/test_phase11x_openai_vision_diagnostics.py -q
 pytest tests/unit/test_phase19c_normalized_element.py -q  # Phase 19C normalized element MVP internal model checks
+pytest tests/unit/test_phase19d_element_graph.py -q  # Phase 19D internal UI Element Graph MVP checks
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 621 tests
+pytest --collect-only -q  # baseline now 624 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 621 tests collected
+- pytest collection: 624 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 
@@ -201,7 +202,7 @@ Expected publish-readiness commands:
 ```bash
 python -m build
 python -m twine check dist/*
-pytest --collect-only -q  # baseline now 621 tests
+pytest --collect-only -q  # baseline now 624 tests
 ```
 
 Policy notes:
