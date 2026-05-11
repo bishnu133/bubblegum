@@ -192,6 +192,13 @@ pytest --bubblegum-benchmark
 ---
 
 
+
+## Project status note (Object Intelligence planning)
+
+- Phase 19A audit concluded: architectural strength is **strong alpha** and empirical capability remains **unrated** until benchmark implementation exists.
+- Phase 19B is **docs/design-only** and defines Object Intelligence Benchmark vs Regression Suite separation for v0.0.6-alpha planning.
+- See: `docs/phase-19b-object-intelligence-benchmark.md`.
+
 ## Quickstart examples
 
 Runnable templates are available in:

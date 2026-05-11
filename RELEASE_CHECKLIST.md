@@ -274,3 +274,10 @@ Policy:
 - Keep runtime library behavior/API/schema/dependencies/version unchanged for this docs/examples slice.
 - Keep Playwright/Appium/OpenAI smoke out of required CI gates.
 - PyPI/TestPyPI publishing remains deferred.
+
+## Phase 19B docs/design verification note
+
+- Confirm `docs/phase-19b-object-intelligence-benchmark.md` exists and clearly separates capability benchmarking from regression testing.
+- Confirm benchmark design section includes required baselines, metrics, failure taxonomy, and mobile benchmark slice taxonomy.
+- Confirm this phase makes no runtime/API/schema/dependency/version changes.
+
