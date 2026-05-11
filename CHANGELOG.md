@@ -1,5 +1,7 @@
 # Changelog
 
+- Phase 19E-B metadata-only graph diagnostics MVP: added internal `graph_signals` helper to compute compact, deterministic, JSON-safe graph-context diagnostics (`label_for_match`, `same_row_match`, `same_container_match`, `nearby_label_match`, `role_match_with_graph_context`, `unique_in_scope`, `visible_enabled_match`) and emitted these under `metadata["graph_signals"]` in AccessibilityTreeResolver and AppiumHierarchyResolver candidates. No engine/ranker/confidence/threshold changes, no resolver priority/order changes, no SDK/API/schema/dependency/version changes, and no adapter runtime behavior changes.
+
 All notable changes to this project will be documented in this file.
 
 ## Unreleased

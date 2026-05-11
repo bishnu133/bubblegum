@@ -37,6 +37,9 @@ import json
 import xml.etree.ElementTree as ET
 import logging
 
+from bubblegum.core.elements.graph import ElementGraph
+from bubblegum.core.elements.graph_signals import GraphSignalInput, compute_graph_signals
+from bubblegum.core.elements.normalized import normalize_mobile_hierarchy_node
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 from bubblegum.core.grounding.signals import make_signals
@@ -111,17 +114,52 @@ class AppiumHierarchyResolver(Resolver):
             return []
 
         candidates: list[ResolvedTarget] = []
+        normalized_elements = []
+        elements_by_ref: dict[str, object] = {}
         for element in root.iter():
+            source_ref = _element_xpath_ref(element)
+            normalized = normalize_mobile_hierarchy_node(
+                {
+                    "class": (element.get("class") or element.tag or "").strip(),
+                    "text": (element.get("text") or "").strip(),
+                    "content-desc": (element.get("content-desc") or "").strip(),
+                    "resource-id": (element.get("resource-id") or "").strip(),
+                    "bounds": (element.get("bounds") or "").strip(),
+                    "enabled": (element.get("enabled") or "true").strip().lower() != "false",
+                    "displayed": (element.get("visible-to-user") or "true").strip().lower() != "false",
+                    "source_ref": source_ref,
+                },
+                platform=intent.platform or "android",
+                source_kind="appium_hierarchy",
+            )
+            normalized_elements.append(normalized)
+            if normalized.source_ref:
+                elements_by_ref[normalized.source_ref] = normalized
             result = self._match_element(element, instruction_lower, intent.action_type)
             if result is not None:
                 candidates.append(result)
+        graph = ElementGraph(normalized_elements) if normalized_elements else None
+        enriched: list[ResolvedTarget] = []
+        for target in candidates:
+            meta = dict(target.metadata)
+            meta["graph_signals"] = compute_graph_signals(
+                GraphSignalInput(
+                    candidate_ref=target.ref,
+                    candidate_text=str(meta.get("matched_value", "")),
+                    candidate_role=str(meta.get("tag", "")),
+                    instruction=intent.instruction,
+                ),
+                graph=graph,
+                elements_by_ref=elements_by_ref,
+            )
+            enriched.append(target.model_copy(update={"metadata": meta}))
 
         logger.debug(
             "AppiumHierarchyResolver: found %d candidate(s) for %r",
-            len(candidates),
+            len(enriched),
             intent.instruction,
         )
-        return candidates
+        return enriched
 
     def _match_element(
         self,
@@ -233,3 +271,16 @@ def _role_match_for_action(tag: str, action_type: str) -> float:
     if action_type == "verify":
         return 0.9 if any(x in t for x in ("textview", "edittext", "button")) else 0.5
     return 0.5
+
+
+def _element_xpath_ref(element: ET.Element) -> str:
+    widget_type = (element.get("class") or element.tag or "*").strip() or "*"
+    text = (element.get("text") or "").strip()
+    c_desc = (element.get("content-desc") or "").strip()
+    if text:
+        xpath = _build_xpath(widget_type, "text", text)
+    elif c_desc:
+        xpath = _build_xpath(widget_type, "content-desc", c_desc)
+    else:
+        xpath = f"//{widget_type}"
+    return json.dumps({"by": "xpath", "value": xpath})

@@ -31,6 +31,9 @@ import logging
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 from bubblegum.core.grounding.signals import make_signals
+from bubblegum.core.elements.graph import ElementGraph
+from bubblegum.core.elements.graph_signals import GraphSignalInput, compute_graph_signals
+from bubblegum.core.elements.normalized import normalize_web_entry
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +136,7 @@ class AccessibilityTreeResolver(Resolver):
         candidates: list[ResolvedTarget] = []
         signal_rows: list[tuple[str, float, float, float]] = []
 
+        ref_rows: list[tuple[str, str, str]] = []
         for line in snapshot.splitlines():
             m = _SNAPSHOT_LINE_RE.match(line)
             if not m:
@@ -150,6 +154,7 @@ class AccessibilityTreeResolver(Resolver):
                 continue
 
             ref = _build_ref(role, elname)
+            ref_rows.append((ref, role, elname))
             signal_rows.append((ref, confidence, 1.0 if _role_fits_action(role, intent.action_type) else 0.0, 0.5))
             candidates.append(
                 ResolvedTarget(
@@ -168,6 +173,24 @@ class AccessibilityTreeResolver(Resolver):
         counts: dict[str, int] = {}
         for ref, *_ in signal_rows:
             counts[ref] = counts.get(ref, 0) + 1
+
+        normalized_elements = [
+            normalize_web_entry(
+                {
+                    "source_ref": ref,
+                    "role": role,
+                    "name": name,
+                    "label": name,
+                    "text": name,
+                    "visible": True,
+                    "enabled": True,
+                },
+                source_kind="accessibility_tree",
+            )
+            for ref, role, name in ref_rows
+        ]
+        graph = ElementGraph(normalized_elements) if normalized_elements else None
+        elements_by_ref = {e.source_ref or "": e for e in normalized_elements if e.source_ref}
 
         enriched: list[ResolvedTarget] = []
         for target in candidates:
@@ -202,6 +225,16 @@ class AccessibilityTreeResolver(Resolver):
                 else 0.0
             )
             meta = dict(target.metadata)
+            meta["graph_signals"] = compute_graph_signals(
+                GraphSignalInput(
+                    candidate_ref=target.ref,
+                    candidate_text=str(target.metadata.get("name", "")),
+                    candidate_role=str(target.metadata.get("role", "")),
+                    instruction=intent.instruction,
+                ),
+                graph=graph,
+                elements_by_ref=elements_by_ref,
+            )
             meta["signals"] = make_signals(
                 text_match=boosted_tmatch,
                 role_match=rmatch,
