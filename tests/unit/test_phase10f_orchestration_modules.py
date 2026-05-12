@@ -48,3 +48,24 @@ def test_build_validation_plan_parity():
     plan = build_validation_plan(assertion_type="text_visible", expected_value="Hello", timeout_ms=5000)
     assert plan.assertion_type == "text_visible"
     assert plan.expected_value == "Hello"
+
+
+def test_planner_make_intent_includes_relational_intent_when_safe_pattern_matches():
+    opts = build_options({}, ai_enabled=True, max_cost_level="medium", memory_ttl_days=7, memory_max_failures=2)
+    intent = make_intent(
+        instruction="Click Edit for Alice Johnson",
+        channel="web",
+        platform="web",
+        action_type="click",
+        selector=None,
+        options=opts,
+    )
+    assert "relational_intent" in intent.context
+    assert intent.context["relational_intent"]["relation_type"] == "same_row_as_text"
+
+
+def test_planner_make_intent_context_backward_compatible_for_plain_instruction():
+    opts = build_options({}, ai_enabled=True, max_cost_level="medium", memory_ttl_days=7, memory_max_failures=2)
+    intent = make_intent(instruction="Click Login", channel="web", platform="web", action_type="click", selector="#x", options=opts)
+    assert intent.context["explicit_selector"] == "#x"
+    assert "relational_intent" not in intent.context

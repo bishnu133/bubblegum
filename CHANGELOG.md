@@ -43,6 +43,8 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- Phase 19G-D parser relational metadata MVP: added internal rule-based `parse_relational_intent(...)` helper for safe relational hints (`for <anchor>`, modal scope phrases, dropdown scope phrases, checkbox label phrases) and metadata-only planner propagation into `StepIntent.context["relational_intent"]` when matched. No resolver/engine/ranker/confidence/schema/API/dependency/version changes; no runtime targeting behavior changes.
+
 - Phase 19G-B relational intent contract design/spec added (`docs/phase-19g-relational-intent-design.md`): defines schema-stable `StepIntent.context["relational_intent"]` metadata proposal, initial relation taxonomy (`label_for`, `same_row_as_text`, `within_card`, `within_modal`, `within_region`, `mobile_attr_hint`), conservative parser principles, backward-compat strategy, pre-implementation test gates, and phased follow-on plan. Design-only: no parser/planner/runtime/ranker/schema/API/dependency/version changes.
 
 - Phase 19C Normalized Cross-platform Element Model MVP added internal-only normalized element contracts in `bubblegum/core/elements/normalized.py` (`NormalizedElement`, `NormalizedBounds`) plus deterministic web/mobile normalization helpers and JSON-safe serialization. Added focused unit coverage for defaults, serialization safety, web/mobile mapping, bounds parsing/clamping, and parent/child linkage. No runtime resolver/ranker/adapter behavior changes, no SDK public API changes, no dependency/version changes.
