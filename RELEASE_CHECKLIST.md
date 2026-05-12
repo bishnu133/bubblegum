@@ -8,6 +8,12 @@ Current release-prep note (Phase 18B):
 - Active package version target is `0.0.5a0` (PEP 440) for GitHub pre-release `v0.0.5-alpha`.
 - Keep Playwright and Appium runtime smoke as manual (non-CI-gated) until a dedicated follow-up adoption/smoke audit phase lands.
 
+## Phase 19G-B design-only note
+
+- Phase 19G-B adds design/spec documentation only (`docs/phase-19g-relational-intent-design.md`).
+- No parser/planner/runtime/graph-scoring/object-seed-execute changes are included in this phase.
+- Keep default regression benchmark behavior and object-seed validation-only posture unchanged.
+
 ## Pre-release gates (required)
 
 Run from repository root:
