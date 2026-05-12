@@ -19,6 +19,18 @@ Current release-prep note (Phase 18B):
 - Phase 19G-D adds internal parser relational metadata extraction and optional planner context propagation only (`StepIntent.context["relational_intent"]` when safe rules match).
 - No runtime relational targeting, resolver behavior, ranker/confidence scoring, engine threshold, schema/API/dependency/version changes.
 
+
+## Phase 19G-G design-only note
+
+- Phase 19G-G adds graph query planner design/spec documentation only (`docs/phase-19g-graph-query-planner-design.md`).
+- No runtime graph filtering/candidate narrowing, no graph scoring/ranker/confidence changes, no resolver/threshold/order changes.
+- No parser/planner/schema/API/dependency/version changes and no benchmark fixture changes.
+
+## Phase 19G-H post-merge audit note
+
+- Phase 19G-H performs post-merge audit/decision only (`docs/phase-19g-h-graph-query-post-merge-audit.md`).
+- Outcome: conditional GO for a future metadata-only diagnostics MVP; runtime graph filtering/scoring/selection remains deferred.
+- Keep resolver/ranker/confidence/threshold/order and parser/schema/API/dependency/version unchanged in this audit phase.
 ## Pre-release gates (required)
 
 Run from repository root:

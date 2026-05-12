@@ -1,5 +1,7 @@
 # Unreleased
 
+- Phase 19G-H post-merge audit completed (`docs/phase-19g-h-graph-query-post-merge-audit.md`): confirms Phase 19G-G design completeness and deterministic/fail-closed diagnostics-first posture; issues conditional GO for metadata-only diagnostics MVP with explicit guardrails (no runtime filtering/scoring/order/threshold/schema/API changes).
+
 ## Phase 19G-E1 (release checklist baseline sync)
 
 - Phase 19G-E1 docs/checklist-only cleanup: updated `RELEASE_CHECKLIST.md` collect-only baseline references from 643 to 654 to match the current mainline pytest collection baseline. No runtime/parser/planner/schema/resolver/ranker/confidence/API/dependency/version changes.
@@ -47,6 +49,7 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- Phase 19G-G graph query planner design/spec added (`docs/phase-19g-graph-query-planner-design.md`): defines deterministic `relational_intent`→ElementGraph diagnostics mapping, fail-closed ambiguity/status model, container-detection heuristics, JSON-safe diagnostics contract, and phased integration path (diagnostics-first; runtime filtering/scoring deferred). Docs-only; no runtime/parser/planner/schema/resolver/ranker/engine/API/dependency/version changes.
 - Phase 19G-E1 docs/checklist baseline sync: updated `RELEASE_CHECKLIST.md` collect-only baseline references from 643 to 654 to match current mainline test collection. Docs/checklist-only change; no runtime/parser/planner/schema/resolver/ranker/API/dependency/version changes.
 - Phase 19G-D parser relational metadata MVP: added internal rule-based `parse_relational_intent(...)` helper for safe relational hints (`for <anchor>`, modal scope phrases, dropdown scope phrases, checkbox label phrases) and metadata-only planner propagation into `StepIntent.context["relational_intent"]` when matched. No resolver/engine/ranker/confidence/schema/API/dependency/version changes; no runtime targeting behavior changes.
 
