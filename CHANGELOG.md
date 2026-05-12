@@ -1,3 +1,18 @@
+# Unreleased
+
+## Phase 19F-B (Object Intelligence benchmark seed fixtures MVP)
+
+- Added Object Intelligence seed spec doc at
+  `docs/phase-19f-object-intelligence-seed-spec.md`.
+- Added separate Object Intelligence seed fixtures at
+  `tests/benchmarks/object_intelligence/seed_cases.json`.
+- Added dedicated Object Intelligence seed schema at
+  `tests/benchmarks/object_intelligence/schema.json`.
+- Added unit validation for seed/schema shape and safety checks at
+  `tests/unit/test_object_intelligence_seed_schema.py`.
+- Scope is docs/fixtures/schema-validation only; no runner runtime logic, scoring,
+  resolver priority, or engine behavior changes in this phase.
+
 # Changelog
 
 - Phase 19E-B metadata-only graph diagnostics MVP: added internal `graph_signals` helper to compute compact, deterministic, JSON-safe graph-context diagnostics (`label_for_match`, `same_row_match`, `same_container_match`, `nearby_label_match`, `role_match_with_graph_context`, `unique_in_scope`, `visible_enabled_match`) and emitted these under `metadata["graph_signals"]` in AccessibilityTreeResolver and AppiumHierarchyResolver candidates. No engine/ranker/confidence/threshold changes, no resolver priority/order changes, no SDK/API/schema/dependency/version changes, and no adapter runtime behavior changes.

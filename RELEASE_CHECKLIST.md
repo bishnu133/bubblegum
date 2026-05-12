@@ -284,3 +284,12 @@ Policy:
 - Confirm `docs/phase-19b-object-intelligence-benchmark.md` exists and clearly separates capability benchmarking from regression testing.
 - Confirm benchmark design section includes required baselines, metrics, failure taxonomy, and mobile benchmark slice taxonomy.
 - Confirm this phase makes no runtime/API/schema/dependency/version changes.
+
+## Phase 19F-B checklist addendum
+
+- Add test command:
+  - `pytest tests/unit/test_object_intelligence_seed_schema.py -q`
+- collect-only baseline updates:
+  - pre-19F-B: `631`
+  - post-19F-B expected: `634`
+
