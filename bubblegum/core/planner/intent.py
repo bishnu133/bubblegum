@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bubblegum.core.parser.instruction import parse_relational_intent
 from bubblegum.core.schemas import ContextRequest, ExecutionOptions, StepIntent, ValidationPlan
 
 
@@ -24,12 +25,17 @@ def build_options(kwargs: dict, *, ai_enabled: bool, max_cost_level: str, memory
 
 
 def make_intent(*, instruction: str, channel: str, platform: str, action_type: str, options: ExecutionOptions, selector: str | None = None) -> StepIntent:
+    context: dict[str, Any] = {"explicit_selector": selector} if selector else {}
+    relational_intent = parse_relational_intent(instruction, action_type=action_type)
+    if relational_intent is not None:
+        context["relational_intent"] = relational_intent
+
     return StepIntent(
         instruction=instruction,
         channel=channel,
         platform=platform,
         action_type=action_type,
-        context={"explicit_selector": selector} if selector else {},
+        context=context,
         options=options,
     )
 

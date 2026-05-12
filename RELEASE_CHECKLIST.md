@@ -14,6 +14,11 @@ Current release-prep note (Phase 18B):
 - No parser/planner/runtime/graph-scoring/object-seed-execute changes are included in this phase.
 - Keep default regression benchmark behavior and object-seed validation-only posture unchanged.
 
+## Phase 19G-D parser metadata-only note
+
+- Phase 19G-D adds internal parser relational metadata extraction and optional planner context propagation only (`StepIntent.context["relational_intent"]` when safe rules match).
+- No runtime relational targeting, resolver behavior, ranker/confidence scoring, engine threshold, schema/API/dependency/version changes.
+
 ## Pre-release gates (required)
 
 Run from repository root:
