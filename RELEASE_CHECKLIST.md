@@ -23,6 +23,8 @@ python -m build
 python -m twine check dist/*
 python scripts/run_benchmarks.py
 python scripts/run_benchmarks.py --execute
+python scripts/run_benchmarks.py --cases tests/benchmarks/object_intelligence/seed_cases.json  # object seed static summary/reporting
+python scripts/run_benchmarks.py --execute --cases tests/benchmarks/object_intelligence/seed_cases.json  # expected nonzero unsupported
 pytest tests/unit/test_phase13g_visual_ref_hydrator.py -q
 pytest tests/unit/test_phase13i_visual_ref_hydrator_mapping.py -q
 pytest tests/unit/test_phase13k_mobile_visual_ref_hydrator_mapping.py -q
@@ -55,13 +57,13 @@ pytest tests/unit/test_phase19e_graph_signal_reporting.py -q  # Phase 19E-D grap
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 640 tests
+pytest --collect-only -q  # baseline now 643 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 640 tests collected
+- pytest collection: 643 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 

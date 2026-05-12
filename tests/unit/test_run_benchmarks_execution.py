@@ -9,6 +9,7 @@ from scripts.run_benchmarks import (
     _build_deterministic_engine,
     _html_to_a11y_snapshot,
     _map_case_to_intent,
+    build_object_seed_summary,
     load_cases,
     load_cases_from_path,
     run_benchmark_validation,
@@ -434,3 +435,44 @@ def test_load_cases_from_path_invalid_path_fails_clearly() -> None:
         assert False, "expected FileNotFoundError"
     except FileNotFoundError as exc:
         assert "Benchmark cases file not found" in str(exc)
+
+
+def test_object_seed_summary_includes_compact_distributions() -> None:
+    root = _repo_root()
+    cases = load_cases_from_path(root, "tests/benchmarks/object_intelligence/seed_cases.json")
+    summary = build_object_seed_summary(cases)
+
+    assert summary["total"] == len(cases)
+    assert summary["by_channel"]["web"] > 0
+    assert "duplicate_button_labels" in summary["by_category"]
+    assert summary["positive_negative"]["positive"] > 0
+    assert summary["positive_negative"]["negative"] > 0
+    assert "manual_expected:ambiguous_candidate" in summary["baseline_expectation_distribution"]
+    assert "has_label_match" in summary["expected_graph_signals_true_counts"]
+
+
+def test_object_seed_cases_print_summary_output(capsys) -> None:
+    root = _repo_root()
+    rc = run_benchmark_validation(
+        repo_root=root,
+        execute=False,
+        cases_path="tests/benchmarks/object_intelligence/seed_cases.json",
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "[object intelligence static summary]" in out
+    assert "cases by channel:" in out
+    assert "cases by category:" in out
+    assert "positive vs negative:" in out
+    assert "expected_graph_signals true-count summary:" in out
+    assert "baseline expectation distribution:" in out
+
+
+def test_default_regression_output_does_not_print_object_seed_summary(capsys) -> None:
+    root = _repo_root()
+    rc = run_benchmark_validation(repo_root=root, execute=False)
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "[object intelligence static summary]" not in out
