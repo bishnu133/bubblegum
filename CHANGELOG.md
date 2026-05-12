@@ -1,5 +1,15 @@
 # Unreleased
 
+## Phase 19F-F (Object Intelligence static summary/reporting MVP)
+
+- Added compact static summary/reporting for Object Intelligence seed fixtures when selected via
+  `python scripts/run_benchmarks.py --cases tests/benchmarks/object_intelligence/seed_cases.json`.
+- Summary includes deterministic counts for total cases, channel, category, positive vs negative,
+  failure modes, baseline expectations, expected graph-signal true counts, relation types, and tags.
+- Execution remains intentionally unsupported for object seed fixture shape under `--execute`, with
+  clear nonzero operator message unchanged.
+- Default regression benchmark behavior remains unchanged when `--cases` is omitted.
+
 ## Phase 19F-D (minimal benchmark runner case-path selection)
 
 - Added non-breaking optional benchmark runner case selection via

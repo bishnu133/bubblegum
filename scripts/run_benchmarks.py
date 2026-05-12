@@ -476,6 +476,96 @@ def _print_execution_summary(result: dict[str, Any]) -> None:
     print(f"success rate (executed only): {result['success_rate']:.2f}%")
 
 
+
+
+def _sorted_counter(counter: Counter) -> dict[str, int]:
+    return dict(sorted(counter.items(), key=lambda kv: kv[0]))
+
+
+def build_object_seed_summary(cases: list[dict]) -> dict[str, Any]:
+    channel_counts: Counter[str] = Counter()
+    category_counts: Counter[str] = Counter()
+    sign_counts: Counter[str] = Counter()
+    failure_mode_counts: Counter[str] = Counter()
+    relation_type_counts: Counter[str] = Counter()
+    tag_counts: Counter[str] = Counter()
+    graph_signal_true_counts: Counter[str] = Counter()
+    baseline_expectation_counts: Counter[str] = Counter()
+
+    for case in cases:
+        channel = str(case.get("channel") or "unknown")
+        category = str(case.get("category") or "unknown")
+        channel_counts[channel] += 1
+        category_counts[category] += 1
+
+        expected_failure_mode = case.get("expected_failure_mode")
+        if expected_failure_mode in (None, "", "none"):
+            failure_mode_counts["none"] += 1
+            sign_counts["positive"] += 1
+        else:
+            failure_mode_counts[str(expected_failure_mode)] += 1
+            sign_counts["negative"] += 1
+
+        expected_relation = case.get("expected_relation")
+        if isinstance(expected_relation, dict):
+            relation_type = str(expected_relation.get("type") or "unknown")
+            relation_type_counts[relation_type] += 1
+        else:
+            relation_type_counts["none"] += 1
+
+        for tag in case.get("tags") or []:
+            tag_counts[str(tag)] += 1
+
+        expected_graph_signals = case.get("expected_graph_signals")
+        if isinstance(expected_graph_signals, dict):
+            for key, value in expected_graph_signals.items():
+                if value is True:
+                    graph_signal_true_counts[str(key)] += 1
+
+        baseline_expectations = case.get("baseline_expectations")
+        if isinstance(baseline_expectations, dict):
+            for baseline_name, baseline_info in baseline_expectations.items():
+                if isinstance(baseline_info, dict):
+                    baseline_expected = str(baseline_info.get("expected") or "unknown")
+                else:
+                    baseline_expected = "unknown"
+                baseline_expectation_counts[f"{baseline_name}:{baseline_expected}"] += 1
+
+    return {
+        "total": len(cases),
+        "by_channel": _sorted_counter(channel_counts),
+        "by_category": _sorted_counter(category_counts),
+        "positive_negative": _sorted_counter(sign_counts),
+        "failure_mode_distribution": _sorted_counter(failure_mode_counts),
+        "baseline_expectation_distribution": _sorted_counter(baseline_expectation_counts),
+        "expected_graph_signals_true_counts": _sorted_counter(graph_signal_true_counts),
+        "relation_type_distribution": _sorted_counter(relation_type_counts),
+        "tags_distribution": _sorted_counter(tag_counts),
+    }
+
+
+def _print_count_block(title: str, counts: dict[str, int]) -> None:
+    print(title)
+    if not counts:
+        print("  - (none)")
+        return
+    for name, count in counts.items():
+        print(f"  - {name}: {count}")
+
+
+def print_object_seed_summary(summary: dict[str, Any]) -> None:
+    print("[object intelligence static summary]")
+    print(f"total cases: {summary['total']}")
+    _print_count_block("cases by channel:", summary["by_channel"])
+    _print_count_block("cases by category:", summary["by_category"])
+    _print_count_block("positive vs negative:", summary["positive_negative"])
+    _print_count_block("failure_mode distribution:", summary["failure_mode_distribution"])
+    _print_count_block("baseline expectation distribution:", summary["baseline_expectation_distribution"])
+    _print_count_block("expected_graph_signals true-count summary:", summary["expected_graph_signals_true_counts"])
+    _print_count_block("relation type distribution:", summary["relation_type_distribution"])
+    _print_count_block("tags distribution:", summary["tags_distribution"])
+
+
 def run_benchmark_validation(
     repo_root: Path | None = None,
     *,
@@ -491,6 +581,9 @@ def run_benchmark_validation(
         print(f"total cases: {len(selected_cases)}")
         print("validation mode: external fixture loaded (non-regression schema)")
         print("status: loaded successfully")
+        summary = build_object_seed_summary(selected_cases)
+        print()
+        print_object_seed_summary(summary)
         if execute:
             print("\n[execution validation]")
             print("unsupported: selected cases file is not execution-compatible with current regression runner schema.")
