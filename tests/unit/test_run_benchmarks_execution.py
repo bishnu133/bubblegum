@@ -10,6 +10,8 @@ from scripts.run_benchmarks import (
     _html_to_a11y_snapshot,
     _map_case_to_intent,
     load_cases,
+    load_cases_from_path,
+    run_benchmark_validation,
     run_execution_validation,
     run_static_validation,
 )
@@ -386,3 +388,49 @@ def test_non_low_confidence_error_still_fails_normally() -> None:
     assert row["review_candidate_used"] is False
     assert row["status_detail"] == "exception_fail"
     assert "RuntimeError" in str(row["error"])
+
+
+def test_load_cases_from_path_accepts_default_regression_path() -> None:
+    root = _repo_root()
+    default_cases = load_cases(root)
+    explicit_cases = load_cases_from_path(root, "tests/benchmarks/fixtures/cases.json")
+    assert explicit_cases == default_cases
+
+
+def test_run_benchmark_validation_cases_path_for_regression_matches_default() -> None:
+    root = _repo_root()
+    default_rc = run_benchmark_validation(repo_root=root, execute=False)
+    explicit_rc = run_benchmark_validation(
+        repo_root=root, execute=False, cases_path="tests/benchmarks/fixtures/cases.json"
+    )
+    assert default_rc == 0
+    assert explicit_rc == 0
+
+
+def test_run_benchmark_validation_object_seed_validation_only_supported() -> None:
+    root = _repo_root()
+    rc = run_benchmark_validation(
+        repo_root=root,
+        execute=False,
+        cases_path="tests/benchmarks/object_intelligence/seed_cases.json",
+    )
+    assert rc == 0
+
+
+def test_run_benchmark_validation_object_seed_execute_returns_clear_nonzero() -> None:
+    root = _repo_root()
+    rc = run_benchmark_validation(
+        repo_root=root,
+        execute=True,
+        cases_path="tests/benchmarks/object_intelligence/seed_cases.json",
+    )
+    assert rc == 1
+
+
+def test_load_cases_from_path_invalid_path_fails_clearly() -> None:
+    root = _repo_root()
+    try:
+        load_cases_from_path(root, "tests/benchmarks/object_intelligence/missing_seed.json")
+        assert False, "expected FileNotFoundError"
+    except FileNotFoundError as exc:
+        assert "Benchmark cases file not found" in str(exc)

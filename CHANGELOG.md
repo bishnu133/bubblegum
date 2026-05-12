@@ -1,5 +1,17 @@
 # Unreleased
 
+## Phase 19F-D (minimal benchmark runner case-path selection)
+
+- Added non-breaking optional benchmark runner case selection via
+  `python scripts/run_benchmarks.py --cases <path>`.
+- Default behavior remains unchanged: omitting `--cases` still runs regression fixtures from
+  `tests/benchmarks/fixtures/cases.json` with existing static/execute behavior.
+- Added safe validation-only support for non-regression fixture shapes (including Object
+  Intelligence seed fixture format with top-level `{"cases": [...]}`); these can be loaded in
+  static mode and report a clear unsupported message in `--execute` mode.
+- Added unit coverage for explicit default fixture path parity, object seed opt-in validation path,
+  non-supported execute path behavior, and clear invalid-path failure.
+
 ## Phase 19F-B (Object Intelligence benchmark seed fixtures MVP)
 
 - Added Object Intelligence seed spec doc at

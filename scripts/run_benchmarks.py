@@ -47,11 +47,22 @@ class GroundingEngineProtocol(Protocol):
 
 def load_cases(repo_root: Path) -> list[dict]:
     cases_path = repo_root / "tests/benchmarks/fixtures/cases.json"
-    with cases_path.open("r", encoding="utf-8") as f:
+    return load_cases_from_path(repo_root, cases_path)
+
+
+def load_cases_from_path(repo_root: Path, cases_path: Path | str) -> list[dict]:
+    path = Path(cases_path)
+    if not path.is_absolute():
+        path = repo_root / path
+    if not path.exists():
+        raise FileNotFoundError(f"Benchmark cases file not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
-    if not isinstance(data, list):
-        raise ValueError("cases.json must contain a list")
-    return data
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and isinstance(data.get("cases"), list):
+        return data["cases"]
+    raise ValueError(f"Unsupported benchmark cases format in {path}: expected list or object with 'cases' list")
 
 
 def validate_case(case: dict, repo_root: Path) -> tuple[bool, str]:
@@ -470,14 +481,28 @@ def run_benchmark_validation(
     *,
     execute: bool = False,
     engine: GroundingEngineProtocol | None = None,
+    cases_path: str | None = None,
 ) -> int:
     root = repo_root or Path(__file__).resolve().parents[1]
-    static_result = run_static_validation(root)
+    selected_cases = load_cases_from_path(root, cases_path or "tests/benchmarks/fixtures/cases.json")
+
+    if selected_cases and "id" not in selected_cases[0]:
+        print("[static validation]")
+        print(f"total cases: {len(selected_cases)}")
+        print("validation mode: external fixture loaded (non-regression schema)")
+        print("status: loaded successfully")
+        if execute:
+            print("\n[execution validation]")
+            print("unsupported: selected cases file is not execution-compatible with current regression runner schema.")
+            return 1
+        return 0
+
+    static_result = run_static_validation(root) if cases_path is None else run_static_validation_with_cases(root, selected_cases)
     _print_static_summary(static_result)
 
     execution_result: dict[str, Any] | None = None
     if execute:
-        execution_result = run_execution_validation(root, engine=engine)
+        execution_result = run_execution_validation(root, engine=engine, cases=selected_cases)
         _print_execution_summary(execution_result)
 
     static_ok = static_result["ok"]
@@ -492,8 +517,37 @@ def main() -> int:
         action="store_true",
         help="Run static validation plus deterministic GroundingEngine execution checks.",
     )
+    parser.add_argument(
+        "--cases",
+        type=str,
+        default=None,
+        help="Optional benchmark cases path. Defaults to tests/benchmarks/fixtures/cases.json.",
+    )
     args = parser.parse_args()
-    return run_benchmark_validation(execute=args.execute)
+    return run_benchmark_validation(execute=args.execute, cases_path=args.cases)
+
+
+def run_static_validation_with_cases(repo_root: Path, cases: list[dict]) -> dict[str, Any]:
+    diagnostics: list[dict[str, Any]] = []
+    winners = Counter()
+
+    for case in cases:
+        ok, message = validate_case(case, repo_root)
+        diagnostics.append({"id": case.get("id"), "ok": ok, "message": message})
+        if ok:
+            winners[case["expected_resolver_winner"]] += 1
+
+    passed = sum(1 for d in diagnostics if d["ok"])
+    failed = len(diagnostics) - passed
+    return {
+        "total": len(cases),
+        "passed": passed,
+        "failed": failed,
+        "success_rate": (passed / len(cases) * 100.0) if cases else 0.0,
+        "winner_distribution": dict(sorted(winners.items())),
+        "diagnostics": diagnostics,
+        "ok": failed == 0,
+    }
 
 
 if __name__ == "__main__":
