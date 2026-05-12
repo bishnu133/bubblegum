@@ -25,6 +25,12 @@ Current release-prep note (Phase 18B):
 - Phase 19G-G adds graph query planner design/spec documentation only (`docs/phase-19g-graph-query-planner-design.md`).
 - No runtime graph filtering/candidate narrowing, no graph scoring/ranker/confidence changes, no resolver/threshold/order changes.
 - No parser/planner/schema/API/dependency/version changes and no benchmark fixture changes.
+
+## Phase 19G-I metadata-only diagnostics note
+
+- Phase 19G-I adds internal graph query diagnostics helper only (`bubblegum/core/elements/query.py`) with deterministic JSON-safe metadata payloads for relational-intent mapping.
+- No runtime target filtering/selection changes, no resolver/ranker/confidence/engine behavior changes, no parser/planner/schema/API/dependency/version changes.
+
 ## Pre-release gates (required)
 
 Run from repository root:
