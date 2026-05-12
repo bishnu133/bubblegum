@@ -68,13 +68,13 @@ pytest tests/unit/test_phase19e_graph_signal_reporting.py -q  # Phase 19E-D grap
 pytest tests/unit/test_public_api.py -q
 pytest tests/unit/test_packaging_extras.py -q
 pytest tests/unit/test_package_metadata.py -q
-pytest --collect-only -q  # baseline now 643 tests
+pytest --collect-only -q  # baseline now 654 tests
 ```
 
 Expected baseline for current main:
 - benchmark static: 12/12 passed
 - benchmark execute: 12/12 passed
-- pytest collection: 643 tests collected
+- pytest collection: 654 tests collected
 
 ## Optional manual Playwright smoke (not CI-gated)
 

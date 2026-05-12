@@ -1,5 +1,9 @@
 # Unreleased
 
+## Phase 19G-E1 (release checklist baseline sync)
+
+- Phase 19G-E1 docs/checklist-only cleanup: updated `RELEASE_CHECKLIST.md` collect-only baseline references from 643 to 654 to match the current mainline pytest collection baseline. No runtime/parser/planner/schema/resolver/ranker/confidence/API/dependency/version changes.
+
 ## Phase 19F-F (Object Intelligence static summary/reporting MVP)
 
 - Added compact static summary/reporting for Object Intelligence seed fixtures when selected via
@@ -43,6 +47,7 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+- Phase 19G-E1 docs/checklist baseline sync: updated `RELEASE_CHECKLIST.md` collect-only baseline references from 643 to 654 to match current mainline test collection. Docs/checklist-only change; no runtime/parser/planner/schema/resolver/ranker/API/dependency/version changes.
 - Phase 19G-D parser relational metadata MVP: added internal rule-based `parse_relational_intent(...)` helper for safe relational hints (`for <anchor>`, modal scope phrases, dropdown scope phrases, checkbox label phrases) and metadata-only planner propagation into `StepIntent.context["relational_intent"]` when matched. No resolver/engine/ranker/confidence/schema/API/dependency/version changes; no runtime targeting behavior changes.
 
 - Phase 19G-B relational intent contract design/spec added (`docs/phase-19g-relational-intent-design.md`): defines schema-stable `StepIntent.context["relational_intent"]` metadata proposal, initial relation taxonomy (`label_for`, `same_row_as_text`, `within_card`, `within_modal`, `within_region`, `mobile_attr_hint`), conservative parser principles, backward-compat strategy, pre-implementation test gates, and phased follow-on plan. Design-only: no parser/planner/runtime/ranker/schema/API/dependency/version changes.
