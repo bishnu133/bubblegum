@@ -40,6 +40,7 @@ import logging
 from bubblegum.core.elements.graph import ElementGraph
 from bubblegum.core.elements.graph_signals import GraphSignalInput, compute_graph_signals
 from bubblegum.core.elements.normalized import normalize_mobile_hierarchy_node
+from bubblegum.core.elements.query import build_graph_query_diagnostics
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 from bubblegum.core.grounding.signals import make_signals
@@ -139,6 +140,12 @@ class AppiumHierarchyResolver(Resolver):
             if result is not None:
                 candidates.append(result)
         graph = ElementGraph(normalized_elements) if normalized_elements else None
+        relational_intent = intent.context.get("relational_intent")
+        context_graph = intent.context.get("element_graph") or intent.context.get("graph")
+        diagnostics = None
+        if isinstance(context_graph, ElementGraph) and isinstance(relational_intent, dict):
+            diagnostics = build_graph_query_diagnostics(context_graph, relational_intent, action_type=intent.action_type)
+
         enriched: list[ResolvedTarget] = []
         for target in candidates:
             meta = dict(target.metadata)
@@ -152,6 +159,8 @@ class AppiumHierarchyResolver(Resolver):
                 graph=graph,
                 elements_by_ref=elements_by_ref,
             )
+            if isinstance(diagnostics, dict):
+                meta["graph_query_diagnostics"] = diagnostics
             enriched.append(target.model_copy(update={"metadata": meta}))
 
         logger.debug(
