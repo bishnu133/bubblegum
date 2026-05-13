@@ -9,20 +9,52 @@
       "instruction": "Click the Checkout button in the cart summary.",
       "action_type": "click",
       "target_text": "Checkout",
-      "expected_target": { "ref": "btn.checkout.cart_summary" },
-      "acceptable_refs": ["btn.checkout.cart_summary"],
-      "expected_relation": { "type": "within_region", "anchor_ref": "region.cart_summary" },
-      "expected_graph_signals": { "has_role_match": true, "has_region_anchor": true, "has_label_match": true },
-      "allowed_resolvers": ["accessibility_tree", "exact_text", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.6, "max": 1.0 },
+      "expected_target": {
+        "ref": "btn.checkout.cart_summary"
+      },
+      "acceptable_refs": [
+        "btn.checkout.cart_summary"
+      ],
+      "expected_relation": {
+        "type": "within_region",
+        "anchor_ref": "region.cart_summary"
+      },
+      "expected_graph_signals": {
+        "has_role_match": true,
+        "has_region_anchor": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "ambiguous_or_fail" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "btn.checkout.cart_summary" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "ambiguous_or_fail"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "btn.checkout.cart_summary"
+        }
       },
-      "tags": ["web", "duplicate-label", "positive", "seed"]
+      "tags": [
+        "web",
+        "duplicate-label",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_duplicate_label_ambiguous_negative",
@@ -33,20 +65,48 @@
       "instruction": "Click Checkout.",
       "action_type": "click",
       "target_text": "Checkout",
-      "expected_target": { "ref": "none" },
+      "expected_target": {
+        "ref": "none"
+      },
       "acceptable_refs": [],
       "expected_relation": null,
-      "expected_graph_signals": { "has_role_match": true, "has_region_anchor": false, "has_label_match": true },
-      "allowed_resolvers": ["accessibility_tree", "exact_text", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.0, "max": 0.59 },
+      "expected_graph_signals": {
+        "has_role_match": true,
+        "has_region_anchor": false,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.0,
+        "max": 0.59
+      },
       "expected_failure_mode": "ambiguous_candidate",
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "ambiguous" },
-        "playwright_raw_role_text": { "expected": "ambiguous_or_fail" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "ambiguous_candidate" }
+        "bubblegum_current": {
+          "expected": "ambiguous"
+        },
+        "playwright_raw_role_text": {
+          "expected": "ambiguous_or_fail"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ambiguous_candidate"
+        }
       },
-      "tags": ["web", "duplicate-label", "negative", "ambiguity", "seed"]
+      "tags": [
+        "web",
+        "duplicate-label",
+        "negative",
+        "ambiguity",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_label_input_association",
@@ -57,20 +117,51 @@
       "instruction": "Type user@example.com into the Email field.",
       "action_type": "type",
       "target_text": "Email",
-      "expected_target": { "ref": "input.email.primary" },
-      "acceptable_refs": ["input.email.primary"],
-      "expected_relation": { "type": "label_for", "anchor_ref": "label.email.primary" },
-      "expected_graph_signals": { "has_label_match": true, "has_for_association": true },
-      "allowed_resolvers": ["accessibility_tree", "exact_text"],
-      "expected_confidence_range": { "min": 0.7, "max": 1.0 },
+      "expected_target": {
+        "ref": "input.email.primary"
+      },
+      "acceptable_refs": [
+        "input.email.primary"
+      ],
+      "expected_relation": {
+        "type": "label_for",
+        "anchor_ref": "label.email.primary"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_for_association": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "exact_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.7,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "pass_or_ambiguous" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "input.email.primary" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "pass_or_ambiguous"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "input.email.primary"
+        }
       },
-      "tags": ["web", "form", "label", "positive", "seed"]
+      "tags": [
+        "web",
+        "form",
+        "label",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_same_row_action",
@@ -81,20 +172,51 @@
       "instruction": "Click Edit for Alice Johnson.",
       "action_type": "click",
       "target_text": "Edit",
-      "expected_target": { "ref": "btn.edit.row.alice_johnson" },
-      "acceptable_refs": ["btn.edit.row.alice_johnson"],
-      "expected_relation": { "type": "same_row_as_text", "anchor_ref": "cell.name.alice_johnson" },
-      "expected_graph_signals": { "has_row_anchor": true, "has_label_match": true },
-      "allowed_resolvers": ["accessibility_tree", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.65, "max": 1.0 },
+      "expected_target": {
+        "ref": "btn.edit.row.alice_johnson"
+      },
+      "acceptable_refs": [
+        "btn.edit.row.alice_johnson"
+      ],
+      "expected_relation": {
+        "type": "same_row_as_text",
+        "anchor_ref": "cell.name.alice_johnson"
+      },
+      "expected_graph_signals": {
+        "has_row_anchor": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.65,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "ambiguous_or_fail" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "btn.edit.row.alice_johnson" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "ambiguous_or_fail"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "btn.edit.row.alice_johnson"
+        }
       },
-      "tags": ["web", "table", "row-scope", "positive", "seed"]
+      "tags": [
+        "web",
+        "table",
+        "row-scope",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_card_scoped_action",
@@ -105,20 +227,50 @@
       "instruction": "Click Manage on the Pro Plan card.",
       "action_type": "click",
       "target_text": "Manage",
-      "expected_target": { "ref": "btn.manage.card.pro_plan" },
-      "acceptable_refs": ["btn.manage.card.pro_plan"],
-      "expected_relation": { "type": "within_card", "anchor_ref": "card.pro_plan" },
-      "expected_graph_signals": { "has_card_anchor": true, "has_label_match": true },
-      "allowed_resolvers": ["accessibility_tree", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.65, "max": 1.0 },
+      "expected_target": {
+        "ref": "btn.manage.card.pro_plan"
+      },
+      "acceptable_refs": [
+        "btn.manage.card.pro_plan"
+      ],
+      "expected_relation": {
+        "type": "within_card",
+        "anchor_ref": "card.pro_plan"
+      },
+      "expected_graph_signals": {
+        "has_card_anchor": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.65,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "ambiguous_or_fail" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "btn.manage.card.pro_plan" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "ambiguous_or_fail"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "btn.manage.card.pro_plan"
+        }
       },
-      "tags": ["web", "card-scope", "positive", "seed"]
+      "tags": [
+        "web",
+        "card-scope",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_dropdown_select_by_label",
@@ -129,20 +281,51 @@
       "instruction": "Select Canada in the Country dropdown.",
       "action_type": "select",
       "target_text": "Country",
-      "expected_target": { "ref": "select.country" },
-      "acceptable_refs": ["select.country"],
-      "expected_relation": { "type": "label_for", "anchor_ref": "label.country" },
-      "expected_graph_signals": { "has_label_match": true, "has_control_role_match": true },
-      "allowed_resolvers": ["accessibility_tree", "exact_text"],
-      "expected_confidence_range": { "min": 0.7, "max": 1.0 },
+      "expected_target": {
+        "ref": "select.country"
+      },
+      "acceptable_refs": [
+        "select.country"
+      ],
+      "expected_relation": {
+        "type": "label_for",
+        "anchor_ref": "label.country"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_control_role_match": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "exact_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.7,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "pass" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "select.country" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "pass"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "select.country"
+        }
       },
-      "tags": ["web", "dropdown", "label", "positive", "seed"]
+      "tags": [
+        "web",
+        "dropdown",
+        "label",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_checkbox_by_label",
@@ -153,20 +336,51 @@
       "instruction": "Check I agree to Terms.",
       "action_type": "check",
       "target_text": "I agree to Terms",
-      "expected_target": { "ref": "checkbox.terms" },
-      "acceptable_refs": ["checkbox.terms"],
-      "expected_relation": { "type": "label_for", "anchor_ref": "label.terms" },
-      "expected_graph_signals": { "has_label_match": true, "has_control_role_match": true },
-      "allowed_resolvers": ["accessibility_tree", "exact_text"],
-      "expected_confidence_range": { "min": 0.7, "max": 1.0 },
+      "expected_target": {
+        "ref": "checkbox.terms"
+      },
+      "acceptable_refs": [
+        "checkbox.terms"
+      ],
+      "expected_relation": {
+        "type": "label_for",
+        "anchor_ref": "label.terms"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_control_role_match": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "exact_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.7,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "pass_or_fail" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "checkbox.terms" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "pass_or_fail"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "checkbox.terms"
+        }
       },
-      "tags": ["web", "checkbox", "label", "positive", "seed"]
+      "tags": [
+        "web",
+        "checkbox",
+        "label",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_modal_scoped_action",
@@ -177,20 +391,51 @@
       "instruction": "Click Confirm in the delete modal.",
       "action_type": "click",
       "target_text": "Confirm",
-      "expected_target": { "ref": "btn.confirm.modal.delete" },
-      "acceptable_refs": ["btn.confirm.modal.delete"],
-      "expected_relation": { "type": "within_modal", "anchor_ref": "modal.delete_confirmation" },
-      "expected_graph_signals": { "has_modal_scope": true, "has_label_match": true },
-      "allowed_resolvers": ["accessibility_tree", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.65, "max": 1.0 },
+      "expected_target": {
+        "ref": "btn.confirm.modal.delete"
+      },
+      "acceptable_refs": [
+        "btn.confirm.modal.delete"
+      ],
+      "expected_relation": {
+        "type": "within_modal",
+        "anchor_ref": "modal.delete_confirmation"
+      },
+      "expected_graph_signals": {
+        "has_modal_scope": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.65,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "ambiguous_or_fail" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "btn.confirm.modal.delete" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "ambiguous_or_fail"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "btn.confirm.modal.delete"
+        }
       },
-      "tags": ["web", "modal", "scope", "positive", "seed"]
+      "tags": [
+        "web",
+        "modal",
+        "scope",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_web_hidden_offscreen_scroll_placeholder_negative",
@@ -201,20 +446,46 @@
       "instruction": "Click Load more results at the bottom of the list.",
       "action_type": "click",
       "target_text": "Load more results",
-      "expected_target": { "ref": "none" },
+      "expected_target": {
+        "ref": "none"
+      },
       "acceptable_refs": [],
       "expected_relation": null,
-      "expected_graph_signals": { "has_label_match": false, "has_scroll_requirement": true },
-      "allowed_resolvers": ["accessibility_tree", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.0, "max": 0.4 },
+      "expected_graph_signals": {
+        "has_label_match": false,
+        "has_scroll_requirement": true
+      },
+      "allowed_resolvers": [
+        "accessibility_tree",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.0,
+        "max": 0.4
+      },
       "expected_failure_mode": "unsupported_surface",
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "fail_no_candidate" },
-        "playwright_raw_role_text": { "expected": "fail_no_candidate" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "unsupported_surface" }
+        "bubblegum_current": {
+          "expected": "fail_no_candidate"
+        },
+        "playwright_raw_role_text": {
+          "expected": "fail_no_candidate"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "unsupported_surface"
+        }
       },
-      "tags": ["web", "negative", "deferred", "offscreen", "seed"]
+      "tags": [
+        "web",
+        "negative",
+        "deferred",
+        "offscreen",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_mobile_native_text_match",
@@ -225,20 +496,48 @@
       "instruction": "Tap Settings.",
       "action_type": "tap",
       "target_text": "Settings",
-      "expected_target": { "ref": "android.btn.settings" },
-      "acceptable_refs": ["android.btn.settings"],
+      "expected_target": {
+        "ref": "android.btn.settings"
+      },
+      "acceptable_refs": [
+        "android.btn.settings"
+      ],
       "expected_relation": null,
-      "expected_graph_signals": { "has_text_match": true, "has_class_match": true },
-      "allowed_resolvers": ["appium_hierarchy", "exact_text"],
-      "expected_confidence_range": { "min": 0.65, "max": 1.0 },
+      "expected_graph_signals": {
+        "has_text_match": true,
+        "has_class_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.65,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "not_applicable" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "android.btn.settings" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.settings"
+        }
       },
-      "tags": ["mobile", "android", "text", "positive", "seed"]
+      "tags": [
+        "mobile",
+        "android",
+        "text",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_mobile_content_desc_match",
@@ -249,20 +548,48 @@
       "instruction": "Tap Scan QR.",
       "action_type": "tap",
       "target_text": "Scan QR",
-      "expected_target": { "ref": "android.btn.scan_qr" },
-      "acceptable_refs": ["android.btn.scan_qr"],
+      "expected_target": {
+        "ref": "android.btn.scan_qr"
+      },
+      "acceptable_refs": [
+        "android.btn.scan_qr"
+      ],
       "expected_relation": null,
-      "expected_graph_signals": { "has_content_desc_match": true, "has_class_match": true },
-      "allowed_resolvers": ["appium_hierarchy", "exact_text"],
-      "expected_confidence_range": { "min": 0.65, "max": 1.0 },
+      "expected_graph_signals": {
+        "has_content_desc_match": true,
+        "has_class_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.65,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "not_applicable" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "android.btn.scan_qr" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.scan_qr"
+        }
       },
-      "tags": ["mobile", "android", "content-desc", "positive", "seed"]
+      "tags": [
+        "mobile",
+        "android",
+        "content-desc",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_mobile_resource_id_fallback",
@@ -273,20 +600,50 @@
       "instruction": "Tap Continue.",
       "action_type": "tap",
       "target_text": "Continue",
-      "expected_target": { "ref": "android.btn.continue.primary" },
-      "acceptable_refs": ["android.btn.continue.primary"],
+      "expected_target": {
+        "ref": "android.btn.continue.primary"
+      },
+      "acceptable_refs": [
+        "android.btn.continue.primary"
+      ],
       "expected_relation": null,
-      "expected_graph_signals": { "has_text_match": false, "has_resource_id_match": true },
-      "allowed_resolvers": ["appium_hierarchy", "exact_text", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.55, "max": 1.0 },
+      "expected_graph_signals": {
+        "has_text_match": false,
+        "has_resource_id_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.55,
+        "max": 1.0
+      },
       "expected_failure_mode": null,
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "pass" },
-        "playwright_raw_role_text": { "expected": "not_applicable" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "android.btn.continue.primary" }
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.continue.primary"
+        }
       },
-      "tags": ["mobile", "android", "resource-id", "fallback", "positive", "seed"]
+      "tags": [
+        "mobile",
+        "android",
+        "resource-id",
+        "fallback",
+        "positive",
+        "seed"
+      ]
     },
     {
       "case_id": "oi_mobile_duplicate_text_ambiguity_negative",
@@ -297,20 +654,1165 @@
       "instruction": "Tap Pay.",
       "action_type": "tap",
       "target_text": "Pay",
-      "expected_target": { "ref": "none" },
+      "expected_target": {
+        "ref": "none"
+      },
       "acceptable_refs": [],
       "expected_relation": null,
-      "expected_graph_signals": { "has_text_match": true, "has_unique_anchor": false },
-      "allowed_resolvers": ["appium_hierarchy", "exact_text", "fuzzy_text"],
-      "expected_confidence_range": { "min": 0.0, "max": 0.5 },
+      "expected_graph_signals": {
+        "has_text_match": true,
+        "has_unique_anchor": false
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.0,
+        "max": 0.5
+      },
       "expected_failure_mode": "ambiguous_candidate",
       "baseline_expectations": {
-        "bubblegum_current": { "expected": "ambiguous" },
-        "playwright_raw_role_text": { "expected": "not_applicable" },
-        "llm_vision_raw": { "expected": "placeholder", "status": "not_automated_yet" },
-        "manual_expected": { "expected": "ambiguous_candidate" }
+        "bubblegum_current": {
+          "expected": "ambiguous"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ambiguous_candidate"
+        }
       },
-      "tags": ["mobile", "android", "duplicate-text", "negative", "ambiguity", "seed"]
+      "tags": [
+        "mobile",
+        "android",
+        "duplicate-text",
+        "negative",
+        "ambiguity",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_text_target_settings",
+      "category": "mobile_android_text_target",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Account Settings.",
+      "action_type": "tap",
+      "target_text": "Account Settings",
+      "expected_target": {
+        "ref": "android.btn.account_settings"
+      },
+      "acceptable_refs": [
+        "android.btn.account_settings"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.account_settings"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android",
+        "native",
+        "text",
+        "positive",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_content_desc_profile",
+      "category": "mobile_android_content_desc_target",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Open profile menu.",
+      "action_type": "tap",
+      "target_text": "Open profile menu",
+      "expected_target": {
+        "ref": "android.btn.profile_menu"
+      },
+      "acceptable_refs": [
+        "android.btn.profile_menu"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.profile_menu"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android",
+        "native",
+        "content-desc",
+        "positive",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_resource_id_primary_cta",
+      "category": "mobile_android_resource_id_target",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap the primary continue button.",
+      "action_type": "tap",
+      "target_text": "Continue",
+      "expected_target": {
+        "ref": "android.btn.continue_primary"
+      },
+      "acceptable_refs": [
+        "android.btn.continue_primary"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.continue_primary"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android",
+        "native",
+        "resource-id",
+        "positive",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_repeated_card_disambiguation",
+      "category": "mobile_android_repeated_card",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Buy on the Premium plan card.",
+      "action_type": "tap",
+      "target_text": "Buy",
+      "expected_target": {
+        "ref": "android.btn.buy.premium"
+      },
+      "acceptable_refs": [
+        "android.btn.buy.premium"
+      ],
+      "expected_relation": {
+        "type": "within_card",
+        "anchor_ref": "android.card.plan_premium"
+      },
+      "expected_graph_signals": {
+        "has_card_anchor": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.buy.premium"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android",
+        "native",
+        "repeated-card",
+        "relational",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_offscreen_scroll_intent",
+      "category": "mobile_android_offscreen_scroll",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Load older messages near the end of chat.",
+      "action_type": "tap",
+      "target_text": "Load older messages",
+      "expected_target": {
+        "ref": "none"
+      },
+      "acceptable_refs": [],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.0,
+        "max": 0.45
+      },
+      "expected_failure_mode": "unsupported_surface",
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "fail_no_candidate"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "unsupported_surface"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android",
+        "native",
+        "offscreen",
+        "scroll-intent",
+        "deferred",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_ios_label_name_target",
+      "category": "mobile_ios_label_name_target",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Continue with Apple.",
+      "action_type": "tap",
+      "target_text": "Continue with Apple",
+      "expected_target": {
+        "ref": "ios.btn.continue_apple"
+      },
+      "acceptable_refs": [
+        "ios.btn.continue_apple"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ios.btn.continue_apple"
+        }
+      },
+      "tags": [
+        "mobile",
+        "ios",
+        "native",
+        "label-name",
+        "positive",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_ios_value_based_target",
+      "category": "mobile_ios_value_target",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Turn Face ID switch on.",
+      "action_type": "tap",
+      "target_text": "Face ID",
+      "expected_target": {
+        "ref": "ios.switch.face_id"
+      },
+      "acceptable_refs": [
+        "ios.switch.face_id"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ios.switch.face_id"
+        }
+      },
+      "tags": [
+        "mobile",
+        "ios",
+        "native",
+        "value-based",
+        "positive",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_ios_xcuielement_button_input",
+      "category": "mobile_ios_xcuielement_button_input",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Type alex@example.test in Email.",
+      "action_type": "type",
+      "target_text": "Email",
+      "expected_target": {
+        "ref": "ios.input.email"
+      },
+      "acceptable_refs": [
+        "ios.input.email"
+      ],
+      "expected_relation": {
+        "type": "label_for",
+        "anchor_ref": "ios.label.email"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_for_association": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ios.input.email"
+        }
+      },
+      "tags": [
+        "mobile",
+        "ios",
+        "native",
+        "xcuielement",
+        "input",
+        "relational",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_hybrid_native_wrapper_webview_target",
+      "category": "mobile_hybrid_wrapper_webview",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Pay now in checkout web panel.",
+      "action_type": "tap",
+      "target_text": "Pay now",
+      "expected_target": {
+        "ref": "hybrid.web.pay_now"
+      },
+      "acceptable_refs": [
+        "hybrid.web.pay_now"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "hybrid.web.pay_now"
+        }
+      },
+      "tags": [
+        "mobile",
+        "hybrid",
+        "webview",
+        "positive",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_hybrid_context_surface_hint",
+      "category": "mobile_hybrid_context_hint",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Open Offers tab in the embedded web area.",
+      "action_type": "tap",
+      "target_text": "Offers",
+      "expected_target": {
+        "ref": "hybrid.web.offers_tab"
+      },
+      "acceptable_refs": [
+        "hybrid.web.offers_tab"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "hybrid.web.offers_tab"
+        }
+      },
+      "tags": [
+        "mobile",
+        "hybrid",
+        "webview",
+        "context-hint",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_hybrid_ambiguity_case",
+      "category": "mobile_hybrid_ambiguity",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Continue from the checkout surface.",
+      "action_type": "tap",
+      "target_text": "Continue",
+      "expected_target": {
+        "ref": "none"
+      },
+      "acceptable_refs": [],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.0,
+        "max": 0.45
+      },
+      "expected_failure_mode": "ambiguous_candidate",
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "fail_no_candidate"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ambiguous_candidate"
+        }
+      },
+      "tags": [
+        "mobile",
+        "hybrid",
+        "webview",
+        "ambiguity",
+        "negative",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_system_dialog_permission_allow",
+      "category": "mobile_system_dialog_permission_allow",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Allow while using app.",
+      "action_type": "tap",
+      "target_text": "Allow while using app",
+      "expected_target": {
+        "ref": "sysdlg.allow_while_using"
+      },
+      "acceptable_refs": [
+        "sysdlg.allow_while_using"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "sysdlg.allow_while_using"
+        }
+      },
+      "tags": [
+        "mobile",
+        "system-dialog",
+        "permission",
+        "allow",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_system_dialog_permission_deny",
+      "category": "mobile_system_dialog_permission_deny",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Don't allow.",
+      "action_type": "tap",
+      "target_text": "Don't allow",
+      "expected_target": {
+        "ref": "sysdlg.dont_allow"
+      },
+      "acceptable_refs": [
+        "sysdlg.dont_allow"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "sysdlg.dont_allow"
+        }
+      },
+      "tags": [
+        "mobile",
+        "system-dialog",
+        "permission",
+        "deny",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_system_dialog_ok_cancel",
+      "category": "mobile_system_dialog_ok_cancel",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap OK on the system alert.",
+      "action_type": "tap",
+      "target_text": "OK",
+      "expected_target": {
+        "ref": "sysdlg.ok"
+      },
+      "acceptable_refs": [
+        "sysdlg.ok"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "sysdlg.ok"
+        }
+      },
+      "tags": [
+        "mobile",
+        "system-dialog",
+        "ok-cancel",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_icon_accessibility_label",
+      "category": "mobile_icon_accessibility_label",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Search icon.",
+      "action_type": "tap",
+      "target_text": "Search",
+      "expected_target": {
+        "ref": "android.icon.search"
+      },
+      "acceptable_refs": [
+        "android.icon.search"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.icon.search"
+        }
+      },
+      "tags": [
+        "mobile",
+        "icon-only",
+        "accessibility-label",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_icon_class_resource_hint",
+      "category": "mobile_icon_class_resource_hint",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap cart icon in toolbar.",
+      "action_type": "tap",
+      "target_text": "cart",
+      "expected_target": {
+        "ref": "android.icon.cart"
+      },
+      "acceptable_refs": [
+        "android.icon.cart"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.icon.cart"
+        }
+      },
+      "tags": [
+        "mobile",
+        "icon-only",
+        "class-hint",
+        "resource-id",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_icon_nearby_text_relation",
+      "category": "mobile_icon_nearby_text_relation",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap the edit icon next to Shipping Address.",
+      "action_type": "tap",
+      "target_text": "Edit",
+      "expected_target": {
+        "ref": "android.icon.edit.shipping"
+      },
+      "acceptable_refs": [
+        "android.icon.edit.shipping"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.icon.edit.shipping"
+        }
+      },
+      "tags": [
+        "mobile",
+        "icon-only",
+        "relational",
+        "nearby-text",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_rel_button_below_label",
+      "category": "mobile_rel_button_below_label",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Continue below Verify phone number.",
+      "action_type": "tap",
+      "target_text": "Continue",
+      "expected_target": {
+        "ref": "android.btn.continue.verify"
+      },
+      "acceptable_refs": [
+        "android.btn.continue.verify"
+      ],
+      "expected_relation": {
+        "type": "below_text",
+        "anchor_ref": "android.lbl.verify_phone"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_vertical_anchor": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.continue.verify"
+        }
+      },
+      "tags": [
+        "mobile",
+        "relational",
+        "below-label",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_rel_field_next_to_label",
+      "category": "mobile_rel_field_next_to_label",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Type 94107 in ZIP field next to Postal code.",
+      "action_type": "type",
+      "target_text": "ZIP",
+      "expected_target": {
+        "ref": "android.input.zip"
+      },
+      "acceptable_refs": [
+        "android.input.zip"
+      ],
+      "expected_relation": {
+        "type": "next_to_text",
+        "anchor_ref": "android.lbl.postal_code"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_horizontal_anchor": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.input.zip"
+        }
+      },
+      "tags": [
+        "mobile",
+        "relational",
+        "next-to-label",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_rel_action_inside_repeated_card",
+      "category": "mobile_rel_action_inside_card",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Retry inside Order #2048 card.",
+      "action_type": "tap",
+      "target_text": "Retry",
+      "expected_target": {
+        "ref": "android.btn.retry.order2048"
+      },
+      "acceptable_refs": [
+        "android.btn.retry.order2048"
+      ],
+      "expected_relation": {
+        "type": "within_card",
+        "anchor_ref": "android.card.order_2048"
+      },
+      "expected_graph_signals": {
+        "has_card_anchor": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.retry.order2048"
+        }
+      },
+      "tags": [
+        "mobile",
+        "relational",
+        "repeated-card",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_rel_item_near_price_status",
+      "category": "mobile_rel_item_near_price_status",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic_seed_placeholder.xml",
+      "instruction": "Tap Add for item near $19.99 and In stock.",
+      "action_type": "tap",
+      "target_text": "Add",
+      "expected_target": {
+        "ref": "android.btn.add.item19"
+      },
+      "acceptable_refs": [
+        "android.btn.add.item19"
+      ],
+      "expected_relation": {
+        "type": "near_text",
+        "anchor_ref": "android.txt.price_19_99"
+      },
+      "expected_graph_signals": {
+        "has_price_anchor": true,
+        "has_status_anchor": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy",
+        "exact_text",
+        "fuzzy_text"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "not_applicable"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.btn.add.item19"
+        }
+      },
+      "tags": [
+        "mobile",
+        "relational",
+        "near-price-status",
+        "seed"
+      ]
     }
   ]
 }
