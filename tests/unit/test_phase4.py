@@ -871,3 +871,92 @@ class TestSDKMobileChannelRouting:
         assert result.status == "passed"
         assert result.target is not None
         assert result.target.metadata.get("extracted_value") == "MOBILE_VALUE"
+
+
+class TestFrameworkDetector:
+
+    def test_framework_detector_android_native(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        result = detect_mobile_surface(
+            platform="android",
+            capabilities={"platformName": "Android", "automationName": "UiAutomator2"},
+            app_state={"context_inventory": {"inferred_context_mode": "native_only", "current_context_type": "native", "has_native_context": True, "has_webview_context": False}},
+            hierarchy_xml=_SIMPLE_XML,
+        )
+        assert result["surface_type"] == "android_native"
+
+    def test_framework_detector_ios_native(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        xml = '<XCUIElementTypeWindow><XCUIElementTypeButton name="Allow" label="Allow" value=""/></XCUIElementTypeWindow>'
+        result = detect_mobile_surface(
+            platform="ios",
+            capabilities={"platformName": "iOS", "automationName": "XCUITest"},
+            app_state={"context_inventory": {"inferred_context_mode": "native_only", "current_context_type": "native"}},
+            hierarchy_xml=xml,
+        )
+        assert result["surface_type"] == "ios_native"
+
+    def test_framework_detector_webview(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        result = detect_mobile_surface(
+            platform="android",
+            app_state={"context_inventory": {"inferred_context_mode": "webview_only", "current_context_type": "webview", "has_webview_context": True}},
+            hierarchy_xml="<html><body>WEBVIEW</body></html>",
+        )
+        assert result["surface_type"] == "webview"
+
+    def test_framework_detector_hybrid(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        result = detect_mobile_surface(
+            platform="android",
+            app_state={"context_inventory": {"inferred_context_mode": "hybrid", "current_context_type": "native", "has_native_context": True, "has_webview_context": True}},
+            hierarchy_xml=_SIMPLE_XML,
+        )
+        assert result["surface_type"] == "hybrid"
+
+    def test_framework_detector_system_dialog(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        xml = '<hierarchy package="com.android.permissioncontroller"><node text="Allow while using the app"/><node text="Deny"/></hierarchy>'
+        result = detect_mobile_surface(platform="android", app_state={}, hierarchy_xml=xml)
+        assert result["surface_type"] == "system_dialog"
+
+    def test_framework_detector_unknown_for_sparse(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        result = detect_mobile_surface()
+        assert result["surface_type"] == "unknown"
+
+    def test_framework_detector_conflict_degrades_to_unknown(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        xml = '<android.widget.Button text="Login"/><XCUIElementTypeButton name="Go"/>'
+        result = detect_mobile_surface(platform="android", app_state={"context_inventory": {"inferred_context_mode": "native_only"}}, hierarchy_xml=xml)
+        assert result["surface_type"] == "unknown"
+        assert "conflicting_surface_signals" in result["warnings"]
+
+    def test_framework_detector_evidence_is_compact_and_safe(self):
+        from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+
+        raw_xml = '<hierarchy><node text="secret@example.com" package="com.secret.app"/></hierarchy>'
+        result = detect_mobile_surface(hierarchy_xml=raw_xml)
+        for token in result["evidence"]:
+            assert "<" not in token
+            assert "com.secret.app" not in token
+            assert "secret@example.com" not in token
+
+    def test_collect_context_app_state_includes_framework_detection(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP"]
+        driver.current_context = "NATIVE_APP"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        assert "framework_detection" in ctx.app_state
+        assert ctx.app_state["framework_detection"]["safe_metadata_only"] is True
+

@@ -40,6 +40,7 @@ import json
 
 from bubblegum.adapters.base import BaseAdapter
 from bubblegum.core.memory.fingerprint import compute_signature
+from bubblegum.core.mobile.framework_detector import detect_mobile_surface
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -179,12 +180,28 @@ class AppiumAdapter(BaseAdapter):
         if context_inventory:
             app_state["context_inventory"] = context_inventory
 
+        app_state["framework_detection"] = detect_mobile_surface(
+            platform=self.platform,
+            capabilities=self._safe_capabilities(),
+            app_state=app_state,
+            hierarchy_xml=hierarchy_xml,
+        )
+
         return UIContext(
             hierarchy_xml=hierarchy_xml,
             screenshot=screenshot,
             screen_signature=sig,
             app_state=app_state,
         )
+
+    def _safe_capabilities(self) -> dict[str, object]:
+        try:
+            caps = self._driver.capabilities or {}
+            if isinstance(caps, dict):
+                return dict(caps)
+        except Exception:
+            return {}
+        return {}
 
     def _collect_context_inventory_metadata(self) -> dict[str, object]:
         warnings: list[str] = []
