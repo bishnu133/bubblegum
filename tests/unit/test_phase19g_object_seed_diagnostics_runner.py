@@ -16,10 +16,10 @@ SIDECAR = ROOT / "tests" / "benchmarks" / "object_intelligence" / "synthetic_ele
 def test_runner_loads_seed_and_sidecar_and_produces_summary_counts():
     out = run_diagnostics(CASES, SIDECAR, strict=False)
     summary = out["summary"]
-    assert summary["total_cases"] == 13
-    assert summary["evaluated_cases"] == 13
+    assert summary["total_cases"] == 34
+    assert summary["evaluated_cases"] == 34
     assert summary["skipped_missing_metadata"] == 0
-    assert summary["parsed_count"] + summary["parse_none_count"] == 13
+    assert summary["parsed_count"] + summary["parse_none_count"] == 34
     assert "diagnostics_status_counts" in summary
     assert "diagnostics_relation_type_counts" in summary
 
@@ -45,7 +45,7 @@ def test_runner_skips_missing_metadata_when_not_strict(tmp_path):
     p.write_text(json.dumps(sidecar), encoding="utf-8")
     out = run_diagnostics(CASES, p, strict=False)
     assert out["summary"]["skipped_missing_metadata"] == 1
-    assert out["summary"]["evaluated_cases"] == 12
+    assert out["summary"]["evaluated_cases"] == 33
 
 
 def test_runner_strict_missing_metadata_raises(tmp_path):
@@ -58,6 +58,6 @@ def test_runner_strict_missing_metadata_raises(tmp_path):
 
 def test_runner_is_metadata_only_and_does_not_call_external_runtime():
     out = run_diagnostics(CASES, SIDECAR, strict=False)
-    assert out["summary"]["total_cases"] == 13
+    assert out["summary"]["total_cases"] == 34
     for row in out["cases"]:
         assert "diagnostics_status" in row or row["result_status"] == "skipped_missing_metadata"
