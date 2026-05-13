@@ -10,6 +10,7 @@ from typing import Sequence
 from bubblegum.core.schemas import StepResult
 from bubblegum.reporting.html_report import (
     build_report_analytics,
+    safe_graph_query_diagnostics_metadata,
     safe_graph_signals_metadata,
     safe_hydration_metadata,
     sanitize_reporting_metadata,
@@ -25,13 +26,17 @@ def _safe_result_dump(result: StepResult) -> dict:
             metadata = sanitize_reporting_metadata(metadata)
             hydration = safe_hydration_metadata(metadata)
             graph_signals = safe_graph_signals_metadata(metadata)
+            graph_query_diagnostics = safe_graph_query_diagnostics_metadata(metadata)
             for key in list(metadata.keys()):
                 if key.startswith("hydration_") or key in {"match_field", "match_count"}:
                     metadata.pop(key, None)
             metadata.pop("graph_signals", None)
+            metadata.pop("graph_query_diagnostics", None)
             metadata.update(hydration)
             if graph_signals:
                 metadata["graph_signals"] = graph_signals
+            if graph_query_diagnostics:
+                metadata["graph_query_diagnostics"] = graph_query_diagnostics
             target["metadata"] = metadata
     return payload
 

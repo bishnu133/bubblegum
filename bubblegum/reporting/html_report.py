@@ -99,6 +99,17 @@ _UNSAFE_WAIT_KEYS = {
     "wait_candidate_dump",
 }
 
+_SAFE_GRAPH_QUERY_DIAGNOSTIC_FIELDS = (
+    "status",
+    "relation_type",
+    "anchor_resolution",
+    "scope_resolution",
+    "matched_ids",
+    "excluded_ids",
+    "ambiguity",
+    "reasons",
+)
+
 _SAFE_GRAPH_SIGNAL_FIELDS = (
     "label_for_match",
     "same_row_match",
@@ -110,6 +121,22 @@ _SAFE_GRAPH_SIGNAL_FIELDS = (
     "score_hint",
     "reason",
 )
+
+_UNSAFE_GRAPH_QUERY_DIAGNOSTIC_KEYS = {
+    "raw_snapshot",
+    "snapshot",
+    "hierarchy_xml",
+    "xml",
+    "screenshot",
+    "screenshot_bytes",
+    "image_base64",
+    "provider_payload",
+    "raw_payload",
+    "full_graph",
+    "nodes",
+    "edges",
+    "raw_attributes",
+}
 
 _UNSAFE_GRAPH_KEYS = {
     "snapshot",
@@ -182,6 +209,31 @@ def safe_graph_signals_metadata(metadata: dict) -> dict[str, Any]:
     for key in _SAFE_GRAPH_SIGNAL_FIELDS:
         if key in redacted:
             out[key] = redacted[key]
+    return out
+
+
+def safe_graph_query_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact report-safe graph query diagnostics metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("graph_query_diagnostics")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_GRAPH_QUERY_DIAGNOSTIC_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_GRAPH_QUERY_DIAGNOSTIC_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"matched_ids", "excluded_ids", "reasons"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif key == "ambiguity":
+            out[key] = bool(value)
+        elif value is not None:
+            out[key] = str(value) if isinstance(value, (bytes, bytearray)) else value
     return out
 
 
@@ -277,6 +329,21 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{graph_rows}</ul>'
             '</details>'
         )
+    graph_query_html = ""
+    graph_query_diagnostics = safe_graph_query_diagnostics_metadata(target_metadata)
+    if graph_query_diagnostics:
+        graph_query_rows = "".join(
+            f'<li><strong>{html.escape(key)}:</strong> {html.escape(str(graph_query_diagnostics[key]))}</li>'
+            for key in _SAFE_GRAPH_QUERY_DIAGNOSTIC_FIELDS
+            if key in graph_query_diagnostics
+        )
+        graph_query_html = (
+            "<details style=\"margin-top:8px;\">"
+            "<summary style=\"cursor:pointer;font-size:0.8rem;color:#64748b;\">Graph Query Diagnostics</summary>"
+            f'<ul style=\"margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;\">{graph_query_rows}</ul>'
+            "</details>"
+        )
+
     wait_html = ""
     if target_metadata.get("wait_used") is True:
         wait_mode = target_metadata.get("wait_mode", "unknown")
@@ -348,6 +415,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {screenshot_html}
       {hydration_html}
       {graph_html}
+      {graph_query_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -514,6 +582,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
       - error_type_counts
       - hydration_summary {total_events,status_counts,by_source,by_strategy,by_channel,by_reason}
       - graph_signal_summary {total_events,presence_counts,reason_counts,field_true_counts}
+      - graph_query_summary {total_events,status_counts,relation_type_counts,ambiguity_count,reason_counts,matched_id_total}
     """
     status_counts = Counter(
         {"passed": 0, "recovered": 0, "failed": 0, "skipped": 0}
@@ -534,6 +603,12 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     graph_signal_reason_counts: Counter[str] = Counter()
     graph_signal_true_counts: Counter[str] = Counter()
     graph_signal_total_events = 0
+    graph_query_status_counts: Counter[str] = Counter()
+    graph_query_relation_type_counts: Counter[str] = Counter()
+    graph_query_reason_counts: Counter[str] = Counter()
+    graph_query_ambiguity_count = 0
+    graph_query_matched_id_total = 0
+    graph_query_total_events = 0
 
     for result in results:
         status_counts[result.status] += 1
@@ -556,6 +631,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         metadata = result.target.metadata if result.target else {}
         hydration = safe_hydration_metadata(metadata)
         graph_signals = safe_graph_signals_metadata(metadata)
+        graph_query_diagnostics = safe_graph_query_diagnostics_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -575,6 +651,19 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             for key, value in graph_signals.items():
                 if isinstance(value, bool) and value:
                     graph_signal_true_counts[key] += 1
+        if graph_query_diagnostics:
+            graph_query_total_events += 1
+            _count_categorical_field(graph_query_status_counts, graph_query_diagnostics.get("status"))
+            _count_categorical_field(graph_query_relation_type_counts, graph_query_diagnostics.get("relation_type"))
+            if graph_query_diagnostics.get("ambiguity") is True:
+                graph_query_ambiguity_count += 1
+            reasons = graph_query_diagnostics.get("reasons")
+            if isinstance(reasons, list):
+                for reason in reasons:
+                    _count_categorical_field(graph_query_reason_counts, reason)
+            matched_ids = graph_query_diagnostics.get("matched_ids")
+            if isinstance(matched_ids, list):
+                graph_query_matched_id_total += len(matched_ids)
 
     conf_count = len(confidences)
     confidence_summary = {
@@ -599,6 +688,15 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "field_true_counts": dict(graph_signal_true_counts),
     }
 
+    graph_query_summary = {
+        "total_events": graph_query_total_events,
+        "status_counts": dict(graph_query_status_counts),
+        "relation_type_counts": dict(graph_query_relation_type_counts),
+        "ambiguity_count": graph_query_ambiguity_count,
+        "reason_counts": dict(graph_query_reason_counts),
+        "matched_id_total": graph_query_matched_id_total,
+    }
+
     return {
         "total": len(results),
         "status_counts": dict(status_counts),
@@ -607,4 +705,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "error_type_counts": dict(error_type_counts),
         "hydration_summary": hydration_summary,
         "graph_signal_summary": graph_signal_summary,
+        "graph_query_summary": graph_query_summary,
     }
