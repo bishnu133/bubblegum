@@ -115,6 +115,113 @@ class TestAppiumAdapterCollectContext:
         ctx2 = _run_async(adapter.collect_context(req))
         assert ctx1.screen_signature == ctx2.screen_signature
 
+
+
+    def test_collect_context_context_inventory_native_only(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP"]
+        driver.current_context = "NATIVE_APP"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        inv = ctx.app_state["context_inventory"]
+        assert inv["available_context_count"] == 1
+        assert inv["context_types"] == ["native"]
+        assert inv["current_context_type"] == "native"
+        assert inv["has_native_context"] is True
+        assert inv["has_webview_context"] is False
+        assert inv["webview_context_count"] == 0
+        assert inv["inferred_context_mode"] == "native_only"
+        assert inv["warnings"] == []
+        assert inv["safe_metadata_only"] is True
+
+    def test_collect_context_context_inventory_hybrid(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP", "WEBVIEW_com.example"]
+        driver.current_context = "NATIVE_APP"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        inv = ctx.app_state["context_inventory"]
+        assert inv["context_types"] == ["native", "webview"]
+        assert inv["has_webview_context"] is True
+        assert inv["webview_context_count"] == 1
+        assert inv["inferred_context_mode"] == "hybrid"
+
+    def test_collect_context_context_inventory_webview_only(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["WEBVIEW_com.example"]
+        driver.current_context = "WEBVIEW_com.example"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        inv = ctx.app_state["context_inventory"]
+        assert inv["context_types"] == ["webview"]
+        assert inv["current_context_type"] == "webview"
+        assert inv["inferred_context_mode"] == "webview_only"
+
+    def test_collect_context_context_inventory_missing_contexts_attribute(self):
+        driver, _ = _make_driver()
+        del driver.contexts
+        driver.current_context = "NATIVE_APP"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        inv = ctx.app_state["context_inventory"]
+        assert inv["available_context_count"] == 0
+        assert "contexts_unavailable" in inv["warnings"]
+
+    def test_collect_context_context_inventory_contexts_raises(self):
+        driver, _ = _make_driver()
+        type(driver).contexts = PropertyMock(side_effect=Exception("boom"))
+        driver.current_context = "NATIVE_APP"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        inv = ctx.app_state["context_inventory"]
+        assert "contexts_lookup_failed" in inv["warnings"]
+
+    def test_collect_context_context_inventory_current_context_raises(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP"]
+        type(driver).current_context = PropertyMock(side_effect=Exception("boom"))
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        inv = ctx.app_state["context_inventory"]
+        assert inv["current_context_type"] == "unknown"
+        assert "current_context_lookup_failed" in inv["warnings"]
+
+    def test_collect_context_context_inventory_sanitizes_raw_context_names(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP", "WEBVIEW_com.example.app", "CHROMIUM", "SOME_PRIVATE_CTX"]
+        driver.current_context = "SOME_PRIVATE_CTX"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        inv = ctx.app_state["context_inventory"]
+        assert inv["context_types"] == ["native", "other", "webview", "webview/chromium"]
+        assert inv["current_context_type"] == "other"
+        assert inv["webview_context_count"] == 2
+
+    def test_collect_context_never_switches_context(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP", "WEBVIEW_com.example"]
+        driver.current_context = "NATIVE_APP"
+        driver.switch_to.context = MagicMock()
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        driver.switch_to.context.assert_not_called()
+
     def test_collect_context_handles_page_source_failure(self):
         driver, _ = _make_driver()
         type(driver).page_source = PropertyMock(side_effect=Exception("session lost"))
