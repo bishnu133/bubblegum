@@ -90,6 +90,31 @@ def _sanitize_retry_reason(exc: Exception) -> str:
 
 
 
+
+
+
+def _sanitize_context_type(context_name: object) -> str:
+    value = str(context_name or "").strip().upper()
+    if value == "NATIVE_APP":
+        return "native"
+    if value.startswith("WEBVIEW"):
+        return "webview"
+    if value == "CHROMIUM":
+        return "webview/chromium"
+    return "other"
+
+
+def _infer_context_mode(has_native: bool, has_webview: bool, available_count: int) -> str:
+    if has_native and has_webview:
+        return "hybrid"
+    if has_native and not has_webview:
+        return "native_only"
+    if has_webview and not has_native:
+        return "webview_only"
+    if available_count > 0:
+        return "unknown"
+    return "unknown"
+
 _ARTIFACTS_DIR = Path("artifacts")
 
 
@@ -149,11 +174,63 @@ class AppiumAdapter(BaseAdapter):
         activity = self._get_activity()
         sig = compute_signature(activity, hierarchy_xml)
 
+        app_state: dict[str, object] = {}
+        context_inventory = self._collect_context_inventory_metadata()
+        if context_inventory:
+            app_state["context_inventory"] = context_inventory
+
         return UIContext(
             hierarchy_xml=hierarchy_xml,
             screenshot=screenshot,
             screen_signature=sig,
+            app_state=app_state,
         )
+
+    def _collect_context_inventory_metadata(self) -> dict[str, object]:
+        warnings: list[str] = []
+        contexts: list[object] = []
+
+        try:
+            raw_contexts = self._driver.contexts
+            if isinstance(raw_contexts, (list, tuple, set)):
+                contexts = list(raw_contexts)
+            elif raw_contexts is None:
+                contexts = []
+            else:
+                contexts = [raw_contexts]
+        except AttributeError:
+            warnings.append("contexts_unavailable")
+        except Exception:
+            warnings.append("contexts_lookup_failed")
+
+        available_context_count = len(contexts)
+        context_types = sorted({_sanitize_context_type(ctx) for ctx in contexts})
+
+        current_context_type = "other"
+        try:
+            current_context_type = _sanitize_context_type(self._driver.current_context)
+        except AttributeError:
+            warnings.append("current_context_unavailable")
+            current_context_type = "unknown"
+        except Exception:
+            warnings.append("current_context_lookup_failed")
+            current_context_type = "unknown"
+
+        has_native_context = "native" in context_types
+        webview_context_count = sum(1 for ctx in contexts if _sanitize_context_type(ctx) in {"webview", "webview/chromium"})
+        has_webview_context = webview_context_count > 0
+
+        return {
+            "available_context_count": available_context_count,
+            "context_types": context_types,
+            "current_context_type": current_context_type,
+            "has_native_context": has_native_context,
+            "has_webview_context": has_webview_context,
+            "webview_context_count": webview_context_count,
+            "inferred_context_mode": _infer_context_mode(has_native_context, has_webview_context, available_context_count),
+            "warnings": warnings,
+            "safe_metadata_only": True,
+        }
 
     async def execute(self, plan: ActionPlan, target: ResolvedTarget) -> ExecutionResult:
         """
