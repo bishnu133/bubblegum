@@ -313,3 +313,77 @@ def test_json_report_graph_signals_preserved_and_redacted(tmp_path):
     assert "hierarchy_xml" not in gs
     assert "raw_payload" not in gs
     assert "full_graph" not in gs
+
+
+def test_json_report_graph_query_diagnostics_preserves_safe_fields(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Click",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "graph_query_diagnostics": {
+                    "status": "applied",
+                    "relation_type": "label_for",
+                    "anchor_resolution": "resolved",
+                    "scope_resolution": "none",
+                    "matched_ids": ["a", "b"],
+                    "excluded_ids": ["x"],
+                    "ambiguity": False,
+                    "reasons": ["ok"],
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    gq = payload["results"][0]["target"]["metadata"]["graph_query_diagnostics"]
+    assert gq["status"] == "applied"
+    assert gq["relation_type"] == "label_for"
+    assert gq["matched_ids"] == ["a", "b"]
+    assert gq["reasons"] == ["ok"]
+
+
+def test_json_report_graph_query_diagnostics_redacts_unsafe_fields(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Click",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "graph_query_diagnostics": {
+                    "status": "applied",
+                    "relation_type": "label_for",
+                    "raw_snapshot": "secret",
+                    "snapshot": "secret",
+                    "hierarchy_xml": "<xml/>",
+                    "provider_payload": {"secret": "x"},
+                    "nodes": [{"id": "n1"}],
+                    "edges": [{"from": "n1", "to": "n2"}],
+                    "raw_attributes": {"a": 1},
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    gq = payload["results"][0]["target"]["metadata"]["graph_query_diagnostics"]
+    assert gq["status"] == "applied"
+    for key in [
+        "raw_snapshot",
+        "snapshot",
+        "hierarchy_xml",
+        "provider_payload",
+        "nodes",
+        "edges",
+        "raw_attributes",
+    ]:
+        assert key not in gq
