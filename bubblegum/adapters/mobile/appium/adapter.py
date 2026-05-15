@@ -42,6 +42,7 @@ from bubblegum.adapters.base import BaseAdapter
 from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.mobile.framework_detector import detect_mobile_surface
 from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
+from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -190,6 +191,12 @@ class AppiumAdapter(BaseAdapter):
         app_state["webview_switch_diagnostics"] = build_webview_switch_diagnostics(
             context_inventory=context_inventory,
             framework_detection=app_state.get("framework_detection") if isinstance(app_state.get("framework_detection"), dict) else None,
+        )
+        app_state["webview_switch_guardrails"] = evaluate_webview_switch_guardrails(
+            context_inventory=context_inventory,
+            framework_detection=app_state.get("framework_detection") if isinstance(app_state.get("framework_detection"), dict) else None,
+            webview_switch_diagnostics=app_state.get("webview_switch_diagnostics") if isinstance(app_state.get("webview_switch_diagnostics"), dict) else None,
+            explicit_opt_in=False,
         )
 
         return UIContext(
