@@ -21,6 +21,10 @@ pytestmark = [
     pytest.mark.slow,
 ]
 
+_SAFE_DIALOG_TYPE_VALUES = {"permission", "confirm_cancel", "alert", "unknown"}
+_SAFE_DIALOG_OWNER_VALUES = {"system", "app", "unknown"}
+_SAFE_DIALOG_PLATFORM_VALUES = {"android", "ios", "web", "unknown"}
+
 
 def _required_android_env() -> tuple[str, dict[str, str], bool]:
     require_real_env_enabled()
@@ -233,6 +237,65 @@ def test_android_emulator_smoke_reporting_artifacts_are_safe(tmp_path) -> None:
             "<hierarchy leaked>",
         ):
             assert forbidden_text not in html_text
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+
+def test_android_emulator_smoke_system_dialog_detection_metadata() -> None:
+    appium_webdriver = pytest.importorskip("appium.webdriver")
+    options_module = pytest.importorskip("appium.options.android")
+
+    appium_url, values, has_app = _required_android_env()
+    expect_dialog = os.getenv("BUBBLEGUM_ANDROID_EXPECT_SYSTEM_DIALOG", "").strip() == "1"
+
+    options = options_module.UiAutomator2Options()
+    options.platform_name = "Android"
+    options.device_name = values["BUBBLEGUM_ANDROID_DEVICE_NAME"]
+
+    if has_app:
+        options.app = values["BUBBLEGUM_ANDROID_APP"]
+    else:
+        options.app_package = values["BUBBLEGUM_ANDROID_PACKAGE"]
+        options.app_activity = values["BUBBLEGUM_ANDROID_ACTIVITY"]
+
+    options.automation_name = "UiAutomator2"
+
+    try:
+        driver = appium_webdriver.Remote(appium_url, options=options)
+    except Exception as exc:  # pragma: no cover - runtime-dependent skip path
+        pytest.skip(f"Unable to start Android emulator smoke Appium session: {exc}")
+
+    try:
+        adapter = AppiumAdapter(driver)
+        ui_context = asyncio.run(
+            adapter.collect_context(ContextRequest(include_screenshot=False, include_hierarchy=True))
+        )
+
+        app_state = ui_context.app_state
+        assert "system_dialog_detection" in app_state
+        detection = app_state["system_dialog_detection"]
+        assert isinstance(detection, dict)
+
+        assert "dialog_detected" in detection
+        assert "dialog_type" in detection
+        assert "owner" in detection
+        assert "platform" in detection
+
+        assert detection["dialog_type"] in _SAFE_DIALOG_TYPE_VALUES
+        assert detection["owner"] in _SAFE_DIALOG_OWNER_VALUES
+        assert detection["platform"] in _SAFE_DIALOG_PLATFORM_VALUES
+
+        if expect_dialog:
+            assert detection["dialog_detected"] is True, (
+                "BUBBLEGUM_ANDROID_EXPECT_SYSTEM_DIALOG=1 was set, "
+                "but system_dialog_detection.dialog_detected was not true. "
+                "Ensure a visible Android system dialog is present when running this smoke test."
+            )
+        else:
+            assert isinstance(detection["dialog_detected"], bool)
     finally:
         try:
             driver.quit()
