@@ -42,6 +42,7 @@ from bubblegum.adapters.base import BaseAdapter
 from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.mobile.framework_detector import detect_mobile_surface
 from bubblegum.core.mobile.system_dialog import detect_system_dialog
+from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
 from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
 from bubblegum.core.schemas import (
@@ -204,6 +205,10 @@ class AppiumAdapter(BaseAdapter):
             capabilities=self._safe_capabilities(),
             app_state=app_state,
             hierarchy_xml=hierarchy_xml,
+        )
+        app_state["system_dialog_guardrails"] = evaluate_system_dialog_guardrails(
+            system_dialog_detection=app_state.get("system_dialog_detection") if isinstance(app_state.get("system_dialog_detection"), dict) else None,
+            explicit_opt_in=False,
         )
 
         return UIContext(
