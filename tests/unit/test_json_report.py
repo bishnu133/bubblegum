@@ -592,3 +592,39 @@ def test_json_report_includes_system_dialog_analytics_summary(tmp_path):
     assert ss["detected_count"] == 1
     assert ss["dialog_type_counts"]["permission_prompt"] == 1
     assert ss["warning_counts"]["w1"] == 1
+
+def test_json_report_preserves_safe_system_dialog_guardrails_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="noop",
+        confidence=1.0,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=1.0,
+            resolver_name="x",
+            metadata={
+                "system_dialog_guardrails": {
+                    "decision": "blocked",
+                    "reason": "opt_in_missing",
+                    "dialog_detected": True,
+                    "dialog_type": "permission",
+                    "requested_action": "allow",
+                    "requires_opt_in": True,
+                    "opt_in_present": False,
+                    "action_attempted": False,
+                    "recommended_action": "allow",
+                    "evidence": ["dialog:permission"],
+                    "warnings": [],
+                    "safe_metadata_only": True,
+                    "raw_xml": "<x/>",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]["system_dialog_guardrails"]
+    assert md["decision"] == "blocked"
+    assert md["action_attempted"] is False
+    assert "raw_xml" not in md

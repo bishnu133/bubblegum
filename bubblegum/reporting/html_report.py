@@ -134,6 +134,21 @@ _SAFE_SYSTEM_DIALOG_FIELDS = (
     "safe_metadata_only",
 )
 
+_SAFE_SYSTEM_DIALOG_GUARDRAILS_FIELDS = (
+    "decision",
+    "reason",
+    "dialog_detected",
+    "dialog_type",
+    "requested_action",
+    "requires_opt_in",
+    "opt_in_present",
+    "action_attempted",
+    "recommended_action",
+    "evidence",
+    "warnings",
+    "safe_metadata_only",
+)
+
 _UNSAFE_SYSTEM_DIALOG_KEYS = {
     "raw_xml",
     "hierarchy_xml",
@@ -339,6 +354,31 @@ def safe_system_dialog_detection_metadata(metadata: dict) -> dict[str, Any]:
                 out[key] = float(value)
             except (TypeError, ValueError):
                 continue
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
+
+def safe_system_dialog_guardrails_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe system dialog guardrail metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("system_dialog_guardrails")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_SYSTEM_DIALOG_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_SYSTEM_DIALOG_GUARDRAILS_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"dialog_detected", "requires_opt_in", "opt_in_present", "action_attempted", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"evidence", "warnings"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
         elif value is not None:
             out[key] = str(value)
     return out

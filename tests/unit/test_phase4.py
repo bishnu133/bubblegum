@@ -1151,3 +1151,102 @@ class TestSystemDialogDetector:
 
         _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
         driver.switch_to.context.assert_not_called()
+
+class TestSystemDialogGuardrails:
+    def test_no_dialog_detected_blocks(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": False, "dialog_type": "unknown", "recommended_action": "defer", "confidence": 0.8},
+            requested_action="allow",
+            explicit_opt_in=True,
+        )
+        assert out["decision"] == "blocked"
+        assert out["reason"] == "no_dialog"
+        assert out["action_attempted"] is False
+
+    def test_dialog_detected_opt_in_missing_blocks(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": True, "dialog_type": "permission", "recommended_action": "allow", "confidence": 0.9, "owner": "system"},
+            requested_action="allow",
+            explicit_opt_in=False,
+        )
+        assert out["decision"] == "blocked"
+        assert out["reason"] == "opt_in_missing"
+
+    def test_permission_allow_with_opt_in_and_policy_allows(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": True, "dialog_type": "permission", "recommended_action": "allow", "confidence": 0.95, "owner": "system"},
+            requested_action="allow",
+            explicit_opt_in=True,
+            policy={"allow": True},
+        )
+        assert out["decision"] == "allowed"
+
+    def test_permission_deny_blocked_unless_policy_allows_destructive(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": True, "dialog_type": "permission", "recommended_action": "deny", "confidence": 0.95, "owner": "system"},
+            requested_action="deny",
+            explicit_opt_in=True,
+        )
+        assert out["decision"] == "blocked"
+        assert out["reason"] == "unsafe_action"
+
+    def test_confirm_cancel_missing_policy_defers_or_manual_review(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": True, "dialog_type": "confirm_cancel", "recommended_action": "dismiss", "confidence": 0.85, "owner": "app"},
+            requested_action="ok",
+            explicit_opt_in=True,
+        )
+        assert out["decision"] in {"blocked", "deferred", "manual_review"}
+
+    def test_low_confidence_blocks(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": True, "dialog_type": "alert", "recommended_action": "manual_review", "confidence": 0.4, "owner": "system"},
+            requested_action="dismiss",
+            explicit_opt_in=True,
+        )
+        assert out["reason"] == "low_confidence"
+
+    def test_unknown_dialog_returns_manual_review_or_unknown(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": True, "dialog_type": "unknown", "recommended_action": "unknown", "confidence": 0.9, "owner": "unknown"},
+            requested_action="dismiss",
+            explicit_opt_in=True,
+        )
+        assert out["decision"] in {"manual_review", "unknown"}
+
+    def test_evidence_compact_safe_tokens_and_no_action(self):
+        from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+
+        out = evaluate_system_dialog_guardrails(
+            system_dialog_detection={"dialog_detected": True, "dialog_type": "permission", "recommended_action": "allow", "confidence": 0.95, "owner": "system", "warnings": ["ambiguous_dialog"]},
+            requested_action="allow",
+            explicit_opt_in=True,
+        )
+        assert out["action_attempted"] is False
+        assert out["safe_metadata_only"] is True
+        assert all(isinstance(token, str) and ":" in token for token in out["evidence"])
+
+    def test_collect_context_adds_system_dialog_guardrails_metadata(self):
+        driver, _ = _make_driver(page_source='android.widget.Button text="Allow" text="Only this time" package="com.android.permissioncontroller"')
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        assert "system_dialog_guardrails" in ctx.app_state
+        guard = ctx.app_state["system_dialog_guardrails"]
+        assert guard["action_attempted"] is False
+        assert guard["opt_in_present"] is False
