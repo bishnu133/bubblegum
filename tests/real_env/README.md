@@ -258,6 +258,36 @@ BUBBLEGUM_ANDROID_APP=<path-to-apk> \
 pytest tests/real_env/android/test_android_emulator_smoke.py -k reporting -q
 ```
 
+Android system-dialog detection smoke (metadata-only, no auto-click):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+pytest tests/real_env/android/test_android_emulator_smoke.py -k system_dialog_detection -q
+```
+
+Optional strict expectation mode (requires a visible Android system dialog):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_EXPECT_SYSTEM_DIALOG=1 \
+pytest tests/real_env/android/test_android_emulator_smoke.py -k system_dialog_detection -q
+```
+
+Expected system-dialog smoke behavior:
+
+- Test is skip-by-default unless `BUBBLEGUM_REAL_ENV=1`.
+- Test skips clearly if Appium server URL, Android device name, or app launch inputs are missing.
+- Test validates `system_dialog_detection` metadata is present and structured safely.
+- By default, dialog detection may be true or false; the test only requires metadata presence/safety.
+- With `BUBBLEGUM_ANDROID_EXPECT_SYSTEM_DIALOG=1`, test fails clearly unless `dialog_detected` is `true`.
+- Test does **not** click/accept/deny/dismiss any system dialog and does **not** perform WebView context switching.
+
 Optional target-text command (native click assertion):
 
 ```bash
@@ -310,7 +340,7 @@ Verify current test collection baseline:
 pytest --collect-only -q
 ```
 
-Expected baseline after Phase 19M-R is **725 collected tests**.
+Expected baseline after Phase 19M-W is **741 collected tests**.
 
 For reporting validation (`-k reporting`), JSON/HTML outputs are written under pytest `tmp_path`.
 Those files are test-temporary paths and are not persisted unless copied out during the run.
