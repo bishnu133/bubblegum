@@ -547,6 +547,36 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{system_dialog_rows}</ul>'
             '</details>'
         )
+    system_dialog_guardrails_html = ""
+    system_dialog_guardrails = safe_system_dialog_guardrails_metadata(target_metadata)
+    if system_dialog_guardrails:
+        evidence = system_dialog_guardrails.get("evidence", [])
+        warnings = system_dialog_guardrails.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Decision", "decision"),
+            ("Reason", "reason"),
+            ("Dialog detected", "dialog_detected"),
+            ("Dialog type", "dialog_type"),
+            ("Requested action", "requested_action"),
+            ("Requires opt-in", "requires_opt_in"),
+            ("Opt-in present", "opt_in_present"),
+            ("Action attempted", "action_attempted"),
+            ("Recommended action", "recommended_action"),
+        ]
+        guardrail_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(system_dialog_guardrails[key]))}</li>'
+            for label, key in labels
+            if key in system_dialog_guardrails
+        )
+        guardrail_rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        guardrail_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        system_dialog_guardrails_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">System Dialog Guardrails</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{guardrail_rows}</ul>'
+            '</details>'
+        )
 
     wait_html = ""
     if target_metadata.get("wait_used") is True:
@@ -622,6 +652,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {graph_query_html}
       {webview_html}
       {system_dialog_html}
+      {system_dialog_guardrails_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -830,6 +861,15 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     system_dialog_recommended_action_counts: Counter[str] = Counter()
     system_dialog_warning_counts: Counter[str] = Counter()
     system_dialog_confidence_buckets = {"high": 0, "medium": 0, "low": 0}
+    system_dialog_guardrails_total_with_guardrails = 0
+    system_dialog_guardrails_decision_counts: Counter[str] = Counter()
+    system_dialog_guardrails_reason_counts: Counter[str] = Counter()
+    system_dialog_guardrails_dialog_type_counts: Counter[str] = Counter()
+    system_dialog_guardrails_requested_action_counts: Counter[str] = Counter()
+    system_dialog_guardrails_recommended_action_counts: Counter[str] = Counter()
+    system_dialog_guardrails_opt_in_present_count = 0
+    system_dialog_guardrails_action_attempted_count = 0
+    system_dialog_guardrails_warning_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -855,6 +895,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         graph_query_diagnostics = safe_graph_query_diagnostics_metadata(metadata)
         webview_diagnostics = safe_webview_switch_diagnostics_metadata(metadata)
         system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
+        system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -907,6 +948,21 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
                     system_dialog_confidence_buckets["medium"] += 1
                 else:
                     system_dialog_confidence_buckets["low"] += 1
+        if system_dialog_guardrails:
+            system_dialog_guardrails_total_with_guardrails += 1
+            _count_categorical_field(system_dialog_guardrails_decision_counts, system_dialog_guardrails.get("decision"))
+            _count_categorical_field(system_dialog_guardrails_reason_counts, system_dialog_guardrails.get("reason"))
+            _count_categorical_field(system_dialog_guardrails_dialog_type_counts, system_dialog_guardrails.get("dialog_type"))
+            _count_categorical_field(system_dialog_guardrails_requested_action_counts, system_dialog_guardrails.get("requested_action"))
+            _count_categorical_field(system_dialog_guardrails_recommended_action_counts, system_dialog_guardrails.get("recommended_action"))
+            if system_dialog_guardrails.get("opt_in_present") is True:
+                system_dialog_guardrails_opt_in_present_count += 1
+            if system_dialog_guardrails.get("action_attempted") is True:
+                system_dialog_guardrails_action_attempted_count += 1
+            warnings = system_dialog_guardrails.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(system_dialog_guardrails_warning_counts, warning)
         if graph_query_diagnostics:
             graph_query_total_events += 1
             _count_categorical_field(graph_query_status_counts, graph_query_diagnostics.get("status"))
@@ -965,6 +1021,17 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "warning_counts": dict(system_dialog_warning_counts),
         "confidence_buckets": dict(system_dialog_confidence_buckets),
     }
+    system_dialog_guardrails_summary = {
+        "total_with_guardrails": system_dialog_guardrails_total_with_guardrails,
+        "decision_counts": dict(system_dialog_guardrails_decision_counts),
+        "reason_counts": dict(system_dialog_guardrails_reason_counts),
+        "dialog_type_counts": dict(system_dialog_guardrails_dialog_type_counts),
+        "requested_action_counts": dict(system_dialog_guardrails_requested_action_counts),
+        "recommended_action_counts": dict(system_dialog_guardrails_recommended_action_counts),
+        "opt_in_present_count": system_dialog_guardrails_opt_in_present_count,
+        "action_attempted_count": system_dialog_guardrails_action_attempted_count,
+        "warning_counts": dict(system_dialog_guardrails_warning_counts),
+    }
 
     graph_query_summary = {
         "total_events": graph_query_total_events,
@@ -986,4 +1053,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "graph_query_summary": graph_query_summary,
         "webview_diagnostics_summary": webview_diagnostics_summary,
         "system_dialog_summary": system_dialog_summary,
+        "system_dialog_guardrails_summary": system_dialog_guardrails_summary,
     }

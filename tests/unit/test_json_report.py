@@ -628,3 +628,85 @@ def test_json_report_preserves_safe_system_dialog_guardrails_metadata(tmp_path):
     assert md["decision"] == "blocked"
     assert md["action_attempted"] is False
     assert "raw_xml" not in md
+
+
+def test_json_report_redacts_explicit_unsafe_system_dialog_guardrails_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="noop",
+        confidence=1.0,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=1.0,
+            resolver_name="x",
+            metadata={
+                "system_dialog_guardrails": {
+                    "decision": "allowed",
+                    "reason": "policy_allows",
+                    "dialog_detected": True,
+                    "dialog_type": "permission",
+                    "requested_action": "allow",
+                    "recommended_action": "allow",
+                    "raw_dom": "<dom/>",
+                    "screenshot": "bytes",
+                    "screenshot_bytes": "abc",
+                    "page_source": "<xml/>",
+                    "provider_payload": {"token": "x"},
+                    "raw_context_name": "WEBVIEW_com.secret",
+                    "package_name": "com.secret",
+                    "process_name": "pid",
+                    "exception_trace": "trace",
+                    "raw_instruction": "tap allow now",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]["system_dialog_guardrails"]
+    for key in (
+        "raw_dom", "screenshot", "screenshot_bytes", "page_source", "provider_payload",
+        "raw_context_name", "package_name", "process_name", "exception_trace", "raw_instruction"
+    ):
+        assert key not in md
+
+
+def test_json_report_includes_system_dialog_guardrails_analytics_summary_and_ignores_unsafe_keys(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="passed",
+            action="A",
+            confidence=0.9,
+            target=ResolvedTarget(
+                ref='text="Allow"', confidence=0.9, resolver_name="x",
+                metadata={"system_dialog_guardrails": {
+                    "decision": "blocked",
+                    "reason": "opt_in_missing",
+                    "dialog_detected": True,
+                    "dialog_type": "permission",
+                    "requested_action": "allow",
+                    "opt_in_present": False,
+                    "action_attempted": False,
+                    "recommended_action": "allow",
+                    "warnings": ["w1"],
+                    "raw_instruction": "SECRET",
+                }}
+            ),
+        ),
+        StepResult(status="failed", action="B", confidence=0.5),
+    ]
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    gs = payload["analytics"]["system_dialog_guardrails_summary"]
+    assert gs["total_with_guardrails"] == 1
+    assert gs["decision_counts"]["blocked"] == 1
+    assert gs["reason_counts"]["opt_in_missing"] == 1
+    assert gs["dialog_type_counts"]["permission"] == 1
+    assert gs["requested_action_counts"]["allow"] == 1
+    assert gs["recommended_action_counts"]["allow"] == 1
+    assert gs["opt_in_present_count"] == 0
+    assert gs["action_attempted_count"] == 0
+    assert gs["warning_counts"]["w1"] == 1
+    assert "SECRET" not in json.dumps(gs)
