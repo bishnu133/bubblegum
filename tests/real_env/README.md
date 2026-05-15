@@ -28,7 +28,9 @@ If `BUBBLEGUM_REAL_ENV` is unset or not equal to `1`, tests in `tests/real_env` 
 - `BUBBLEGUM_ANDROID_PACKAGE` — Android app package when launching installed app.
 - `BUBBLEGUM_ANDROID_ACTIVITY` — Android launcher activity when launching installed app.
 - `BUBBLEGUM_ANDROID_DEVICE_NAME` — Android emulator/device name for Appium capabilities.
-- `BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT` — optional native text/content-desc used for an opt-in click smoke assertion.
+- `BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT` — optional target hint for bounded Android scroll smoke search.
+- `BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS` — optional max bounded scroll attempts (default `3`, clamped to safe bounds).
+- `BUBBLEGUM_ANDROID_ENABLE_SCROLL_ACTION` — set to `1` to enable explicit bounded scroll action (default is metadata-only, no scroll action).
 - `BUBBLEGUM_IOS_APP` — required for iOS target smoke skeleton.
 - `BUBBLEGUM_CLOUD_PROVIDER` — required for cloud smoke skeleton.
 - `BUBBLEGUM_CLOUD_USERNAME` — required for cloud smoke skeleton.
@@ -425,3 +427,36 @@ Expected behavior:
   - `webview_switch_guardrails`
 - Does **not** perform WebView context switching and does **not** call `driver.switch_to.context`.
 - Optional action smoke runs only when `BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT` is provided; in that case missing target is a test failure.
+
+
+Android scroll discovery smoke (metadata-only by default):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+pytest tests/real_env/android/test_android_scroll_smoke.py -q
+```
+
+Android bounded scroll action smoke (explicit opt-in):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_ENABLE_SCROLL_ACTION=1 \
+BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT=Settings \
+BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS=3 \
+pytest tests/real_env/android/test_android_scroll_smoke.py -q
+```
+
+Android scroll smoke safety rules:
+
+- Skip by default unless `BUBBLEGUM_REAL_ENV=1` and required Appium/device/app env vars are set.
+- Default mode validates `scroll_discovery` metadata only and performs no scroll action.
+- Bounded scroll action only runs when both `BUBBLEGUM_ANDROID_ENABLE_SCROLL_ACTION=1` and `BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT` are provided.
+- Scroll attempts are bounded by `BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS` (safe clamp enforced).
+- No WebView switching is used; no `driver.switch_to.context` calls.
+- No raw XML, screenshot bytes, package/process/context identifiers, or credentials are emitted.
