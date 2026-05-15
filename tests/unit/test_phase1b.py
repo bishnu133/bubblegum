@@ -932,3 +932,62 @@ def test_html_report_escapes_system_dialog_guardrails_values(tmp_path):
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in content
     assert "unsafe&lt;reason&gt;" in content
     assert "&lt;b&gt;bad&lt;/b&gt;" in content
+
+
+def test_html_report_renders_system_dialog_action_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap Allow",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"system_dialog_action": {
+                "action_requested": "allow",
+                "candidate_found": True,
+                "action_attempted": True,
+                "action_status": "executed",
+                "reason": "explicit_opt_in",
+                "evidence": ["dialog:permission", "candidate:allow"],
+                "warnings": ["metadata_only"],
+                "safe_metadata_only": True,
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    content = out.read_text(encoding="utf-8")
+    assert "System Dialog Action" in content
+    assert "executed" in content
+
+
+def test_html_report_hides_system_dialog_action_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    write_html_report([StepResult(status="passed", action="Tap", confidence=0.9)], path=out)
+    assert "System Dialog Action" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_system_dialog_action_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"system_dialog_action": {
+                "action_status": "<script>alert(1)</script>",
+                "reason": "unsafe<reason>",
+                "warnings": ["<b>bad</b>"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    content = out.read_text(encoding="utf-8")
+    assert "<script>alert(1)</script>" not in content
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in content
+    assert "unsafe&lt;reason&gt;" in content
+    assert "&lt;b&gt;bad&lt;/b&gt;" in content

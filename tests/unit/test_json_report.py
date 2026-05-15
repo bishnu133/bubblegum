@@ -710,3 +710,99 @@ def test_json_report_includes_system_dialog_guardrails_analytics_summary_and_ign
     assert gs["action_attempted_count"] == 0
     assert gs["warning_counts"]["w1"] == 1
     assert "SECRET" not in json.dumps(gs)
+
+
+def test_json_report_preserves_safe_system_dialog_action_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap Allow",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"system_dialog_action": {
+                "action_requested": "allow",
+                "candidate_found": True,
+                "action_attempted": False,
+                "action_status": "blocked",
+                "reason": "opt_in_missing",
+                "evidence": ["dialog:permission"],
+                "warnings": ["metadata_only"],
+                "safe_metadata_only": True,
+            }},
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]["system_dialog_action"]
+    assert md["action_requested"] == "allow"
+    assert md["candidate_found"] is True
+    assert md["safe_metadata_only"] is True
+
+
+def test_json_report_redacts_unsafe_system_dialog_action_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="failed",
+        action="Tap",
+        confidence=0.1,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.1,
+            resolver_name="x",
+            metadata={"system_dialog_action": {
+                "action_status": "error",
+                "raw_xml": "<x/>",
+                "hierarchy_xml": "<y/>",
+                "raw_dom": "<dom/>",
+                "screenshot_bytes": "abc",
+                "provider_payload": {"token": "x"},
+                "raw_context_name": "WEBVIEW_secret",
+                "package_name": "com.secret",
+                "process_name": "pid",
+                "exception_trace": "trace",
+                "raw_instruction": "tap allow now",
+            }},
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]["system_dialog_action"]
+    for key in ("raw_xml", "hierarchy_xml", "raw_dom", "screenshot_bytes", "provider_payload", "raw_context_name", "package_name", "process_name", "exception_trace", "raw_instruction"):
+        assert key not in md
+
+
+def test_json_report_includes_system_dialog_action_analytics_summary_and_ignores_unsafe_keys(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="passed",
+            action="A",
+            confidence=0.9,
+            target=ResolvedTarget(
+                ref='text="Allow"', confidence=0.9, resolver_name="x",
+                metadata={"system_dialog_action": {
+                    "action_requested": "allow",
+                    "candidate_found": True,
+                    "action_attempted": True,
+                    "action_status": "executed",
+                    "reason": "explicit_opt_in",
+                    "warnings": ["w1"],
+                    "raw_instruction": "SECRET",
+                }}
+            ),
+        ),
+        StepResult(status="failed", action="B", confidence=0.4),
+    ]
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    sm = payload["analytics"]["system_dialog_action_summary"]
+    assert sm["total_with_action_metadata"] == 1
+    assert sm["candidate_found_count"] == 1
+    assert sm["action_attempted_count"] == 1
+    assert sm["action_status_counts"]["executed"] == 1
+    assert sm["reason_counts"]["explicit_opt_in"] == 1
+    assert sm["warning_counts"]["w1"] == 1
+    assert "SECRET" not in json.dumps(sm)

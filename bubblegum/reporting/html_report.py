@@ -148,6 +148,16 @@ _SAFE_SYSTEM_DIALOG_GUARDRAILS_FIELDS = (
     "warnings",
     "safe_metadata_only",
 )
+_SAFE_SYSTEM_DIALOG_ACTION_FIELDS = (
+    "action_requested",
+    "candidate_found",
+    "action_attempted",
+    "action_status",
+    "reason",
+    "evidence",
+    "warnings",
+    "safe_metadata_only",
+)
 
 _UNSAFE_SYSTEM_DIALOG_KEYS = {
     "raw_xml",
@@ -384,6 +394,31 @@ def safe_system_dialog_guardrails_metadata(metadata: dict) -> dict[str, Any]:
     return out
 
 
+def safe_system_dialog_action_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe system dialog action metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("system_dialog_action")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_SYSTEM_DIALOG_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_SYSTEM_DIALOG_ACTION_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"candidate_found", "action_attempted", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"evidence", "warnings"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
+
 def _screenshot_thumb(path: str) -> str:
     """Return an <img> tag with an inline base64 thumbnail, or empty string on failure."""
     try:
@@ -577,6 +612,34 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{guardrail_rows}</ul>'
             '</details>'
         )
+    system_dialog_action_html = ""
+    system_dialog_action = safe_system_dialog_action_metadata(target_metadata)
+    if system_dialog_action:
+        evidence = system_dialog_action.get("evidence", [])
+        warnings = system_dialog_action.get("warnings", [])
+        evidence_display = ", ".join(str(e) for e in evidence) if evidence else "none"
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Action requested", "action_requested"),
+            ("Candidate found", "candidate_found"),
+            ("Action attempted", "action_attempted"),
+            ("Status", "action_status"),
+            ("Reason", "reason"),
+            ("Safe metadata only", "safe_metadata_only"),
+        ]
+        action_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(system_dialog_action[key]))}</li>'
+            for label, key in labels
+            if key in system_dialog_action
+        )
+        action_rows += f'<li><strong>Evidence:</strong> {html.escape(evidence_display)}</li>'
+        action_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        system_dialog_action_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">System Dialog Action</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{action_rows}</ul>'
+            "</details>"
+        )
 
     wait_html = ""
     if target_metadata.get("wait_used") is True:
@@ -653,6 +716,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {webview_html}
       {system_dialog_html}
       {system_dialog_guardrails_html}
+      {system_dialog_action_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -870,6 +934,12 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     system_dialog_guardrails_opt_in_present_count = 0
     system_dialog_guardrails_action_attempted_count = 0
     system_dialog_guardrails_warning_counts: Counter[str] = Counter()
+    system_dialog_action_total_with_metadata = 0
+    system_dialog_action_candidate_found_count = 0
+    system_dialog_action_attempted_count = 0
+    system_dialog_action_status_counts: Counter[str] = Counter()
+    system_dialog_action_reason_counts: Counter[str] = Counter()
+    system_dialog_action_warning_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -896,6 +966,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         webview_diagnostics = safe_webview_switch_diagnostics_metadata(metadata)
         system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
         system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
+        system_dialog_action = safe_system_dialog_action_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -963,6 +1034,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             if isinstance(warnings, list):
                 for warning in warnings:
                     _count_categorical_field(system_dialog_guardrails_warning_counts, warning)
+        if system_dialog_action:
+            system_dialog_action_total_with_metadata += 1
+            if system_dialog_action.get("candidate_found") is True:
+                system_dialog_action_candidate_found_count += 1
+            if system_dialog_action.get("action_attempted") is True:
+                system_dialog_action_attempted_count += 1
+            _count_categorical_field(system_dialog_action_status_counts, system_dialog_action.get("action_status"))
+            _count_categorical_field(system_dialog_action_reason_counts, system_dialog_action.get("reason"))
+            warnings = system_dialog_action.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(system_dialog_action_warning_counts, warning)
         if graph_query_diagnostics:
             graph_query_total_events += 1
             _count_categorical_field(graph_query_status_counts, graph_query_diagnostics.get("status"))
@@ -1032,6 +1115,14 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "action_attempted_count": system_dialog_guardrails_action_attempted_count,
         "warning_counts": dict(system_dialog_guardrails_warning_counts),
     }
+    system_dialog_action_summary = {
+        "total_with_action_metadata": system_dialog_action_total_with_metadata,
+        "candidate_found_count": system_dialog_action_candidate_found_count,
+        "action_attempted_count": system_dialog_action_attempted_count,
+        "action_status_counts": dict(system_dialog_action_status_counts),
+        "reason_counts": dict(system_dialog_action_reason_counts),
+        "warning_counts": dict(system_dialog_action_warning_counts),
+    }
 
     graph_query_summary = {
         "total_events": graph_query_total_events,
@@ -1054,4 +1145,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "webview_diagnostics_summary": webview_diagnostics_summary,
         "system_dialog_summary": system_dialog_summary,
         "system_dialog_guardrails_summary": system_dialog_guardrails_summary,
+        "system_dialog_action_summary": system_dialog_action_summary,
     }
