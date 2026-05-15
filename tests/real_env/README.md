@@ -65,6 +65,27 @@ Opt in to Android skeleton checks (still skip unless required env vars are prese
 BUBBLEGUM_REAL_ENV=1 pytest tests/real_env -m "real_env and android_emulator" -q
 ```
 
+
+Opt in to web smoke reporting artifact validation (JSON + HTML under pytest tmp path):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 pytest tests/real_env/web/test_web_local_smoke.py -k reporting --playwright -q
+```
+
+Expected artifact behavior:
+
+- Creates one JSON report and one HTML report in `tmp_path`.
+- JSON report is parseable and contains only report-safe fields.
+- HTML report contains safe summary content only (no raw DOM/page dump).
+
+Reporting safety/privacy expectations for smoke artifacts:
+
+- No screenshot bytes or base64 image payloads.
+- No provider payload/request/response bodies.
+- No raw WebView context names.
+- No credentials or secrets.
+- No raw page DOM leakage beyond intended safe summaries.
+
 ## Privacy and Safety Rules
 
 The skeleton harness must not store or print:
