@@ -43,6 +43,7 @@ from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.mobile.framework_detector import detect_mobile_surface
 from bubblegum.core.mobile.system_dialog import detect_system_dialog
 from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+from bubblegum.core.mobile.system_dialog_actions import execute_system_dialog_action, resolve_system_dialog_action_candidate
 from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
 from bubblegum.core.schemas import (
@@ -466,6 +467,49 @@ class AppiumAdapter(BaseAdapter):
                 continue
 
         raise ValueError(f"No extractable text found for ref={ref!r}")
+
+
+    def execute_system_dialog_action(
+        self,
+        *,
+        requested_action: str,
+        hierarchy_xml: str | None = None,
+        system_dialog_detection: dict | None = None,
+        system_dialog_guardrails: dict | None = None,
+        explicit_opt_in: bool = False,
+    ) -> dict[str, object]:
+        xml = hierarchy_xml
+        if xml is None:
+            try:
+                xml = self._driver.page_source
+            except Exception:
+                xml = None
+
+        detection = system_dialog_detection
+        if not isinstance(detection, dict):
+            detection = detect_system_dialog(
+                platform=self.platform,
+                capabilities=self._safe_capabilities(),
+                app_state={},
+                hierarchy_xml=xml,
+            )
+
+        guardrails = system_dialog_guardrails
+        if not isinstance(guardrails, dict):
+            guardrails = evaluate_system_dialog_guardrails(
+                system_dialog_detection=detection,
+                requested_action=requested_action,
+                explicit_opt_in=explicit_opt_in,
+            )
+
+        candidate = resolve_system_dialog_action_candidate(
+            hierarchy_xml=xml,
+            system_dialog_detection=detection,
+            system_dialog_guardrails=guardrails,
+            requested_action=requested_action,
+            explicit_opt_in=explicit_opt_in,
+        )
+        return execute_system_dialog_action(driver=self._driver, candidate=candidate, explicit_opt_in=explicit_opt_in)
 
     # ------------------------------------------------------------------
     # Internal helpers

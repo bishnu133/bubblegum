@@ -1250,3 +1250,88 @@ class TestSystemDialogGuardrails:
         guard = ctx.app_state["system_dialog_guardrails"]
         assert guard["action_attempted"] is False
         assert guard["opt_in_present"] is False
+
+_SYSTEM_DIALOG_XML = """<?xml version='1.0' encoding='UTF-8'?>
+<hierarchy>
+  <android.widget.FrameLayout package='com.example.app' bounds='[0,0][1080,1920]'>
+    <android.widget.Button text='Allow' resource-id='com.example.app:id/allow' clickable='true' enabled='true' bounds='[100,1200][500,1300]'/>
+  </android.widget.FrameLayout>
+  <android.widget.FrameLayout package='com.android.permissioncontroller' bounds='[100,800][980,1500]'>
+    <android.widget.Button package='com.android.permissioncontroller' text='Allow' resource-id='com.android.permissioncontroller:id/permission_allow_button' clickable='true' enabled='true' bounds='[620,1300][940,1420]'/>
+    <android.widget.Button package='com.android.permissioncontroller' text='Deny' resource-id='com.android.permissioncontroller:id/permission_deny_button' clickable='true' enabled='true' bounds='[140,1300][460,1420]'/>
+    <android.widget.Button package='com.android.permissioncontroller' text='OK' resource-id='com.android.permissioncontroller:id/ok' clickable='true' enabled='true' bounds='[620,1180][940,1280]'/>
+    <android.widget.Button package='com.android.permissioncontroller' text='Cancel' resource-id='com.android.permissioncontroller:id/cancel' clickable='true' enabled='true' bounds='[140,1180][460,1280]'/>
+  </android.widget.FrameLayout>
+</hierarchy>"""
+
+class TestSystemDialogActions:
+    def _allowed_guard(self):
+        return {"decision": "allowed", "reason": "policy_allows"}
+
+    def _det(self):
+        return {"dialog_detected": True, "dialog_type": "permission"}
+
+    def test_opt_in_missing_does_not_click(self):
+        from bubblegum.core.mobile.system_dialog_actions import resolve_system_dialog_action_candidate, execute_system_dialog_action
+        driver, element = _make_driver(page_source=_SYSTEM_DIALOG_XML)
+        c = resolve_system_dialog_action_candidate(hierarchy_xml=_SYSTEM_DIALOG_XML, system_dialog_detection=self._det(), system_dialog_guardrails=self._allowed_guard(), requested_action="allow", explicit_opt_in=False)
+        r = execute_system_dialog_action(driver=driver, candidate=c, explicit_opt_in=False)
+        assert r["action_attempted"] is False
+        element.click.assert_not_called()
+
+    def test_guardrails_blocked_does_not_click(self):
+        from bubblegum.core.mobile.system_dialog_actions import resolve_system_dialog_action_candidate
+        c = resolve_system_dialog_action_candidate(hierarchy_xml=_SYSTEM_DIALOG_XML, system_dialog_detection=self._det(), system_dialog_guardrails={"decision":"blocked"}, requested_action="allow", explicit_opt_in=True)
+        assert c["candidate_found"] is False
+        assert c["reason"] == "guardrails_blocked"
+
+    def test_allow_permission_candidate_resolved_when_safe(self):
+        from bubblegum.core.mobile.system_dialog_actions import resolve_system_dialog_action_candidate
+        c = resolve_system_dialog_action_candidate(hierarchy_xml=_SYSTEM_DIALOG_XML, system_dialog_detection=self._det(), system_dialog_guardrails=self._allowed_guard(), requested_action="allow", explicit_opt_in=True)
+        assert c["candidate_found"] is True
+        assert c["reason"] == "single_safe_system_dialog_candidate"
+
+    def test_deny_requires_policy_allow(self):
+        from bubblegum.core.mobile.system_dialog_actions import resolve_system_dialog_action_candidate
+        c = resolve_system_dialog_action_candidate(hierarchy_xml=_SYSTEM_DIALOG_XML, system_dialog_detection=self._det(), system_dialog_guardrails={"decision":"allowed", "reason":"manual_review_required"}, requested_action="deny", explicit_opt_in=True)
+        assert c["candidate_found"] is False
+        assert c["reason"] == "unsafe_action"
+
+    @pytest.mark.parametrize("action", ["ok", "cancel"])
+    def test_ok_cancel_candidate_resolved(self, action):
+        from bubblegum.core.mobile.system_dialog_actions import resolve_system_dialog_action_candidate
+        guard = self._allowed_guard() if action == "ok" else {"decision":"allowed", "reason":"policy_allows"}
+        c = resolve_system_dialog_action_candidate(hierarchy_xml=_SYSTEM_DIALOG_XML, system_dialog_detection=self._det(), system_dialog_guardrails=guard, requested_action=action, explicit_opt_in=True)
+        assert c["safe_metadata_only"] is True
+
+    def test_multiple_allow_candidates_defer(self):
+        from bubblegum.core.mobile.system_dialog_actions import resolve_system_dialog_action_candidate
+        xml = _SYSTEM_DIALOG_XML.replace(
+            "</android.widget.FrameLayout>",
+            "<android.widget.Button package='com.android.permissioncontroller' text='Allow' resource-id='com.android.permissioncontroller:id/permission_allow_button_alt' clickable='true' enabled='true' bounds='[620,1000][940,1100]'/></android.widget.FrameLayout>",
+            1,
+        )
+        c = resolve_system_dialog_action_candidate(hierarchy_xml=xml, system_dialog_detection=self._det(), system_dialog_guardrails=self._allowed_guard(), requested_action="allow", explicit_opt_in=True)
+        assert c["candidate_found"] is False
+
+    def test_selected_candidate_click_once(self):
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        driver, element = _make_driver(page_source=_SYSTEM_DIALOG_XML)
+        res = AppiumAdapter(driver).execute_system_dialog_action(requested_action="allow", explicit_opt_in=True, system_dialog_detection={"dialog_detected": True, "dialog_type": "permission"}, system_dialog_guardrails={"decision": "allowed", "reason": "policy_allows"})
+        assert res["action_attempted"] is True
+        element.click.assert_called_once()
+
+    def test_failed_click_returns_safe_metadata(self):
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        driver, element = _make_driver(page_source=_SYSTEM_DIALOG_XML)
+        element.click.side_effect = RuntimeError("boom")
+        res = AppiumAdapter(driver).execute_system_dialog_action(requested_action="allow", explicit_opt_in=True, system_dialog_detection={"dialog_detected": True, "dialog_type": "permission"}, system_dialog_guardrails={"decision": "allowed", "reason": "policy_allows"})
+        assert res["action_status"] == "failed"
+        assert "boom" not in json.dumps(res)
+
+    def test_no_switch_to_context_usage(self):
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        driver, _ = _make_driver(page_source=_SYSTEM_DIALOG_XML)
+        driver.switch_to.context = MagicMock()
+        AppiumAdapter(driver).execute_system_dialog_action(requested_action="allow", explicit_opt_in=True)
+        driver.switch_to.context.assert_not_called()
