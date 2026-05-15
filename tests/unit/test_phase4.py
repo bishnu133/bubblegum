@@ -1059,3 +1059,95 @@ class TestWebviewSwitchDiagnostics:
         assert ctx.app_state["webview_switch_diagnostics"]["switch_attempted"] is False
         assert "WEBVIEW_com.example" not in " ".join(ctx.app_state["webview_switch_diagnostics"]["evidence"])
         driver.switch_to.context.assert_not_called()
+
+
+class TestSystemDialogDetector:
+
+    def test_android_permission_allow_detected(self):
+        from bubblegum.core.mobile.system_dialog import detect_system_dialog
+
+        out = detect_system_dialog(
+            platform="android",
+            app_state={"framework_detection": {"surface_type": "system_dialog"}},
+            hierarchy_xml='android.widget.Button text="Allow while using" package="com.android.permissioncontroller"',
+        )
+        assert out["dialog_detected"] is True
+        assert out["dialog_type"] == "permission"
+        assert out["owner"] == "system"
+        assert out["recommended_action"] == "allow"
+
+    def test_android_permission_deny_detected(self):
+        from bubblegum.core.mobile.system_dialog import detect_system_dialog
+
+        out = detect_system_dialog(
+            platform="android",
+            hierarchy_xml='text="Don\'t allow" text="deny" package="com.android.permissioncontroller"',
+        )
+        assert out["dialog_detected"] is True
+        assert out["dialog_type"] == "permission"
+        assert out["recommended_action"] == "deny"
+
+    def test_android_ok_cancel_confirm_cancel_detected(self):
+        from bubblegum.core.mobile.system_dialog import detect_system_dialog
+
+        out = detect_system_dialog(platform="android", hierarchy_xml='android.widget.Button text="OK" text="Cancel"')
+        assert out["dialog_detected"] is True
+        assert out["dialog_type"] == "confirm_cancel"
+        assert out["recommended_action"] == "manual_review"
+
+    def test_ios_alert_detected(self):
+        from bubblegum.core.mobile.system_dialog import detect_system_dialog
+
+        out = detect_system_dialog(platform="iOS", hierarchy_xml='XCUIElementTypeAlert label="Notifications" name="OK"')
+        assert out["dialog_detected"] is True
+        assert out["platform"] == "ios"
+        assert out["dialog_type"] in {"alert", "confirm_cancel"}
+
+    def test_app_modal_not_system_owned(self):
+        from bubblegum.core.mobile.system_dialog import detect_system_dialog
+
+        out = detect_system_dialog(platform="android", hierarchy_xml='dialog text="confirm" text="cancel" package="com.example"')
+        assert out["dialog_detected"] is True
+        assert out["owner"] != "system"
+
+    def test_unknown_sparse_degrades_safely(self):
+        from bubblegum.core.mobile.system_dialog import detect_system_dialog
+
+        out = detect_system_dialog(platform=None, hierarchy_xml=None)
+        assert out["dialog_detected"] is False
+        assert out["dialog_type"] == "unknown"
+        assert out["recommended_action"] in {"defer", "unknown"}
+        assert out["safe_metadata_only"] is True
+
+    def test_evidence_safe_and_no_raw_leakage(self):
+        from bubblegum.core.mobile.system_dialog import detect_system_dialog
+
+        xml = '<hierarchy><node package="com.android.permissioncontroller" text="Allow"/></hierarchy>'
+        out = detect_system_dialog(platform="android", hierarchy_xml=xml)
+        joined = " ".join(out["evidence"])
+        assert "<hierarchy>" not in joined
+        assert "com.android.permissioncontroller" not in joined
+        assert "WEBVIEW_" not in joined
+        assert all(token.count(":") >= 1 for token in out["evidence"])
+
+    def test_collect_context_adds_system_dialog_detection_metadata(self):
+        driver, _ = _make_driver(page_source='android.widget.Button text="Allow" package="com.android.permissioncontroller"')
+        driver.contexts = ["NATIVE_APP"]
+        driver.current_context = "NATIVE_APP"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        assert "system_dialog_detection" in ctx.app_state
+        assert ctx.app_state["system_dialog_detection"]["safe_metadata_only"] is True
+
+    def test_detector_has_no_auto_click_or_switch_behavior(self):
+        driver, _ = _make_driver(page_source='text="Allow"')
+        driver.contexts = ["NATIVE_APP", "WEBVIEW_com.example"]
+        driver.current_context = "NATIVE_APP"
+        driver.switch_to.context = MagicMock()
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        driver.switch_to.context.assert_not_called()
