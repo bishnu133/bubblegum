@@ -208,6 +208,124 @@ This is documentation-only guidance; no dependency or install step is enforced b
 - No screenshots are captured unless a future phase explicitly enables them.
 - No raw DOM/XML/context names/provider payloads should appear in generated reports.
 
+
+## Android Emulator Smoke CI Commands
+
+These Android smoke tests are **opt-in** and remain disabled by default in PR CI.
+
+### Command matrix
+
+Default PR CI (real-env remains disabled):
+
+```bash
+pytest -q
+```
+
+Android smoke default skip check (real-env tree without opt-in):
+
+```bash
+pytest tests/real_env/android -q
+```
+
+Local Android emulator opt-in smoke run:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+pytest tests/real_env/android -q
+```
+
+Local Android emulator opt-in smoke run (installed app variant):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_PACKAGE=<app-package> \
+BUBBLEGUM_ANDROID_ACTIVITY=<launcher-activity> \
+pytest tests/real_env/android -q
+```
+
+Android reporting artifact validation (release-candidate style):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+pytest tests/real_env/android/test_android_emulator_smoke.py -k reporting -q
+```
+
+Optional target-text command (native click assertion):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT="Continue" \
+pytest tests/real_env/android/test_android_emulator_smoke.py -q
+```
+
+Optional nightly Android emulator smoke example:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+pytest tests/real_env/android -m "real_env and android_emulator" -q
+```
+
+### Expected pass/skip behavior
+
+- `BUBBLEGUM_REAL_ENV` unset: Android real-env tests skip.
+- `BUBBLEGUM_REAL_ENV=1` but missing required Android/Appium vars: tests skip with a required-env reason.
+- `BUBBLEGUM_REAL_ENV=1` with valid runtime: smoke tests execute normally.
+- `BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT` unset: target-click assertion is not required.
+- `BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT` set and target missing: test fails with explicit lookup/match failure.
+
+### Troubleshooting
+
+- **Skipped because `BUBBLEGUM_REAL_ENV` is not set**
+  Set `BUBBLEGUM_REAL_ENV=1` for explicit opt-in.
+- **Skipped because Android/Appium env vars are missing**
+  Provide `BUBBLEGUM_APPIUM_SERVER_URL`, `BUBBLEGUM_ANDROID_DEVICE_NAME`, and either `BUBBLEGUM_ANDROID_APP` or `BUBBLEGUM_ANDROID_PACKAGE` + `BUBBLEGUM_ANDROID_ACTIVITY`.
+- **Skipped because Appium server is not running/reachable**
+  Start Appium (for example on `http://127.0.0.1:4723`) and rerun.
+- **Skipped because emulator/device is unavailable**
+  Ensure the named emulator/device is running and accessible by Appium.
+- **Skipped/fails because app path/package/activity is invalid**
+  Verify APK path exists, or confirm package/activity values launch correctly on the selected device.
+- **Target text behavior**
+  When `BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT` is set, lookup errors or no matches are assertion failures by design.
+
+### Collect-only and artifact location checks
+
+Verify current test collection baseline:
+
+```bash
+pytest --collect-only -q
+```
+
+Expected baseline after Phase 19M-R is **725 collected tests**.
+
+For reporting validation (`-k reporting`), JSON/HTML outputs are written under pytest `tmp_path`.
+Those files are test-temporary paths and are not persisted unless copied out during the run.
+
+### Safety and privacy reminder
+
+- Keep credentials out of repo config files (env-var references only in templates).
+- Production apps are not required for initial Android smoke bring-up.
+- No raw XML/hierarchy dump in report payloads.
+- No screenshot bytes unless a future explicit config enables screenshots.
+- No raw WebView context names.
+- No package/process leakage.
+- No runtime WebView switching (`driver.switch_to.context`).
+
+
 ## Privacy and Safety Rules
 
 The skeleton harness must not store or print:
