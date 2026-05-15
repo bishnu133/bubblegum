@@ -13,6 +13,7 @@ from bubblegum.reporting.html_report import (
     safe_graph_query_diagnostics_metadata,
     safe_graph_signals_metadata,
     safe_hydration_metadata,
+    safe_webview_switch_diagnostics_metadata,
     sanitize_reporting_metadata,
 )
 
@@ -27,16 +28,20 @@ def _safe_result_dump(result: StepResult) -> dict:
             hydration = safe_hydration_metadata(metadata)
             graph_signals = safe_graph_signals_metadata(metadata)
             graph_query_diagnostics = safe_graph_query_diagnostics_metadata(metadata)
+            webview_diagnostics = safe_webview_switch_diagnostics_metadata(metadata)
             for key in list(metadata.keys()):
                 if key.startswith("hydration_") or key in {"match_field", "match_count"}:
                     metadata.pop(key, None)
             metadata.pop("graph_signals", None)
             metadata.pop("graph_query_diagnostics", None)
+            metadata.pop("webview_switch_diagnostics", None)
             metadata.update(hydration)
             if graph_signals:
                 metadata["graph_signals"] = graph_signals
             if graph_query_diagnostics:
                 metadata["graph_query_diagnostics"] = graph_query_diagnostics
+            if webview_diagnostics:
+                metadata["webview_switch_diagnostics"] = webview_diagnostics
             target["metadata"] = metadata
     return payload
 
