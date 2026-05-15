@@ -232,6 +232,7 @@ Adoption/docs MVP links:
 - Report artifacts example: `examples/report_artifacts_example.py`
 - Pytest plugin usage: `docs/pytest-plugin.md`
 - CI usage snippet: `docs/ci.md`
+- Real-environment smoke harness commands (opt-in, skip-by-default): `tests/real_env/README.md`
 
 Distribution posture note:
 - Current distribution path is GitHub releases (latest pre-release: `v0.0.5-alpha`).
