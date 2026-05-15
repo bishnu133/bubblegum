@@ -490,3 +490,105 @@ def test_json_report_includes_webview_diagnostics_analytics_and_ignores_unsafe_k
     assert summary["switch_attempted_count"] == 0
     assert summary["reason_counts"] == {"dom_detected": 1}
     assert summary["warning_counts"] == {"deferred": 1}
+
+def test_json_report_preserves_safe_system_dialog_detection_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap Allow",
+        confidence=0.88,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.88,
+            resolver_name="x",
+            metadata={
+                "system_dialog_detection": {
+                    "dialog_detected": True,
+                    "dialog_type": "permission_prompt",
+                    "platform": "android",
+                    "owner": "system",
+                    "recommended_action": "manual_review",
+                    "confidence": 0.91,
+                    "evidence": ["permission keyword"],
+                    "warnings": ["metadata_only"],
+                    "safe_metadata_only": True,
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    sd = payload["results"][0]["target"]["metadata"]["system_dialog_detection"]
+    assert sd["dialog_detected"] is True
+    assert sd["dialog_type"] == "permission_prompt"
+    assert sd["safe_metadata_only"] is True
+
+
+def test_json_report_redacts_unsafe_system_dialog_detection_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="failed",
+        action="Tap",
+        confidence=0.2,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.2,
+            resolver_name="x",
+            metadata={
+                "system_dialog_detection": {
+                    "dialog_detected": False,
+                    "dialog_type": "none",
+                    "raw_xml": "<x/>",
+                    "hierarchy_xml": "<y/>",
+                    "screenshot_bytes": "abc",
+                    "provider_payload": {"token": "x"},
+                    "raw_context_name": "WEBVIEW_com.x",
+                    "package_name": "com.x",
+                    "exception_trace": "trace",
+                    "raw_instruction": "tap allow now",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    sd = payload["results"][0]["target"]["metadata"]["system_dialog_detection"]
+    assert "raw_xml" not in sd
+    assert "hierarchy_xml" not in sd
+    assert "screenshot_bytes" not in sd
+    assert "provider_payload" not in sd
+    assert "raw_context_name" not in sd
+    assert "package_name" not in sd
+    assert "exception_trace" not in sd
+    assert "raw_instruction" not in sd
+
+
+def test_json_report_includes_system_dialog_analytics_summary(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="passed",
+            action="A",
+            confidence=0.9,
+            target=ResolvedTarget(
+                ref='text="Allow"', confidence=0.9, resolver_name="x",
+                metadata={"system_dialog_detection": {
+                    "dialog_detected": True,
+                    "dialog_type": "permission_prompt",
+                    "platform": "android",
+                    "owner": "system",
+                    "recommended_action": "manual_review",
+                    "confidence": 0.9,
+                    "warnings": ["w1"],
+                }}
+            ),
+        ),
+        StepResult(status="failed", action="B", confidence=0.5),
+    ]
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ss = payload["analytics"]["system_dialog_summary"]
+    assert ss["total_with_detection"] == 1
+    assert ss["detected_count"] == 1
+    assert ss["dialog_type_counts"]["permission_prompt"] == 1
+    assert ss["warning_counts"]["w1"] == 1

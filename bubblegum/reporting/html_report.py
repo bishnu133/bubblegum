@@ -121,6 +121,33 @@ _SAFE_WEBVIEW_DIAGNOSTIC_FIELDS = (
     "safe_metadata_only",
 )
 
+
+_SAFE_SYSTEM_DIALOG_FIELDS = (
+    "dialog_detected",
+    "dialog_type",
+    "platform",
+    "owner",
+    "recommended_action",
+    "confidence",
+    "evidence",
+    "warnings",
+    "safe_metadata_only",
+)
+
+_UNSAFE_SYSTEM_DIALOG_KEYS = {
+    "raw_xml",
+    "hierarchy_xml",
+    "raw_dom",
+    "screenshot",
+    "screenshot_bytes",
+    "page_source",
+    "provider_payload",
+    "raw_context_name",
+    "package_name",
+    "process_name",
+    "exception_trace",
+    "raw_instruction",
+}
 _UNSAFE_WEBVIEW_DIAGNOSTIC_KEYS = {
     "raw_xml",
     "hierarchy_xml",
@@ -287,6 +314,36 @@ def safe_webview_switch_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
             out[key] = str(value)
     return out
 
+def safe_system_dialog_detection_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe system dialog detection metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("system_dialog_detection")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_SYSTEM_DIALOG_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_SYSTEM_DIALOG_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"dialog_detected", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"evidence", "warnings"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif key == "confidence":
+            try:
+                out[key] = float(value)
+            except (TypeError, ValueError):
+                continue
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
+
 def _screenshot_thumb(path: str) -> str:
     """Return an <img> tag with an inline base64 thumbnail, or empty string on failure."""
     try:
@@ -422,6 +479,35 @@ def _render_step(idx: int, result: StepResult) -> str:
             '</details>'
         )
 
+
+    system_dialog_html = ""
+    system_dialog_detection = safe_system_dialog_detection_metadata(target_metadata)
+    if system_dialog_detection:
+        evidence = system_dialog_detection.get("evidence", [])
+        warnings = system_dialog_detection.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Detected", "dialog_detected"),
+            ("Dialog type", "dialog_type"),
+            ("Platform", "platform"),
+            ("Owner", "owner"),
+            ("Recommended action", "recommended_action"),
+            ("Confidence", "confidence"),
+        ]
+        system_dialog_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(system_dialog_detection[key]))}</li>'
+            for label, key in labels
+            if key in system_dialog_detection
+        )
+        system_dialog_rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        system_dialog_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        system_dialog_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">System Dialog Detection</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{system_dialog_rows}</ul>'
+            '</details>'
+        )
+
     wait_html = ""
     if target_metadata.get("wait_used") is True:
         wait_mode = target_metadata.get("wait_mode", "unknown")
@@ -495,6 +581,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {graph_html}
       {graph_query_html}
       {webview_html}
+      {system_dialog_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -695,6 +782,14 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     webview_switch_attempted_count = 0
     webview_reason_counts: Counter[str] = Counter()
     webview_warning_counts: Counter[str] = Counter()
+    system_dialog_total_with_detection = 0
+    system_dialog_detected_count = 0
+    system_dialog_type_counts: Counter[str] = Counter()
+    system_dialog_platform_counts: Counter[str] = Counter()
+    system_dialog_owner_counts: Counter[str] = Counter()
+    system_dialog_recommended_action_counts: Counter[str] = Counter()
+    system_dialog_warning_counts: Counter[str] = Counter()
+    system_dialog_confidence_buckets = {"high": 0, "medium": 0, "low": 0}
 
     for result in results:
         status_counts[result.status] += 1
@@ -719,6 +814,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         graph_signals = safe_graph_signals_metadata(metadata)
         graph_query_diagnostics = safe_graph_query_diagnostics_metadata(metadata)
         webview_diagnostics = safe_webview_switch_diagnostics_metadata(metadata)
+        system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -751,6 +847,26 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             if isinstance(warnings, list):
                 for warning in warnings:
                     _count_categorical_field(webview_warning_counts, warning)
+        if system_dialog_detection:
+            system_dialog_total_with_detection += 1
+            if system_dialog_detection.get("dialog_detected") is True:
+                system_dialog_detected_count += 1
+            _count_categorical_field(system_dialog_type_counts, system_dialog_detection.get("dialog_type"))
+            _count_categorical_field(system_dialog_platform_counts, system_dialog_detection.get("platform"))
+            _count_categorical_field(system_dialog_owner_counts, system_dialog_detection.get("owner"))
+            _count_categorical_field(system_dialog_recommended_action_counts, system_dialog_detection.get("recommended_action"))
+            warnings = system_dialog_detection.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(system_dialog_warning_counts, warning)
+            conf = system_dialog_detection.get("confidence")
+            if isinstance(conf, (int, float)):
+                if conf >= 0.85:
+                    system_dialog_confidence_buckets["high"] += 1
+                elif conf >= 0.70:
+                    system_dialog_confidence_buckets["medium"] += 1
+                else:
+                    system_dialog_confidence_buckets["low"] += 1
         if graph_query_diagnostics:
             graph_query_total_events += 1
             _count_categorical_field(graph_query_status_counts, graph_query_diagnostics.get("status"))
@@ -798,6 +914,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "warning_counts": dict(webview_warning_counts),
     }
 
+
+    system_dialog_summary = {
+        "total_with_detection": system_dialog_total_with_detection,
+        "detected_count": system_dialog_detected_count,
+        "dialog_type_counts": dict(system_dialog_type_counts),
+        "platform_counts": dict(system_dialog_platform_counts),
+        "owner_counts": dict(system_dialog_owner_counts),
+        "recommended_action_counts": dict(system_dialog_recommended_action_counts),
+        "warning_counts": dict(system_dialog_warning_counts),
+        "confidence_buckets": dict(system_dialog_confidence_buckets),
+    }
+
     graph_query_summary = {
         "total_events": graph_query_total_events,
         "status_counts": dict(graph_query_status_counts),
@@ -817,4 +945,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "graph_signal_summary": graph_signal_summary,
         "graph_query_summary": graph_query_summary,
         "webview_diagnostics_summary": webview_diagnostics_summary,
+        "system_dialog_summary": system_dialog_summary,
     }
