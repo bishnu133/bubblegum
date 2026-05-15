@@ -960,3 +960,80 @@ class TestFrameworkDetector:
         assert "framework_detection" in ctx.app_state
         assert ctx.app_state["framework_detection"]["safe_metadata_only"] is True
 
+
+
+class TestWebviewSwitchDiagnostics:
+
+    def test_native_android_diagnostics(self):
+        from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
+        out = build_webview_switch_diagnostics(
+            context_inventory={"has_native_context": True, "has_webview_context": False, "current_context_type": "native"},
+            framework_detection={"surface_type": "android_native"},
+        )
+        assert out["status"] == "native_only"
+        assert out["recommended_context"] == "native"
+        assert out["switch_required_future"] is False
+        assert out["switch_attempted"] is False
+
+    def test_ios_native_diagnostics(self):
+        from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
+        out = build_webview_switch_diagnostics(
+            context_inventory={"has_native_context": True, "current_context_type": "native"},
+            framework_detection={"surface_type": "ios_native"},
+        )
+        assert out["status"] == "native_only"
+
+    def test_webview_candidate_diagnostics(self):
+        from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
+        out = build_webview_switch_diagnostics(
+            context_inventory={"has_webview_context": True, "current_context_type": "webview"},
+            framework_detection={"surface_type": "webview"},
+            action_type="click",
+            target_hint="open web link",
+        )
+        assert out["status"] == "webview_candidate"
+        assert out["recommended_context"] == "webview"
+        assert out["switch_required_future"] is True
+        assert "target:web_hint" in out["evidence"]
+
+    def test_hybrid_candidate_diagnostics(self):
+        from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
+        out = build_webview_switch_diagnostics(
+            context_inventory={"has_native_context": True, "has_webview_context": True, "current_context_type": "native"},
+            framework_detection={"surface_type": "hybrid"},
+        )
+        assert out["status"] == "hybrid_candidate"
+        assert out["switch_required_future"] is True
+
+    def test_system_dialog_not_webview(self):
+        from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
+        out = build_webview_switch_diagnostics(
+            context_inventory={"has_native_context": True},
+            framework_detection={"surface_type": "system_dialog"},
+        )
+        assert out["recommended_context"] == "native"
+        assert out["switch_required_future"] is False
+
+    def test_unknown_sparse_safe_defaults(self):
+        from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
+        out = build_webview_switch_diagnostics()
+        assert out["status"] == "unknown"
+        assert out["recommended_context"] == "unknown"
+        assert out["switch_attempted"] is False
+        assert out["safe_metadata_only"] is True
+
+    def test_collect_context_adds_diagnostics_without_mutating_other_metadata(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP", "WEBVIEW_com.example"]
+        driver.current_context = "NATIVE_APP"
+        driver.switch_to.context = MagicMock()
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        assert "context_inventory" in ctx.app_state
+        assert "framework_detection" in ctx.app_state
+        assert "webview_switch_diagnostics" in ctx.app_state
+        assert ctx.app_state["webview_switch_diagnostics"]["switch_attempted"] is False
+        assert "WEBVIEW_com.example" not in " ".join(ctx.app_state["webview_switch_diagnostics"]["evidence"])
+        driver.switch_to.context.assert_not_called()

@@ -41,6 +41,7 @@ import json
 from bubblegum.adapters.base import BaseAdapter
 from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -185,6 +186,10 @@ class AppiumAdapter(BaseAdapter):
             capabilities=self._safe_capabilities(),
             app_state=app_state,
             hierarchy_xml=hierarchy_xml,
+        )
+        app_state["webview_switch_diagnostics"] = build_webview_switch_diagnostics(
+            context_inventory=context_inventory,
+            framework_detection=app_state.get("framework_detection") if isinstance(app_state.get("framework_detection"), dict) else None,
         )
 
         return UIContext(
