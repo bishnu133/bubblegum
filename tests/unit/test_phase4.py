@@ -1335,3 +1335,70 @@ class TestSystemDialogActions:
         driver.switch_to.context = MagicMock()
         AppiumAdapter(driver).execute_system_dialog_action(requested_action="allow", explicit_opt_in=True)
         driver.switch_to.context.assert_not_called()
+
+
+class TestMobileScrollDiscovery:
+    def test_android_scrollable_missing_target_candidate(self):
+        from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
+        xml = '<hierarchy><node class="androidx.recyclerview.widget.RecyclerView" scrollable="true"/></hierarchy>'
+        plan = build_mobile_scroll_discovery_plan(platform="android", hierarchy_xml=xml, target_hint="Continue")
+        assert plan["scroll_needed"] is True
+        assert plan["status"] == "candidate"
+        assert plan["reason"] == "target_not_visible"
+
+    def test_android_visible_target_not_needed(self):
+        from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
+        xml = '<hierarchy><node class="android.widget.TextView" text="Continue"/></hierarchy>'
+        plan = build_mobile_scroll_discovery_plan(platform="android", hierarchy_xml=xml, target_hint="Continue")
+        assert plan["scroll_needed"] is False
+        assert plan["status"] == "not_needed"
+
+    def test_android_no_scrollable_container(self):
+        from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
+        xml = '<hierarchy><node class="android.widget.TextView" text="Header"/></hierarchy>'
+        plan = build_mobile_scroll_discovery_plan(platform="android", hierarchy_xml=xml, target_hint="Continue")
+        assert plan["status"] == "unsupported"
+        assert plan["reason"] == "no_scrollable_container"
+
+    def test_hint_type_classification_content_desc_and_resource_id(self):
+        from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
+        xml = '<hierarchy><node class="android.widget.ScrollView" scrollable="true"/></hierarchy>'
+        a = build_mobile_scroll_discovery_plan(platform="android", hierarchy_xml=xml, target_hint="accessibility: Continue")
+        b = build_mobile_scroll_discovery_plan(platform="android", hierarchy_xml=xml, target_hint="com.example:id/settings")
+        assert a["target_hint_type"] == "content_desc"
+        assert b["target_hint_type"] == "resource_id"
+
+    def test_ios_safe_candidate_metadata(self):
+        from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
+        xml = '<XCUIElementTypeApplication><XCUIElementTypeScrollView/></XCUIElementTypeApplication>'
+        plan = build_mobile_scroll_discovery_plan(platform="ios", hierarchy_xml=xml, target_hint="Settings")
+        assert plan["platform"] == "ios"
+        assert plan["status"] == "candidate"
+        assert "raw_instruction" not in plan
+
+    def test_max_scrolls_bounded_and_no_leakage(self):
+        from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
+        xml = '<hierarchy><node class="android.widget.ScrollView" scrollable="true"/></hierarchy>'
+        plan = build_mobile_scroll_discovery_plan(platform="android", hierarchy_xml=xml, instruction="Tap Continue", max_scrolls=999)
+        assert plan["max_scrolls"] == 10
+        assert "hierarchy_xml" not in plan
+        assert "instruction" not in plan
+
+    def test_execute_helper_respects_opt_in_and_max_scrolls(self):
+        from bubblegum.core.mobile.scroll_discovery import execute_bounded_mobile_scroll_search
+        driver = MagicMock()
+        type(driver).page_source = PropertyMock(side_effect=["<h></h>", "<h></h>", "<h></h>"])
+        blocked = execute_bounded_mobile_scroll_search(driver=driver, target_hint="Continue", plan={"max_scrolls": 2}, explicit_opt_in=False)
+        assert blocked["action_attempted"] is False
+        assert driver.swipe.call_count == 0
+        found = execute_bounded_mobile_scroll_search(driver=driver, target_hint="Continue", plan={"max_scrolls": 2}, explicit_opt_in=True)
+        assert found["status"] == "not_found"
+        assert driver.swipe.call_count == 2
+
+    def test_collect_context_includes_scroll_discovery(self):
+        driver, _ = _make_driver()
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        assert "scroll_discovery" in ctx.app_state
+        assert ctx.app_state["scroll_discovery"]["safe_metadata_only"] is True

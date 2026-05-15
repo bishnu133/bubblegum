@@ -43,6 +43,7 @@ from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.mobile.framework_detector import detect_mobile_surface
 from bubblegum.core.mobile.system_dialog import detect_system_dialog
 from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
+from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
 from bubblegum.core.mobile.system_dialog_actions import execute_system_dialog_action, resolve_system_dialog_action_candidate
 from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
@@ -210,6 +211,14 @@ class AppiumAdapter(BaseAdapter):
         app_state["system_dialog_guardrails"] = evaluate_system_dialog_guardrails(
             system_dialog_detection=app_state.get("system_dialog_detection") if isinstance(app_state.get("system_dialog_detection"), dict) else None,
             explicit_opt_in=False,
+        )
+        app_state["scroll_discovery"] = build_mobile_scroll_discovery_plan(
+            instruction=None,
+            target_hint=None,
+            hierarchy_xml=hierarchy_xml,
+            platform=self.platform,
+            app_state=app_state,
+            max_scrolls=3,
         )
 
         return UIContext(
