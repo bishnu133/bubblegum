@@ -1,0 +1,13 @@
+provider: local
+platform: web
+appium_server_url: ${BUBBLEGUM_APPIUM_SERVER_URL}
+browser: chromium
+android_app: ${BUBBLEGUM_ANDROID_APP}
+ios_app: ${BUBBLEGUM_IOS_APP}
+device_name: emulator-or-simulator-placeholder
+cloud_provider: ${BUBBLEGUM_CLOUD_PROVIDER}
+cloud_username: ${BUBBLEGUM_CLOUD_USERNAME}
+cloud_access_key: ${BUBBLEGUM_CLOUD_ACCESS_KEY}
+artifact_dir: artifacts/real_env
+enable_screenshots: false
+safe_metadata_only: true
