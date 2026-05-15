@@ -24,7 +24,11 @@ If `BUBBLEGUM_REAL_ENV` is unset or not equal to `1`, tests in `tests/real_env` 
 - `BUBBLEGUM_REAL_ENV_CONFIG` — optional config path override for future phases.
 - `BUBBLEGUM_REAL_ENV_ARTIFACT_DIR` — optional artifact directory override for future phases.
 - `BUBBLEGUM_APPIUM_SERVER_URL` — required for Android/iOS smoke targets.
-- `BUBBLEGUM_ANDROID_APP` — required for Android target smoke skeleton.
+- `BUBBLEGUM_ANDROID_APP` — Android app path for emulator smoke (alternative: package/activity vars).
+- `BUBBLEGUM_ANDROID_PACKAGE` — Android app package when launching installed app.
+- `BUBBLEGUM_ANDROID_ACTIVITY` — Android launcher activity when launching installed app.
+- `BUBBLEGUM_ANDROID_DEVICE_NAME` — Android emulator/device name for Appium capabilities.
+- `BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT` — optional native text/content-desc used for an opt-in click smoke assertion.
 - `BUBBLEGUM_IOS_APP` — required for iOS target smoke skeleton.
 - `BUBBLEGUM_CLOUD_PROVIDER` — required for cloud smoke skeleton.
 - `BUBBLEGUM_CLOUD_USERNAME` — required for cloud smoke skeleton.
@@ -208,3 +212,38 @@ Future phases can build on this harness to add:
 - cloud smoke MVP,
 - system-dialog scenario coverage,
 - hybrid metadata validations under real sessions.
+
+
+## Android Emulator Smoke MVP (Phase 19M-Q)
+
+Run Android emulator smoke (opt-in only):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://localhost:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=emulator-5554 \
+BUBBLEGUM_ANDROID_APP=/path/to/app.apk \
+pytest tests/real_env/android/test_android_emulator_smoke.py -q
+```
+
+Installed app launch variant:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://localhost:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=emulator-5554 \
+BUBBLEGUM_ANDROID_PACKAGE=com.example.app \
+BUBBLEGUM_ANDROID_ACTIVITY=.MainActivity \
+pytest tests/real_env/android/test_android_emulator_smoke.py -q
+```
+
+Expected behavior:
+- Skips by default unless `BUBBLEGUM_REAL_ENV=1`.
+- Skips (does not fail) when required Android/Appium env vars are missing or Appium/emulator is unavailable.
+- Collects mobile context using existing Appium adapter and validates safe app-state metadata keys:
+  - `context_inventory`
+  - `framework_detection`
+  - `webview_switch_diagnostics`
+  - `webview_switch_guardrails`
+- Does **not** perform WebView context switching and does **not** call `driver.switch_to.context`.
+- Optional action smoke runs only when `BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT` is provided; in that case missing target is a test failure.

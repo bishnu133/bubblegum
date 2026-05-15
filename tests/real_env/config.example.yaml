@@ -3,6 +3,10 @@ platform: web
 appium_server_url: ${BUBBLEGUM_APPIUM_SERVER_URL}
 browser: chromium
 android_app: ${BUBBLEGUM_ANDROID_APP}
+android_package: ${BUBBLEGUM_ANDROID_PACKAGE}
+android_activity: ${BUBBLEGUM_ANDROID_ACTIVITY}
+android_device_name: ${BUBBLEGUM_ANDROID_DEVICE_NAME}
+android_smoke_target_text: ${BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT}
 ios_app: ${BUBBLEGUM_IOS_APP}
 device_name: emulator-or-simulator-placeholder
 cloud_provider: ${BUBBLEGUM_CLOUD_PROVIDER}
