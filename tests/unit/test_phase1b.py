@@ -804,3 +804,65 @@ def test_html_report_escapes_webview_diagnostic_values(tmp_path):
     assert "WEBVIEW_&lt;1&gt;" in text
     assert "&lt;bad&gt;" in text
     assert "<script>alert(1)</script>" not in text
+
+def test_html_report_renders_system_dialog_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap Allow",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"system_dialog_detection": {
+                "dialog_detected": True,
+                "dialog_type": "permission_prompt",
+                "platform": "android",
+                "owner": "system",
+                "recommended_action": "manual_review",
+                "confidence": 0.88,
+                "evidence": ["keyword"],
+                "warnings": ["metadata_only"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    content = out.read_text(encoding="utf-8")
+    assert "System Dialog Detection" in content
+    assert "permission_prompt" in content
+
+
+def test_html_report_hides_system_dialog_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9)
+    write_html_report([result], path=out)
+    assert "System Dialog Detection" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_system_dialog_diagnostic_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Allow"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"system_dialog_detection": {
+                "dialog_detected": True,
+                "dialog_type": "<script>alert(1)</script>",
+                "platform": "android",
+                "owner": "sys<tem>",
+                "recommended_action": "manual",
+                "confidence": 0.8,
+                "warnings": ["<b>bad</b>"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    content = out.read_text(encoding="utf-8")
+    assert "<script>alert(1)</script>" not in content
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in content
+    assert "&lt;b&gt;bad&lt;/b&gt;" in content
