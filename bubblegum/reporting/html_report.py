@@ -702,6 +702,35 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{action_rows}</ul>'
             "</details>"
         )
+    scroll_discovery_html = ""
+    scroll_discovery = safe_scroll_discovery_metadata(target_metadata)
+    if scroll_discovery:
+        evidence = scroll_discovery.get("evidence", [])
+        warnings = scroll_discovery.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Scroll needed", "scroll_needed"),
+            ("Status", "status"),
+            ("Reason", "reason"),
+            ("Platform", "platform"),
+            ("Target hint type", "target_hint_type"),
+            ("Scroll direction", "scroll_direction"),
+            ("Max scrolls", "max_scrolls"),
+            ("Candidate container count", "candidate_container_count"),
+        ]
+        scroll_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(scroll_discovery[key]))}</li>'
+            for label, key in labels
+            if key in scroll_discovery
+        )
+        scroll_rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        scroll_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        scroll_discovery_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Scroll Discovery</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{scroll_rows}</ul>'
+            "</details>"
+        )
 
     wait_html = ""
     if target_metadata.get("wait_used") is True:
@@ -779,6 +808,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {system_dialog_html}
       {system_dialog_guardrails_html}
       {system_dialog_action_html}
+      {scroll_discovery_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -1002,6 +1032,16 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     system_dialog_action_status_counts: Counter[str] = Counter()
     system_dialog_action_reason_counts: Counter[str] = Counter()
     system_dialog_action_warning_counts: Counter[str] = Counter()
+    scroll_discovery_total_with_metadata = 0
+    scroll_discovery_needed_count = 0
+    scroll_discovery_status_counts: Counter[str] = Counter()
+    scroll_discovery_reason_counts: Counter[str] = Counter()
+    scroll_discovery_platform_counts: Counter[str] = Counter()
+    scroll_discovery_target_hint_type_counts: Counter[str] = Counter()
+    scroll_discovery_direction_counts: Counter[str] = Counter()
+    scroll_discovery_warning_counts: Counter[str] = Counter()
+    scroll_discovery_max_scrolls_buckets = {"0": 0, "1-2": 0, "3-5": 0, "6+": 0}
+    scroll_discovery_candidate_container_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
 
     for result in results:
         status_counts[result.status] += 1
@@ -1029,6 +1069,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
         system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
         system_dialog_action = safe_system_dialog_action_metadata(metadata)
+        scroll_discovery = safe_scroll_discovery_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -1108,6 +1149,39 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             if isinstance(warnings, list):
                 for warning in warnings:
                     _count_categorical_field(system_dialog_action_warning_counts, warning)
+        if scroll_discovery:
+            scroll_discovery_total_with_metadata += 1
+            if scroll_discovery.get("scroll_needed") is True:
+                scroll_discovery_needed_count += 1
+            _count_categorical_field(scroll_discovery_status_counts, scroll_discovery.get("status"))
+            _count_categorical_field(scroll_discovery_reason_counts, scroll_discovery.get("reason"))
+            _count_categorical_field(scroll_discovery_platform_counts, scroll_discovery.get("platform"))
+            _count_categorical_field(scroll_discovery_target_hint_type_counts, scroll_discovery.get("target_hint_type"))
+            _count_categorical_field(scroll_discovery_direction_counts, scroll_discovery.get("scroll_direction"))
+            warnings = scroll_discovery.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(scroll_discovery_warning_counts, warning)
+            max_scrolls = scroll_discovery.get("max_scrolls")
+            if isinstance(max_scrolls, int):
+                if max_scrolls <= 0:
+                    scroll_discovery_max_scrolls_buckets["0"] += 1
+                elif max_scrolls <= 2:
+                    scroll_discovery_max_scrolls_buckets["1-2"] += 1
+                elif max_scrolls <= 5:
+                    scroll_discovery_max_scrolls_buckets["3-5"] += 1
+                else:
+                    scroll_discovery_max_scrolls_buckets["6+"] += 1
+            container_count = scroll_discovery.get("candidate_container_count")
+            if isinstance(container_count, int):
+                if container_count <= 0:
+                    scroll_discovery_candidate_container_count_buckets["0"] += 1
+                elif container_count == 1:
+                    scroll_discovery_candidate_container_count_buckets["1"] += 1
+                elif container_count <= 3:
+                    scroll_discovery_candidate_container_count_buckets["2-3"] += 1
+                else:
+                    scroll_discovery_candidate_container_count_buckets["4+"] += 1
         if graph_query_diagnostics:
             graph_query_total_events += 1
             _count_categorical_field(graph_query_status_counts, graph_query_diagnostics.get("status"))
@@ -1185,6 +1259,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "reason_counts": dict(system_dialog_action_reason_counts),
         "warning_counts": dict(system_dialog_action_warning_counts),
     }
+    scroll_discovery_summary = {
+        "total_with_scroll_discovery": scroll_discovery_total_with_metadata,
+        "scroll_needed_count": scroll_discovery_needed_count,
+        "status_counts": dict(scroll_discovery_status_counts),
+        "reason_counts": dict(scroll_discovery_reason_counts),
+        "platform_counts": dict(scroll_discovery_platform_counts),
+        "target_hint_type_counts": dict(scroll_discovery_target_hint_type_counts),
+        "scroll_direction_counts": dict(scroll_discovery_direction_counts),
+        "warning_counts": dict(scroll_discovery_warning_counts),
+        "max_scrolls_buckets": dict(scroll_discovery_max_scrolls_buckets),
+        "candidate_container_count_buckets": dict(scroll_discovery_candidate_container_count_buckets),
+    }
 
     graph_query_summary = {
         "total_events": graph_query_total_events,
@@ -1208,4 +1294,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "system_dialog_summary": system_dialog_summary,
         "system_dialog_guardrails_summary": system_dialog_guardrails_summary,
         "system_dialog_action_summary": system_dialog_action_summary,
+        "scroll_discovery_summary": scroll_discovery_summary,
     }

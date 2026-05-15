@@ -842,3 +842,46 @@ def test_json_report_sanitizes_scroll_discovery_metadata(tmp_path):
     assert md["scroll_needed"] is True
     assert "hierarchy_xml" not in md
     assert "raw_instruction" not in md
+
+def test_json_report_includes_scroll_discovery_analytics_summary_and_ignores_unsafe_keys(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="passed",
+            action="Tap Continue",
+            confidence=0.9,
+            target=ResolvedTarget(
+                ref='text="Continue"',
+                confidence=0.9,
+                resolver_name="x",
+                metadata={"scroll_discovery": {
+                    "scroll_needed": True,
+                    "status": "candidate",
+                    "reason": "target_not_visible",
+                    "platform": "android",
+                    "target_hint_type": "text",
+                    "scroll_direction": "down",
+                    "max_scrolls": 3,
+                    "candidate_container_count": 2,
+                    "warnings": ["w1"],
+                    "raw_xml": "SECRET",
+                    "raw_instruction": "SECRET",
+                }}
+            ),
+        ),
+        StepResult(status="failed", action="B", confidence=0.4),
+    ]
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ss = payload["analytics"]["scroll_discovery_summary"]
+    assert ss["total_with_scroll_discovery"] == 1
+    assert ss["scroll_needed_count"] == 1
+    assert ss["status_counts"]["candidate"] == 1
+    assert ss["reason_counts"]["target_not_visible"] == 1
+    assert ss["platform_counts"]["android"] == 1
+    assert ss["target_hint_type_counts"]["text"] == 1
+    assert ss["scroll_direction_counts"]["down"] == 1
+    assert ss["warning_counts"]["w1"] == 1
+    assert ss["max_scrolls_buckets"]["3-5"] == 1
+    assert ss["candidate_container_count_buckets"]["2-3"] == 1
+    assert "SECRET" not in json.dumps(ss)
