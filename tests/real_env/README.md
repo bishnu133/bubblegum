@@ -86,6 +86,94 @@ Reporting safety/privacy expectations for smoke artifacts:
 - No credentials or secrets.
 - No raw page DOM leakage beyond intended safe summaries.
 
+
+## Web Local Smoke CI Commands
+
+This project now includes opt-in local web smoke coverage in `tests/real_env/web/test_web_local_smoke.py`.
+These tests stay disabled by default and are intended for explicit CI/dev opt-in only.
+
+### Command matrix
+
+Default PR CI (keep real-env disabled):
+
+```bash
+pytest -q
+pytest tests/real_env -q
+```
+
+Expected result: baseline suite runs normally; `tests/real_env` is skipped unless `BUBBLEGUM_REAL_ENV=1` is set.
+
+Manual developer opt-in (web smoke only):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 pytest tests/real_env/web -q
+```
+
+Manual developer opt-in with explicit Playwright marker:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 pytest tests/real_env/web -m playwright -q
+```
+
+Optional nightly web smoke (example CI job):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 pytest tests/real_env/web -m "real_env and web_smoke and playwright" -q
+```
+
+Release-candidate web smoke + reporting artifact validation:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 pytest tests/real_env/web/test_web_local_smoke.py -k reporting -m playwright -q
+```
+
+### Browser runtime setup (example only)
+
+If Playwright is installed but browser binaries are missing, smoke tests may skip with a runtime-availability message.
+Example local setup:
+
+```bash
+python -m playwright install chromium
+```
+
+This is documentation-only guidance; no dependency or install step is enforced by default CI.
+
+### Expected pass/skip behavior
+
+- `BUBBLEGUM_REAL_ENV` unset: all `tests/real_env` tests skip.
+- `BUBBLEGUM_REAL_ENV=1` and Playwright/browser available: web smoke tests run and should pass.
+- `BUBBLEGUM_REAL_ENV=1` but Playwright module missing: tests skip via `pytest.importorskip`.
+- `BUBBLEGUM_REAL_ENV=1` and Playwright module present but browser runtime missing: tests skip with a browser runtime message.
+
+### Reporting artifact validation expectations
+
+`test_web_local_smoke_reporting_artifacts_are_safe` validates:
+
+- one JSON report file and one HTML report file are written under pytest `tmp_path`;
+- reports contain safe summary/analytics content only;
+- no credentials/secrets, no raw DOM/XML, no raw context identifiers, and no screenshot bytes are persisted.
+
+### Troubleshooting
+
+- **Skipped: real-env not enabled**
+  - Set `BUBBLEGUM_REAL_ENV=1` for explicit opt-in runs.
+- **Skipped: Playwright not selected in your workflow**
+  - Use `-m playwright` (marker selection) when you want to scope to Playwright smoke tests.
+- **Skipped: browser runtime missing**
+  - Install local browser binaries (example: `python -m playwright install chromium`).
+- **Verify baseline collection count**
+  - Run `pytest --collect-only -q` and confirm the expected collection baseline for the current phase.
+- **Find artifact output path during tests**
+  - Reporting artifact checks use pytest `tmp_path`; generated JSON/HTML files are ephemeral per-test temp files.
+
+### Safety and privacy reminder
+
+- Web smoke coverage uses local static HTML (`page.set_content`) only.
+- No external website access is required.
+- No credentials are required.
+- No screenshots are captured unless a future phase explicitly enables them.
+- No raw DOM/XML/context names/provider payloads should appear in generated reports.
+
 ## Privacy and Safety Rules
 
 The skeleton harness must not store or print:
