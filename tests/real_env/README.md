@@ -70,6 +70,36 @@ BUBBLEGUM_REAL_ENV=1 pytest tests/real_env -m "real_env and android_emulator" -q
 ```
 
 
+Android emulator reporting validation (JSON + HTML under pytest tmp path):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://localhost:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=emulator-5554 \
+BUBBLEGUM_ANDROID_APP=/path/to/app.apk \
+pytest tests/real_env/android/test_android_emulator_smoke.py -k reporting -q
+```
+
+Expected artifact behavior for Android reporting smoke:
+
+- Creates one JSON report and one HTML report under pytest `tmp_path`.
+- JSON is parseable and includes only report-safe Android app-state metadata:
+  - `context_inventory`
+  - `framework_detection`
+  - `webview_switch_diagnostics`
+  - `webview_switch_guardrails`
+- HTML contains a safe summary (`Android Emulator Smoke Report`) and no raw XML/bytes/context names.
+- Test skips clearly when real-env is disabled, required Android/Appium env vars are missing, or Appium/emulator runtime is unavailable.
+
+Android reporting safety/privacy expectations:
+
+- No raw hierarchy XML or screenshot bytes are persisted.
+- No raw context names (for example `WEBVIEW_com.example.app`).
+- No package/process names.
+- No credentials/secrets or provider payload bodies.
+- No WebView context switching (`driver.switch_to.context`) is performed.
+
+
 Opt in to web smoke reporting artifact validation (JSON + HTML under pytest tmp path):
 
 ```bash
