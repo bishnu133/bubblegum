@@ -222,6 +222,28 @@ class TestAppiumAdapterCollectContext:
         _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
         driver.switch_to.context.assert_not_called()
 
+
+    def test_collect_context_adds_guardrail_metadata_without_mutating_existing_metadata(self):
+        driver, _ = _make_driver()
+        driver.contexts = ["NATIVE_APP", "WEBVIEW_com.example"]
+        driver.current_context = "NATIVE_APP"
+        from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+        from bubblegum.core.schemas import ContextRequest
+
+        ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
+        assert "context_inventory" in ctx.app_state
+        assert "framework_detection" in ctx.app_state
+        assert "webview_switch_diagnostics" in ctx.app_state
+        assert "webview_switch_guardrails" in ctx.app_state
+
+        guard = ctx.app_state["webview_switch_guardrails"]
+        assert guard["decision"] == "blocked"
+        assert guard["reason"] == "opt_in_missing"
+        assert guard["switch_attempted"] is False
+
+        assert ctx.app_state["context_inventory"]["inferred_context_mode"] == "hybrid"
+        assert ctx.app_state["framework_detection"]["safe_metadata_only"] is True
+        assert ctx.app_state["webview_switch_diagnostics"]["safe_metadata_only"] is True
     def test_collect_context_handles_page_source_failure(self):
         driver, _ = _make_driver()
         type(driver).page_source = PropertyMock(side_effect=Exception("session lost"))
