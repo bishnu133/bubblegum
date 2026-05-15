@@ -806,3 +806,39 @@ def test_json_report_includes_system_dialog_action_analytics_summary_and_ignores
     assert sm["reason_counts"]["explicit_opt_in"] == 1
     assert sm["warning_counts"]["w1"] == 1
     assert "SECRET" not in json.dumps(sm)
+
+def test_json_report_sanitizes_scroll_discovery_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap Continue",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Continue"',
+            confidence=0.9,
+            resolver_name="appium_hierarchy",
+            metadata={
+                "scroll_discovery": {
+                    "scroll_needed": True,
+                    "status": "candidate",
+                    "reason": "target_not_visible",
+                    "platform": "android",
+                    "target_hint_type": "text",
+                    "scroll_direction": "down",
+                    "max_scrolls": 3,
+                    "candidate_container_count": 1,
+                    "evidence": ["target:not_visible"],
+                    "warnings": [],
+                    "safe_metadata_only": True,
+                    "hierarchy_xml": "<raw/>",
+                    "raw_instruction": "Tap Continue",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]["scroll_discovery"]
+    assert md["scroll_needed"] is True
+    assert "hierarchy_xml" not in md
+    assert "raw_instruction" not in md

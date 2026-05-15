@@ -148,6 +148,21 @@ _SAFE_SYSTEM_DIALOG_GUARDRAILS_FIELDS = (
     "warnings",
     "safe_metadata_only",
 )
+
+_SAFE_SCROLL_DISCOVERY_FIELDS = (
+    "scroll_needed",
+    "status",
+    "reason",
+    "platform",
+    "target_hint_type",
+    "scroll_direction",
+    "max_scrolls",
+    "candidate_container_count",
+    "evidence",
+    "warnings",
+    "safe_metadata_only",
+)
+
 _SAFE_SYSTEM_DIALOG_ACTION_FIELDS = (
     "action_requested",
     "candidate_found",
@@ -158,6 +173,21 @@ _SAFE_SYSTEM_DIALOG_ACTION_FIELDS = (
     "warnings",
     "safe_metadata_only",
 )
+
+_UNSAFE_SCROLL_DISCOVERY_KEYS = {
+    "raw_xml",
+    "hierarchy_xml",
+    "raw_dom",
+    "screenshot",
+    "screenshot_bytes",
+    "page_source",
+    "provider_payload",
+    "raw_context_name",
+    "package_name",
+    "process_name",
+    "exception_trace",
+    "raw_instruction",
+}
 
 _UNSAFE_SYSTEM_DIALOG_KEYS = {
     "raw_xml",
@@ -384,6 +414,38 @@ def safe_system_dialog_guardrails_metadata(metadata: dict) -> dict[str, Any]:
         value = redacted[key]
         if key in {"dialog_detected", "requires_opt_in", "opt_in_present", "action_attempted", "safe_metadata_only"}:
             out[key] = bool(value)
+        elif key in {"evidence", "warnings"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
+
+
+
+def safe_scroll_discovery_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe mobile scroll discovery metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("scroll_discovery")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_SCROLL_DISCOVERY_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_SCROLL_DISCOVERY_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"scroll_needed", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"max_scrolls", "candidate_container_count"}:
+            try:
+                out[key] = int(value)
+            except (TypeError, ValueError):
+                continue
         elif key in {"evidence", "warnings"}:
             if isinstance(value, (list, tuple)):
                 out[key] = [str(v) for v in value]
