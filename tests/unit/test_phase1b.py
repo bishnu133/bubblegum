@@ -741,3 +741,66 @@ class TestHtmlReportAnalytics:
         assert "accessibility_tree" in content
         assert "fuzzy_text" in content
         assert "ResolutionFailedError" in content
+
+def test_html_report_renders_webview_diagnostics_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_diagnostics": {
+                    "status": "dry_run",
+                    "recommended_context": "WEBVIEW_1",
+                    "switch_required_future": True,
+                    "switch_attempted": False,
+                    "reason": "dom_detected",
+                    "evidence": ["tag", "url"],
+                    "warnings": ["deferred"],
+                }
+            },
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Dry-Run Diagnostics" in text
+    assert "Evidence count:</strong> 2" in text
+
+
+def test_html_report_hides_webview_diagnostics_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9)
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Dry-Run Diagnostics" not in text
+
+
+def test_html_report_escapes_webview_diagnostic_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_diagnostics": {
+                    "status": "<script>alert(1)</script>",
+                    "recommended_context": "WEBVIEW_<1>",
+                    "warnings": ["<bad>"]
+                }
+            },
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in text
+    assert "WEBVIEW_&lt;1&gt;" in text
+    assert "&lt;bad&gt;" in text
+    assert "<script>alert(1)</script>" not in text

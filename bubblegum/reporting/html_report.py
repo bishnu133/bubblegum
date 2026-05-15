@@ -110,6 +110,30 @@ _SAFE_GRAPH_QUERY_DIAGNOSTIC_FIELDS = (
     "reasons",
 )
 
+_SAFE_WEBVIEW_DIAGNOSTIC_FIELDS = (
+    "status",
+    "recommended_context",
+    "switch_required_future",
+    "switch_attempted",
+    "reason",
+    "evidence",
+    "warnings",
+    "safe_metadata_only",
+)
+
+_UNSAFE_WEBVIEW_DIAGNOSTIC_KEYS = {
+    "raw_xml",
+    "hierarchy_xml",
+    "raw_dom",
+    "screenshot",
+    "screenshot_bytes",
+    "page_source",
+    "provider_payload",
+    "raw_context_name",
+    "package_name",
+    "process_name",
+}
+
 _SAFE_GRAPH_SIGNAL_FIELDS = (
     "label_for_match",
     "same_row_match",
@@ -237,6 +261,32 @@ def safe_graph_query_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
     return out
 
 
+
+
+def safe_webview_switch_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe webview dry-run diagnostics."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("webview_switch_diagnostics")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_WEBVIEW_DIAGNOSTIC_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_WEBVIEW_DIAGNOSTIC_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"switch_required_future", "switch_attempted", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"evidence", "warnings"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
 def _screenshot_thumb(path: str) -> str:
     """Return an <img> tag with an inline base64 thumbnail, or empty string on failure."""
     try:
@@ -344,6 +394,34 @@ def _render_step(idx: int, result: StepResult) -> str:
             "</details>"
         )
 
+    webview_html = ""
+    webview_diagnostics = safe_webview_switch_diagnostics_metadata(target_metadata)
+    if webview_diagnostics:
+        evidence = webview_diagnostics.get("evidence", [])
+        warnings = webview_diagnostics.get("warnings", [])
+        evidence_display = f"{len(evidence)}" if evidence else "0"
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Status", "status"),
+            ("Recommended context", "recommended_context"),
+            ("Switch required future", "switch_required_future"),
+            ("Switch attempted", "switch_attempted"),
+            ("Reason", "reason"),
+        ]
+        webview_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(webview_diagnostics[key]))}</li>'
+            for label, key in labels
+            if key in webview_diagnostics
+        )
+        webview_rows += f'<li><strong>Evidence count:</strong> {html.escape(evidence_display)}</li>'
+        webview_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        webview_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">WebView Dry-Run Diagnostics</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{webview_rows}</ul>'
+            '</details>'
+        )
+
     wait_html = ""
     if target_metadata.get("wait_used") is True:
         wait_mode = target_metadata.get("wait_mode", "unknown")
@@ -416,6 +494,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {hydration_html}
       {graph_html}
       {graph_query_html}
+      {webview_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -609,6 +688,13 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     graph_query_ambiguity_count = 0
     graph_query_matched_id_total = 0
     graph_query_total_events = 0
+    webview_total_with_diagnostics = 0
+    webview_status_counts: Counter[str] = Counter()
+    webview_recommended_context_counts: Counter[str] = Counter()
+    webview_switch_required_future_count = 0
+    webview_switch_attempted_count = 0
+    webview_reason_counts: Counter[str] = Counter()
+    webview_warning_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -632,6 +718,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         hydration = safe_hydration_metadata(metadata)
         graph_signals = safe_graph_signals_metadata(metadata)
         graph_query_diagnostics = safe_graph_query_diagnostics_metadata(metadata)
+        webview_diagnostics = safe_webview_switch_diagnostics_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -651,6 +738,19 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             for key, value in graph_signals.items():
                 if isinstance(value, bool) and value:
                     graph_signal_true_counts[key] += 1
+        if webview_diagnostics:
+            webview_total_with_diagnostics += 1
+            _count_categorical_field(webview_status_counts, webview_diagnostics.get("status"))
+            _count_categorical_field(webview_recommended_context_counts, webview_diagnostics.get("recommended_context"))
+            if webview_diagnostics.get("switch_required_future") is True:
+                webview_switch_required_future_count += 1
+            if webview_diagnostics.get("switch_attempted") is True:
+                webview_switch_attempted_count += 1
+            _count_categorical_field(webview_reason_counts, webview_diagnostics.get("reason"))
+            warnings = webview_diagnostics.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(webview_warning_counts, warning)
         if graph_query_diagnostics:
             graph_query_total_events += 1
             _count_categorical_field(graph_query_status_counts, graph_query_diagnostics.get("status"))
@@ -688,6 +788,16 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "field_true_counts": dict(graph_signal_true_counts),
     }
 
+    webview_diagnostics_summary = {
+        "total_with_diagnostics": webview_total_with_diagnostics,
+        "status_counts": dict(webview_status_counts),
+        "recommended_context_counts": dict(webview_recommended_context_counts),
+        "switch_required_future_count": webview_switch_required_future_count,
+        "switch_attempted_count": webview_switch_attempted_count,
+        "reason_counts": dict(webview_reason_counts),
+        "warning_counts": dict(webview_warning_counts),
+    }
+
     graph_query_summary = {
         "total_events": graph_query_total_events,
         "status_counts": dict(graph_query_status_counts),
@@ -706,4 +816,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "hydration_summary": hydration_summary,
         "graph_signal_summary": graph_signal_summary,
         "graph_query_summary": graph_query_summary,
+        "webview_diagnostics_summary": webview_diagnostics_summary,
     }

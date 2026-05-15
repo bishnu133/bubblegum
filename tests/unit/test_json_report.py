@@ -387,3 +387,106 @@ def test_json_report_graph_query_diagnostics_redacts_unsafe_fields(tmp_path):
         "raw_attributes",
     ]:
         assert key not in gq
+
+def test_json_report_preserves_safe_webview_diagnostics_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap Login",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_diagnostics": {
+                    "status": "dry_run",
+                    "recommended_context": "WEBVIEW_1",
+                    "switch_required_future": True,
+                    "switch_attempted": False,
+                    "reason": "dom_detected",
+                    "evidence": ["script tag"],
+                    "warnings": ["deferred"],
+                    "safe_metadata_only": True,
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]["webview_switch_diagnostics"]
+    assert md["status"] == "dry_run"
+    assert md["recommended_context"] == "WEBVIEW_1"
+    assert md["switch_required_future"] is True
+
+
+def test_json_report_redacts_unsafe_webview_diagnostics_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap Login",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_diagnostics": {
+                    "status": "dry_run",
+                    "raw_xml": "<xml/>",
+                    "raw_dom": "<dom/>",
+                    "screenshot_bytes": "abc",
+                    "provider_payload": {"secret": "x"},
+                    "package_name": "pkg",
+                    "process_name": "proc",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    wd = payload["results"][0]["target"]["metadata"]["webview_switch_diagnostics"]
+    assert wd["status"] == "dry_run"
+    assert "raw_xml" not in wd
+    assert "raw_dom" not in wd
+    assert "screenshot_bytes" not in wd
+    assert "provider_payload" not in wd
+    assert "package_name" not in wd
+    assert "process_name" not in wd
+
+
+def test_json_report_includes_webview_diagnostics_analytics_and_ignores_unsafe_keys(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="passed",
+            action="a",
+            confidence=1.0,
+            target=ResolvedTarget(
+                ref="r",
+                confidence=1.0,
+                resolver_name="x",
+                metadata={
+                    "webview_switch_diagnostics": {
+                        "status": "dry_run",
+                        "recommended_context": "WEBVIEW_1",
+                        "switch_required_future": True,
+                        "switch_attempted": False,
+                        "reason": "dom_detected",
+                        "warnings": ["deferred"],
+                        "raw_context_name": "SHOULD_NOT_COUNT",
+                    }
+                },
+            ),
+        )
+    ]
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    summary = payload["analytics"]["webview_diagnostics_summary"]
+    assert summary["total_with_diagnostics"] == 1
+    assert summary["status_counts"] == {"dry_run": 1}
+    assert summary["recommended_context_counts"] == {"WEBVIEW_1": 1}
+    assert summary["switch_required_future_count"] == 1
+    assert summary["switch_attempted_count"] == 0
+    assert summary["reason_counts"] == {"dom_detected": 1}
+    assert summary["warning_counts"] == {"deferred": 1}
