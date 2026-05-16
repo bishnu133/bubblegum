@@ -508,3 +508,59 @@ Expected behavior for reporting artifact validation:
 - JSON must parse and include analytics `scroll_resolution_summary` when scroll-resolution metadata exists.
 - HTML must include scroll-resolution summary content only; no raw hierarchy/payload dumps.
 - Artifacts must not include raw XML/DOM, screenshot bytes, provider payloads, package/process/context identifiers, raw capabilities, or credentials/secrets.
+
+### Android repeated-region diagnostics smoke (Phase 19N-M)
+
+This smoke is **skip-by-default** and is intended to validate safe repeated card/list/row diagnostics in a real Android Appium session.
+
+Run command:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_REPEATED_REGION_SMOKE=1 \
+BUBBLEGUM_ANDROID_REPEATED_TARGET_TEXT="Buy" \
+BUBBLEGUM_ANDROID_REPEATED_ANCHOR_TEXT="Product A" \
+pytest tests/real_env/android/test_android_repeated_region_smoke.py -q
+```
+
+Installed-app variant:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_PACKAGE=<app-package> \
+BUBBLEGUM_ANDROID_ACTIVITY=<launcher-activity> \
+BUBBLEGUM_ANDROID_REPEATED_REGION_SMOKE=1 \
+BUBBLEGUM_ANDROID_REPEATED_TARGET_TEXT="Buy" \
+BUBBLEGUM_ANDROID_REPEATED_ANCHOR_TEXT="Product A" \
+pytest tests/real_env/android/test_android_repeated_region_smoke.py -q
+```
+
+Required repeated-region opt-in vars:
+
+- `BUBBLEGUM_ANDROID_REPEATED_REGION_SMOKE=1`
+- `BUBBLEGUM_ANDROID_REPEATED_TARGET_TEXT`
+- `BUBBLEGUM_ANDROID_REPEATED_ANCHOR_TEXT`
+
+Optional controls:
+
+- `BUBBLEGUM_ANDROID_REPEATED_ACTION_HINT` (default `tap`)
+- `BUBBLEGUM_ANDROID_REPEATED_EXPECT_STATUS` (assert exact diagnostics status)
+- `BUBBLEGUM_ANDROID_REPEATED_REQUIRE_RESOLVED=1` (strict mode)
+
+Expected skip behavior:
+
+- Skips when `BUBBLEGUM_REAL_ENV` is not `1`.
+- Skips when required Android/Appium launch vars are missing.
+- Skips when repeated-region opt-in vars are not provided.
+
+Safety/privacy expectations:
+
+- Metadata validation only by default (no interaction/click behavior in this test).
+- No WebView context switching.
+- No raw XML/page-source/screenshot bytes/provider payload/capabilities/credentials leakage in diagnostics or report artifacts.
+- Meaningful validation requires an app screen that actually contains repeated cards/lists/rows.
