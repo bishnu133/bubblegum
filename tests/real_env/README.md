@@ -485,3 +485,26 @@ Expected Android scroll resolution skip/safety behavior:
 - Re-collects context and re-runs resolver checks after each bounded scroll attempt.
 - Stops early when the target is found; fails clearly only when an explicit target is requested and not found within bounded attempts.
 - May interact with the app only when explicit opt-in scroll resolution is enabled.
+
+
+Android scroll resolution reporting artifact validation (JSON + HTML):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_ENABLE_SCROLL_RESOLUTION=1 \
+BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT="<visible-after-scroll-text>" \
+BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS=3 \
+pytest tests/real_env/android/test_android_scroll_smoke.py -k reporting_artifacts_are_safe -q
+```
+
+Expected behavior for reporting artifact validation:
+
+- Skip-by-default unless real-env gate and Android/Appium launch vars are present.
+- Additional explicit opt-in required: `BUBBLEGUM_ANDROID_ENABLE_SCROLL_RESOLUTION=1` and `BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT`.
+- Generates one JSON report and one HTML report under pytest `tmp_path` (ephemeral per test run).
+- JSON must parse and include analytics `scroll_resolution_summary` when scroll-resolution metadata exists.
+- HTML must include scroll-resolution summary content only; no raw hierarchy/payload dumps.
+- Artifacts must not include raw XML/DOM, screenshot bytes, provider payloads, package/process/context identifiers, raw capabilities, or credentials/secrets.
