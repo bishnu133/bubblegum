@@ -1054,3 +1054,38 @@ def test_html_report_escapes_scroll_discovery_values(tmp_path):
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in content
     assert "unsafe&lt;reason&gt;" in content
     assert "&lt;b&gt;bad&lt;/b&gt;" in content
+
+def test_html_report_renders_scroll_resolution_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(ref="r", confidence=0.9, resolver_name="x", metadata={"scroll_resolution": {"enabled": True, "attempted": True, "attempt_count": 1, "max_scrolls": 2, "found_after_scroll": True, "final_status": "found", "reason": "ok", "evidence": ["a"], "warnings": ["w"]}}),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "Scroll Resolution" in text
+    assert "Final status" in text
+
+
+def test_html_report_hides_scroll_resolution_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    write_html_report([StepResult(status="passed", action="Tap", confidence=0.9)], path=out)
+    assert "Scroll Resolution" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_scroll_resolution_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(ref="r", confidence=0.9, resolver_name="x", metadata={"scroll_resolution": {"final_status": "<script>x</script>", "reason": "bad<reason>", "warnings": ["<b>w</b>"]}}),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "&lt;script&gt;x&lt;/script&gt;" in text
+    assert "bad&lt;reason&gt;" in text
+    assert "&lt;b&gt;w&lt;/b&gt;" in text
+    assert "<script>x</script>" not in text

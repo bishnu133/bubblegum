@@ -885,3 +885,87 @@ def test_json_report_includes_scroll_discovery_analytics_summary_and_ignores_uns
     assert ss["max_scrolls_buckets"]["3-5"] == 1
     assert ss["candidate_container_count_buckets"]["2-3"] == 1
     assert "SECRET" not in json.dumps(ss)
+
+def test_json_report_preserves_safe_scroll_resolution_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "scroll_resolution": {
+                    "enabled": True,
+                    "attempted": True,
+                    "attempt_count": 2,
+                    "max_scrolls": 5,
+                    "found_after_scroll": True,
+                    "final_status": "found",
+                    "reason": "resolved_after_scroll",
+                    "evidence": ["try1", "try2"],
+                    "warnings": ["metadata_only"],
+                    "safe_metadata_only": True,
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    sr = payload["results"][0]["target"]["metadata"]["scroll_resolution"]
+    assert sr["enabled"] is True
+    assert sr["attempt_count"] == 2
+    assert sr["final_status"] == "found"
+
+
+def test_json_report_redacts_unsafe_scroll_resolution_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "scroll_resolution": {
+                    "enabled": True,
+                    "final_status": "not_found",
+                    "raw_xml": "<x/>",
+                    "screenshot": "abc",
+                    "provider_payload": {"s": 1},
+                    "raw_context_name": "WEBVIEW_secret",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    sr = payload["results"][0]["target"]["metadata"]["scroll_resolution"]
+    assert sr["enabled"] is True
+    assert sr["final_status"] == "not_found"
+    for k in ["raw_xml", "screenshot", "provider_payload", "raw_context_name"]:
+        assert k not in sr
+
+
+def test_json_report_scroll_resolution_analytics_and_unsafe_ignored(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(status="passed", action="a", confidence=1.0, target=ResolvedTarget(ref="r", confidence=1.0, resolver_name="x", metadata={"scroll_resolution": {"enabled": True, "attempted": True, "attempt_count": 2, "max_scrolls": 4, "found_after_scroll": True, "final_status": "found", "reason": "ok", "warnings": ["w1"], "raw_xml": "x"}})),
+        StepResult(status="failed", action="b", confidence=0.2, target=ResolvedTarget(ref="r", confidence=0.2, resolver_name="x", metadata={"scroll_resolution": {"enabled": False, "attempted": False, "attempt_count": 0, "max_scrolls": 0, "found_after_scroll": False, "final_status": "not_found", "reason": "disabled", "warnings": ["w2"]}})),
+    ]
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    s = payload["analytics"]["scroll_resolution_summary"]
+    assert s["total_with_scroll_resolution"] == 2
+    assert s["enabled_count"] == 1
+    assert s["attempted_count"] == 1
+    assert s["found_after_scroll_count"] == 1
+    assert s["final_status_counts"] == {"found": 1, "not_found": 1}
+    assert s["reason_counts"] == {"ok": 1, "disabled": 1}
+    assert s["warning_counts"] == {"w1": 1, "w2": 1}
+    assert s["max_scrolls_buckets"] == {"0": 1, "1-2": 0, "3-5": 1, "6+": 0}
+    assert s["attempt_count_buckets"] == {"0": 1, "1": 0, "2-3": 1, "4+": 0}

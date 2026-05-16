@@ -18,6 +18,7 @@ from bubblegum.reporting.html_report import (
     safe_system_dialog_guardrails_metadata,
     safe_system_dialog_action_metadata,
     safe_scroll_discovery_metadata,
+    safe_scroll_resolution_metadata,
     sanitize_reporting_metadata,
 )
 
@@ -37,6 +38,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
             system_dialog_action = safe_system_dialog_action_metadata(metadata)
             scroll_discovery = safe_scroll_discovery_metadata(metadata)
+            scroll_resolution = safe_scroll_resolution_metadata(metadata)
             for key in list(metadata.keys()):
                 if key.startswith("hydration_") or key in {"match_field", "match_count"}:
                     metadata.pop(key, None)
@@ -47,6 +49,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             metadata.pop("system_dialog_guardrails", None)
             metadata.pop("system_dialog_action", None)
             metadata.pop("scroll_discovery", None)
+            metadata.pop("scroll_resolution", None)
             metadata.update(hydration)
             if graph_signals:
                 metadata["graph_signals"] = graph_signals
@@ -62,6 +65,8 @@ def _safe_result_dump(result: StepResult) -> dict:
                 metadata["system_dialog_action"] = system_dialog_action
             if scroll_discovery:
                 metadata["scroll_discovery"] = scroll_discovery
+            if scroll_resolution:
+                metadata["scroll_resolution"] = scroll_resolution
             target["metadata"] = metadata
     return payload
 
