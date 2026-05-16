@@ -1004,3 +1004,58 @@ def test_json_report_repeated_region_diagnostics_redacts_unsafe_fields(tmp_path)
     assert "raw_xml" not in md
     assert "raw_instruction" not in md
     assert md["status"] == "resolved"
+
+
+def test_json_report_repeated_region_diagnostics_allowlists_safe_fields_only(tmp_path):
+    out = tmp_path / "r.json"
+    result = StepResult(
+        status="passed",
+        action="tap",
+        confidence=1.0,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=1.0,
+            resolver_name="x",
+            metadata={"repeated_region_diagnostics": {
+                "status": "resolved",
+                "region_type": "row",
+                "matched_region_count": 1,
+                "candidate_count": 2,
+                "anchor_hint_type": "text",
+                "target_action_hint": "edit",
+                "reason": "same_region_anchor_match",
+                "evidence": ["ok"],
+                "warnings": ["w"],
+                "safe_metadata_only": True,
+                "raw_xml": "x",
+                "raw_anchor_text": "secret",
+                "raw_candidate_text": "secret",
+                "selected_candidate_ref": {"id": "too_detailed"},
+            }},
+        ),
+    )
+    write_json_report([result], path=out)
+    md = json.loads(out.read_text())["results"][0]["target"]["metadata"]["repeated_region_diagnostics"]
+    assert set(md.keys()) == {
+        "status", "region_type", "matched_region_count", "candidate_count", "anchor_hint_type",
+        "target_action_hint", "reason", "evidence", "warnings", "safe_metadata_only"
+    }
+
+
+def test_json_report_repeated_region_summary_counts_and_unsafe_ignored(tmp_path):
+    out = tmp_path / "r.json"
+    results = [
+        StepResult(status="passed", action="a", confidence=1.0, target=ResolvedTarget(ref="r", confidence=1.0, resolver_name="x", metadata={"repeated_region_diagnostics": {"status": "resolved", "region_type": "card", "matched_region_count": 1, "candidate_count": 2, "anchor_hint_type": "text", "target_action_hint": "edit", "reason": "same_region_anchor_match", "warnings": ["w1"], "raw_xml": "secret"}})),
+        StepResult(status="failed", action="b", confidence=0.2, target=ResolvedTarget(ref="r", confidence=0.2, resolver_name="x", metadata={"repeated_region_diagnostics": {"status": "no_anchor", "region_type": "list", "matched_region_count": 0, "candidate_count": 4, "anchor_hint_type": "none", "target_action_hint": "open", "reason": "anchor_missing", "warnings": ["w2"], "provider_payload": {"x":1}}})),
+    ]
+    write_json_report(results, path=out)
+    summary = json.loads(out.read_text())["analytics"]["repeated_region_summary"]
+    assert summary["total_with_repeated_region_diagnostics"] == 2
+    assert summary["status_counts"] == {"resolved": 1, "no_anchor": 1}
+    assert summary["region_type_counts"] == {"card": 1, "list": 1}
+    assert summary["reason_counts"] == {"same_region_anchor_match": 1, "anchor_missing": 1}
+    assert summary["anchor_hint_type_counts"] == {"text": 1, "none": 1}
+    assert summary["target_action_hint_counts"] == {"edit": 1, "open": 1}
+    assert summary["warning_counts"] == {"w1": 1, "w2": 1}
+    assert summary["matched_region_count_buckets"] == {"0": 1, "1": 1, "2-3": 0, "4+": 0}
+    assert summary["candidate_count_buckets"] == {"0": 0, "1": 0, "2-3": 1, "4+": 1}

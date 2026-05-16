@@ -251,6 +251,7 @@ _UNSAFE_SYSTEM_DIALOG_KEYS = {
 _UNSAFE_REPEATED_REGION_KEYS = {
     "raw_xml", "hierarchy_xml", "raw_dom", "screenshot", "screenshot_bytes", "page_source",
     "provider_payload", "raw_context_name", "package_name", "process_name", "exception_trace", "raw_instruction",
+    "raw_anchor_text", "raw_candidate_text", "selected_candidate_ref",
 }
 
 _UNSAFE_WEBVIEW_DIAGNOSTIC_KEYS = {
@@ -867,6 +868,35 @@ def _render_step(idx: int, result: StepResult) -> str:
             '</details>'
         )
 
+    repeated_region_html = ""
+    repeated_region = safe_repeated_region_diagnostics_metadata(target_metadata)
+    if repeated_region:
+        evidence = repeated_region.get("evidence", [])
+        warnings = repeated_region.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Status", "status"),
+            ("Region type", "region_type"),
+            ("Matched region count", "matched_region_count"),
+            ("Candidate count", "candidate_count"),
+            ("Anchor hint type", "anchor_hint_type"),
+            ("Target action hint", "target_action_hint"),
+            ("Reason", "reason"),
+        ]
+        repeated_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(repeated_region[key]))}</li>'
+            for label, key in labels
+            if key in repeated_region
+        )
+        repeated_rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        repeated_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        repeated_region_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Repeated Region Diagnostics</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{repeated_rows}</ul>'
+            '</details>'
+        )
+
     wait_html = ""
     if target_metadata.get("wait_used") is True:
         wait_mode = target_metadata.get("wait_mode", "unknown")
@@ -945,6 +975,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {system_dialog_action_html}
       {scroll_discovery_html}
       {scroll_resolution_html}
+      {repeated_region_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -1187,6 +1218,15 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     scroll_resolution_warning_counts: Counter[str] = Counter()
     scroll_resolution_max_scrolls_buckets = {"0": 0, "1-2": 0, "3-5": 0, "6+": 0}
     scroll_resolution_attempt_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
+    repeated_region_total_with_metadata = 0
+    repeated_region_status_counts: Counter[str] = Counter()
+    repeated_region_type_counts: Counter[str] = Counter()
+    repeated_region_reason_counts: Counter[str] = Counter()
+    repeated_region_anchor_hint_type_counts: Counter[str] = Counter()
+    repeated_region_target_action_hint_counts: Counter[str] = Counter()
+    repeated_region_warning_counts: Counter[str] = Counter()
+    repeated_region_matched_region_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
+    repeated_region_candidate_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
 
     for result in results:
         status_counts[result.status] += 1
@@ -1216,6 +1256,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         system_dialog_action = safe_system_dialog_action_metadata(metadata)
         scroll_discovery = safe_scroll_discovery_metadata(metadata)
         scroll_resolution = safe_scroll_resolution_metadata(metadata)
+        repeated_region = safe_repeated_region_diagnostics_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -1329,6 +1370,37 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
                 else:
                     scroll_discovery_candidate_container_count_buckets["4+"] += 1
 
+        if repeated_region:
+            repeated_region_total_with_metadata += 1
+            _count_categorical_field(repeated_region_status_counts, repeated_region.get("status"))
+            _count_categorical_field(repeated_region_type_counts, repeated_region.get("region_type"))
+            _count_categorical_field(repeated_region_reason_counts, repeated_region.get("reason"))
+            _count_categorical_field(repeated_region_anchor_hint_type_counts, repeated_region.get("anchor_hint_type"))
+            _count_categorical_field(repeated_region_target_action_hint_counts, repeated_region.get("target_action_hint"))
+            warnings = repeated_region.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(repeated_region_warning_counts, warning)
+            matched_region_count = repeated_region.get("matched_region_count")
+            if isinstance(matched_region_count, int):
+                if matched_region_count <= 0:
+                    repeated_region_matched_region_count_buckets["0"] += 1
+                elif matched_region_count == 1:
+                    repeated_region_matched_region_count_buckets["1"] += 1
+                elif matched_region_count <= 3:
+                    repeated_region_matched_region_count_buckets["2-3"] += 1
+                else:
+                    repeated_region_matched_region_count_buckets["4+"] += 1
+            candidate_count = repeated_region.get("candidate_count")
+            if isinstance(candidate_count, int):
+                if candidate_count <= 0:
+                    repeated_region_candidate_count_buckets["0"] += 1
+                elif candidate_count == 1:
+                    repeated_region_candidate_count_buckets["1"] += 1
+                elif candidate_count <= 3:
+                    repeated_region_candidate_count_buckets["2-3"] += 1
+                else:
+                    repeated_region_candidate_count_buckets["4+"] += 1
         if scroll_resolution:
             scroll_resolution_total_with_metadata += 1
             if scroll_resolution.get("enabled") is True:
@@ -1454,6 +1526,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "candidate_container_count_buckets": dict(scroll_discovery_candidate_container_count_buckets),
     }
 
+    repeated_region_summary = {
+        "total_with_repeated_region_diagnostics": repeated_region_total_with_metadata,
+        "status_counts": dict(repeated_region_status_counts),
+        "region_type_counts": dict(repeated_region_type_counts),
+        "reason_counts": dict(repeated_region_reason_counts),
+        "anchor_hint_type_counts": dict(repeated_region_anchor_hint_type_counts),
+        "target_action_hint_counts": dict(repeated_region_target_action_hint_counts),
+        "warning_counts": dict(repeated_region_warning_counts),
+        "matched_region_count_buckets": dict(repeated_region_matched_region_count_buckets),
+        "candidate_count_buckets": dict(repeated_region_candidate_count_buckets),
+    }
+
     scroll_resolution_summary = {
         "total_with_scroll_resolution": scroll_resolution_total_with_metadata,
         "enabled_count": scroll_resolution_enabled_count,
@@ -1490,4 +1574,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "system_dialog_action_summary": system_dialog_action_summary,
         "scroll_discovery_summary": scroll_discovery_summary,
         "scroll_resolution_summary": scroll_resolution_summary,
+        "repeated_region_summary": repeated_region_summary,
     }
