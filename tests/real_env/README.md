@@ -31,6 +31,7 @@ If `BUBBLEGUM_REAL_ENV` is unset or not equal to `1`, tests in `tests/real_env` 
 - `BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT` — optional target hint for bounded Android scroll smoke search.
 - `BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS` — optional max bounded scroll attempts (default `3`, clamped to safe bounds).
 - `BUBBLEGUM_ANDROID_ENABLE_SCROLL_ACTION` — set to `1` to enable explicit bounded scroll action (default is metadata-only, no scroll action).
+- `BUBBLEGUM_ANDROID_ENABLE_SCROLL_RESOLUTION` — set to `1` to enable explicit bounded scroll resolution smoke (default skip/metadata-only; no scroll by default).
 - `BUBBLEGUM_IOS_APP` — required for iOS target smoke skeleton.
 - `BUBBLEGUM_CLOUD_PROVIDER` — required for cloud smoke skeleton.
 - `BUBBLEGUM_CLOUD_USERNAME` — required for cloud smoke skeleton.
@@ -460,3 +461,27 @@ Android scroll smoke safety rules:
 - Scroll attempts are bounded by `BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS` (safe clamp enforced).
 - No WebView switching is used; no `driver.switch_to.context` calls.
 - No raw XML, screenshot bytes, package/process/context identifiers, or credentials are emitted.
+
+
+Android scroll resolution opt-in smoke (explicit action only):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_ENABLE_SCROLL_RESOLUTION=1 \
+BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT="<visible-after-scroll-text>" \
+BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS=3 \
+pytest tests/real_env/android/test_android_scroll_smoke.py -k scroll_resolution_opt_in -q
+```
+
+Expected Android scroll resolution skip/safety behavior:
+
+- Skips unless `BUBBLEGUM_REAL_ENV=1` and required Android/Appium env vars are set.
+- Skips unless `BUBBLEGUM_ANDROID_ENABLE_SCROLL_RESOLUTION=1` is explicitly provided.
+- Skips clearly when `BUBBLEGUM_ANDROID_SCROLL_TARGET_TEXT` is missing under opt-in mode.
+- Uses bounded scrolling only via `BUBBLEGUM_ANDROID_SCROLL_MAX_SCROLLS` (default `3`, clamped to safe bounds).
+- Re-collects context and re-runs resolver checks after each bounded scroll attempt.
+- Stops early when the target is found; fails clearly only when an explicit target is requested and not found within bounded attempts.
+- May interact with the app only when explicit opt-in scroll resolution is enabled.
