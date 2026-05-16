@@ -1089,3 +1089,64 @@ def test_html_report_escapes_scroll_resolution_values(tmp_path):
     assert "bad&lt;reason&gt;" in text
     assert "&lt;b&gt;w&lt;/b&gt;" in text
     assert "<script>x</script>" not in text
+
+
+def test_html_report_renders_repeated_region_diagnostics_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap Edit",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"repeated_region_diagnostics": {
+                "status": "resolved",
+                "region_type": "card",
+                "matched_region_count": 1,
+                "candidate_count": 2,
+                "anchor_hint_type": "text",
+                "target_action_hint": "edit",
+                "reason": "same_region_anchor_match",
+                "evidence": ["anchor", "candidate"],
+                "warnings": ["metadata_only"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "Repeated Region Diagnostics" in text
+    assert "Evidence count:</strong> 2" in text
+
+
+def test_html_report_hides_repeated_region_diagnostics_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9)
+    write_html_report([result], path=out)
+    assert "Repeated Region Diagnostics" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_repeated_region_diagnostic_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"repeated_region_diagnostics": {
+                "status": "<script>alert(1)</script>",
+                "region_type": "card<1>",
+                "warnings": ["<bad>"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in text
+    assert "card&lt;1&gt;" in text
+    assert "&lt;bad&gt;" in text
+    assert "<script>alert(1)</script>" not in text
