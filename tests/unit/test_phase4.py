@@ -1402,3 +1402,66 @@ class TestMobileScrollDiscovery:
         ctx = _run_async(AppiumAdapter(driver).collect_context(ContextRequest(include_screenshot=False)))
         assert "scroll_discovery" in ctx.app_state
         assert ctx.app_state["scroll_discovery"]["safe_metadata_only"] is True
+
+class _ScrollDriver:
+    def __init__(self):
+        self.swipes = 0
+        self.switch_to = MagicMock()
+        self.switch_to.context = MagicMock()
+
+    def swipe(self, *_args):
+        self.swipes += 1
+
+
+class TestMobileScrollResolution:
+    def _plan(self):
+        return {"status": "candidate", "scroll_needed": True, "candidate_container_count": 1}
+
+    def test_opt_in_false_blocks_no_scroll(self):
+        from bubblegum.core.mobile.scroll_resolution import resolve_with_bounded_scroll
+        d = _ScrollDriver()
+        out = resolve_with_bounded_scroll(driver=d, instruction="tap Login", target_hint="Login", resolve_once=lambda: {"found": False}, collect_context=lambda: {"channel": "mobile"}, scroll_plan=self._plan(), explicit_opt_in=False)
+        assert out["reason"] == "opt_in_missing"
+        assert d.swipes == 0
+
+    def test_blocked_when_system_dialog_detected(self):
+        from bubblegum.core.mobile.scroll_resolution import resolve_with_bounded_scroll
+        d = _ScrollDriver()
+        out = resolve_with_bounded_scroll(driver=d, instruction="tap Login", target_hint="Login", resolve_once=lambda: {"found": False}, collect_context=lambda: {"channel": "mobile", "system_dialog_detection": {"dialog_detected": True}}, scroll_plan=self._plan(), explicit_opt_in=True)
+        assert out["reason"] == "blocked_by_system_dialog"
+        assert d.swipes == 0
+
+    def test_not_needed_plan_does_not_scroll(self):
+        from bubblegum.core.mobile.scroll_resolution import resolve_with_bounded_scroll
+        d = _ScrollDriver()
+        out = resolve_with_bounded_scroll(driver=d, instruction="tap Login", target_hint="Login", resolve_once=lambda: {"found": False}, collect_context=lambda: {"channel": "mobile"}, scroll_plan={"status": "not_needed", "scroll_needed": False, "candidate_container_count": 1}, explicit_opt_in=True)
+        assert out["final_status"] == "unsupported"
+        assert d.swipes == 0
+
+    def test_stops_when_found(self):
+        from bubblegum.core.mobile.scroll_resolution import resolve_with_bounded_scroll
+        d = _ScrollDriver(); calls={"n":0}
+        def resolve_once():
+            calls["n"] += 1
+            return {"found": calls["n"] >= 2}
+        out = resolve_with_bounded_scroll(driver=d, instruction="tap Login", target_hint="Login", resolve_once=resolve_once, collect_context=lambda: {"channel": "mobile"}, scroll_plan=self._plan(), explicit_opt_in=True, max_scrolls=3)
+        assert out["final_status"] == "found"
+        assert out["attempt_count"] == 2
+        assert d.swipes == 2
+
+    def test_stops_at_max_scrolls_and_reruns(self):
+        from bubblegum.core.mobile.scroll_resolution import resolve_with_bounded_scroll
+        d = _ScrollDriver(); rc={"n":0}; cc={"n":0}
+        def resolve_once(): rc["n"] += 1; return {"found": False}
+        def collect(): cc["n"] += 1; return {"channel": "mobile"}
+        out = resolve_with_bounded_scroll(driver=d, instruction="tap Login", target_hint="Login", resolve_once=resolve_once, collect_context=collect, scroll_plan=self._plan(), explicit_opt_in=True, max_scrolls=2)
+        assert out["reason"] == "max_scrolls_reached"
+        assert d.swipes == 2 and rc["n"] == 2 and cc["n"] == 3
+
+    def test_safe_metadata_only(self):
+        from bubblegum.core.mobile.scroll_resolution import resolve_with_bounded_scroll
+        d = _ScrollDriver()
+        out = resolve_with_bounded_scroll(driver=d, instruction="secret instruction", target_hint="Login", resolve_once=lambda: {"found": False, "raw_xml": "<x/>"}, collect_context=lambda: {"channel": "mobile", "raw_xml": "<x/>"}, scroll_plan=self._plan(), explicit_opt_in=True, max_scrolls=1)
+        assert "raw_xml" not in out
+        assert "instruction" not in str(out).lower()
+        d.switch_to.context.assert_not_called()
