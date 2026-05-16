@@ -44,6 +44,7 @@ from bubblegum.core.elements.query import build_graph_query_diagnostics
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 from bubblegum.core.grounding.signals import make_signals
+from bubblegum.core.mobile.repeated_structure import disambiguate_within_repeated_region
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,17 @@ class AppiumHierarchyResolver(Resolver):
         candidates: list[ResolvedTarget] = []
         normalized_elements = []
         elements_by_ref: dict[str, object] = {}
+        parent_lookup: dict[int, str] = {}
+        children_lookup: dict[str, list[str]] = {}
+        for parent in root.iter():
+            pid = id(parent)
+            parent_ref = _element_xpath_ref(parent)
+            children = list(parent)
+            if children:
+                children_lookup[parent_ref] = [_element_xpath_ref(ch) for ch in children]
+            for child in children:
+                parent_lookup[id(child)] = parent_ref
+
         for element in root.iter():
             source_ref = _element_xpath_ref(element)
             normalized = normalize_mobile_hierarchy_node(
@@ -129,6 +141,8 @@ class AppiumHierarchyResolver(Resolver):
                     "enabled": (element.get("enabled") or "true").strip().lower() != "false",
                     "displayed": (element.get("visible-to-user") or "true").strip().lower() != "false",
                     "source_ref": source_ref,
+                    "parent_id": parent_lookup.get(id(element)),
+                    "children_ids": children_lookup.get(source_ref, []),
                 },
                 platform=intent.platform or "android",
                 source_kind="appium_hierarchy",
@@ -146,6 +160,14 @@ class AppiumHierarchyResolver(Resolver):
         if isinstance(context_graph, ElementGraph) and isinstance(relational_intent, dict):
             diagnostics = build_graph_query_diagnostics(context_graph, relational_intent, action_type=intent.action_type)
 
+        repeated_diag = disambiguate_within_repeated_region(
+            instruction=intent.instruction,
+            target_candidates=candidates,
+            anchor_candidates=[],
+            elements=normalized_elements,
+            graph=graph,
+        ) if len(candidates) > 1 else None
+
         enriched: list[ResolvedTarget] = []
         for target in candidates:
             meta = dict(target.metadata)
@@ -161,6 +183,22 @@ class AppiumHierarchyResolver(Resolver):
             )
             if isinstance(diagnostics, dict):
                 meta["graph_query_diagnostics"] = diagnostics
+            if isinstance(repeated_diag, dict):
+                safe_diag = {
+                    "status": repeated_diag.get("status", "unknown"),
+                    "region_type": repeated_diag.get("region_type", "unknown"),
+                    "matched_region_count": int(repeated_diag.get("matched_region_count", 0)),
+                    "candidate_count": int(repeated_diag.get("candidate_count", len(candidates))),
+                    "anchor_hint_type": repeated_diag.get("anchor_hint_type", "none"),
+                    "target_action_hint": repeated_diag.get("target_action_hint", "unknown"),
+                    "reason": repeated_diag.get("reason", "unknown"),
+                    "evidence": [str(v) for v in repeated_diag.get("evidence", [])],
+                    "warnings": [str(v) for v in repeated_diag.get("warnings", [])],
+                    "safe_metadata_only": True,
+                }
+                meta["repeated_region_diagnostics"] = safe_diag
+            if repeated_diag and repeated_diag.get("status") == "resolved" and repeated_diag.get("selected_candidate_ref") == target.ref:
+                meta["repeated_region_diagnostics"]["status"] = "resolved"
             enriched.append(target.model_copy(update={"metadata": meta}))
 
         logger.debug(

@@ -178,6 +178,19 @@ _SAFE_SCROLL_RESOLUTION_FIELDS = (
     "safe_metadata_only",
 )
 
+_SAFE_REPEATED_REGION_FIELDS = (
+    "status",
+    "region_type",
+    "matched_region_count",
+    "candidate_count",
+    "anchor_hint_type",
+    "target_action_hint",
+    "reason",
+    "evidence",
+    "warnings",
+    "safe_metadata_only",
+)
+
 _SAFE_SYSTEM_DIALOG_ACTION_FIELDS = (
     "action_requested",
     "candidate_found",
@@ -235,6 +248,11 @@ _UNSAFE_SYSTEM_DIALOG_KEYS = {
     "exception_trace",
     "raw_instruction",
 }
+_UNSAFE_REPEATED_REGION_KEYS = {
+    "raw_xml", "hierarchy_xml", "raw_dom", "screenshot", "screenshot_bytes", "page_source",
+    "provider_payload", "raw_context_name", "package_name", "process_name", "exception_trace", "raw_instruction",
+}
+
 _UNSAFE_WEBVIEW_DIAGNOSTIC_KEYS = {
     "raw_xml",
     "hierarchy_xml",
@@ -397,6 +415,31 @@ def safe_webview_switch_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
                 out[key] = [str(v) for v in value]
             elif value is not None:
                 out[key] = [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
+def safe_repeated_region_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("repeated_region_diagnostics")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_REPEATED_REGION_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_REPEATED_REGION_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"matched_region_count", "candidate_count"}:
+            try:
+                out[key] = int(value)
+            except Exception:
+                continue
+        elif key in {"safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"evidence", "warnings"}:
+            out[key] = [str(v) for v in value] if isinstance(value, (list, tuple)) else [str(value)]
         elif value is not None:
             out[key] = str(value)
     return out
