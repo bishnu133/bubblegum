@@ -189,3 +189,96 @@ def test_android_emulator_repeated_region_diagnostics_smoke(tmp_path) -> None:
             driver.quit()
         except Exception:
             pass
+
+
+
+def test_android_emulator_repeated_region_reporting_artifacts_are_safe(tmp_path) -> None:
+    appium_webdriver = pytest.importorskip("appium.webdriver")
+    options_module = pytest.importorskip("appium.options.android")
+
+    appium_url, values, has_app = _required_android_env()
+    target_text, anchor_text, action_hint, _expect_status, _require_resolved, _ = _required_repeated_region_opt_in()
+
+    options = options_module.UiAutomator2Options()
+    options.platform_name = "Android"
+    options.device_name = values["BUBBLEGUM_ANDROID_DEVICE_NAME"]
+    if has_app:
+        options.app = values["BUBBLEGUM_ANDROID_APP"]
+    else:
+        options.app_package = values["BUBBLEGUM_ANDROID_PACKAGE"]
+        options.app_activity = values["BUBBLEGUM_ANDROID_ACTIVITY"]
+    options.automation_name = "UiAutomator2"
+
+    try:
+        driver = appium_webdriver.Remote(appium_url, options=options)
+    except Exception as exc:  # pragma: no cover
+        pytest.skip(f"Unable to start Android repeated-region reporting Appium session: {exc}")
+
+    try:
+        adapter = AppiumAdapter(driver)
+        ui_context = asyncio.run(adapter.collect_context(ContextRequest(include_screenshot=False, include_hierarchy=True)))
+
+        instruction = f"{action_hint} {target_text} for {anchor_text}".strip()
+        resolver = AppiumHierarchyResolver()
+        candidates = resolver.resolve(
+            StepIntent(
+                instruction=instruction,
+                channel="mobile",
+                platform="android",
+                action_type=action_hint if action_hint in {"tap", "click", "type", "select", "scroll", "swipe", "verify", "extract"} else "tap",
+                context={"hierarchy_xml": ui_context.hierarchy_xml or "", "app_state": ui_context.app_state},
+            )
+        )
+
+        assert candidates, "Expected at least one candidate for repeated-region artifact validation."
+
+        with_diag = [c for c in candidates if isinstance(c.metadata.get("repeated_region_diagnostics"), dict)]
+        assert with_diag, "Expected repeated_region_diagnostics metadata in resolved candidates."
+
+        step = StepResult(
+            status="passed",
+            action="Android repeated-region reporting artifact validation",
+            confidence=1.0,
+            target=ResolvedTarget(
+                ref="android-repeated-region://reporting",
+                confidence=1.0,
+                resolver_name="android_repeated_region_reporting",
+                metadata={"repeated_region_diagnostics": with_diag[0].metadata["repeated_region_diagnostics"]},
+            ),
+        )
+
+        json_path = tmp_path / "android_repeated_region_reporting.json"
+        html_path = tmp_path / "android_repeated_region_reporting.html"
+        write_json_report([step], path=json_path, title="Android Repeated Region Reporting")
+        write_html_report([step], path=html_path, title="Android Repeated Region Reporting")
+
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        assert isinstance(payload, dict)
+        assert "repeated_region_summary" in payload.get("analytics", {})
+
+        md = payload.get("results", [{}])[0].get("target", {}).get("metadata", {}).get("repeated_region_diagnostics", {})
+        if md:
+            assert isinstance(md, dict)
+
+        html_text = html_path.read_text(encoding="utf-8")
+        assert html_path.exists()
+        assert "Repeated Region Diagnostics" in html_text
+
+        forbidden_tokens = {
+            "raw_xml", "hierarchy_xml", "raw_dom", "screenshot", "screenshot_bytes", "page_source",
+            "provider_payload", "raw_context_name", "package_name", "process_name", "exception_trace",
+            "raw_instruction", "raw_anchor_text", "raw_candidate_text", "selected_candidate_ref",
+            "credentials", "secrets", "raw_capabilities", "appium:options", "capabilities",
+            "full_hierarchy_payload",
+        }
+
+        json_text = json_path.read_text(encoding="utf-8").lower()
+        html_text_lower = html_text.lower()
+        for token in forbidden_tokens:
+            assert token not in json_text
+            assert token not in html_text_lower
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
