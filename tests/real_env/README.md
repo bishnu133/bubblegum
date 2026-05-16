@@ -261,6 +261,32 @@ BUBBLEGUM_ANDROID_APP=<path-to-apk> \
 pytest tests/real_env/android/test_android_emulator_smoke.py -k reporting -q
 ```
 
+Android repeated-region reporting artifact validation (JSON/HTML in pytest `tmp_path`):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_REPEATED_REGION_SMOKE=1 \
+BUBBLEGUM_ANDROID_REPEATED_TARGET_TEXT="<target text>" \
+BUBBLEGUM_ANDROID_REPEATED_ANCHOR_TEXT="<anchor text>" \
+pytest tests/real_env/android/test_android_repeated_region_smoke.py -k reporting_artifacts_are_safe -q
+```
+
+Expected skip behavior:
+
+- Skips unless `BUBBLEGUM_REAL_ENV=1` and all Android/Appium vars are present.
+- Skips unless repeated-region opt-in is explicit (`BUBBLEGUM_ANDROID_REPEATED_REGION_SMOKE=1`).
+- Skips unless both repeated-region text hints are provided (`BUBBLEGUM_ANDROID_REPEATED_TARGET_TEXT` and `BUBBLEGUM_ANDROID_REPEATED_ANCHOR_TEXT`).
+
+Repeated-region artifact expectations:
+
+- Writes one JSON report and one HTML report under pytest `tmp_path` only.
+- Validates JSON parseability, repeated-region analytics (`repeated_region_summary`), and `Repeated Region Diagnostics` HTML section presence.
+- Enforces safety/privacy redaction: no raw hierarchy payloads, screenshots, provider payloads, raw context/package/process identifiers, credentials/secrets, or raw Appium capability payloads in generated artifacts.
+- Screen under test must include repeated card/list/row-style structures so repeated-region diagnostics metadata can be produced safely.
+
 Android system-dialog detection smoke (metadata-only, no auto-click):
 
 ```bash
