@@ -163,6 +163,21 @@ _SAFE_SCROLL_DISCOVERY_FIELDS = (
     "safe_metadata_only",
 )
 
+
+
+_SAFE_SCROLL_RESOLUTION_FIELDS = (
+    "enabled",
+    "attempted",
+    "attempt_count",
+    "max_scrolls",
+    "found_after_scroll",
+    "final_status",
+    "reason",
+    "evidence",
+    "warnings",
+    "safe_metadata_only",
+)
+
 _SAFE_SYSTEM_DIALOG_ACTION_FIELDS = (
     "action_requested",
     "candidate_found",
@@ -173,6 +188,23 @@ _SAFE_SYSTEM_DIALOG_ACTION_FIELDS = (
     "warnings",
     "safe_metadata_only",
 )
+
+
+
+_UNSAFE_SCROLL_RESOLUTION_KEYS = {
+    "raw_xml",
+    "hierarchy_xml",
+    "raw_dom",
+    "screenshot",
+    "screenshot_bytes",
+    "page_source",
+    "provider_payload",
+    "raw_context_name",
+    "package_name",
+    "process_name",
+    "exception_trace",
+    "raw_instruction",
+}
 
 _UNSAFE_SCROLL_DISCOVERY_KEYS = {
     "raw_xml",
@@ -456,6 +488,37 @@ def safe_scroll_discovery_metadata(metadata: dict) -> dict[str, Any]:
     return out
 
 
+
+
+def safe_scroll_resolution_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe mobile scroll resolution metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("scroll_resolution")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_SCROLL_RESOLUTION_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_SCROLL_RESOLUTION_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"enabled", "attempted", "found_after_scroll", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"attempt_count", "max_scrolls"}:
+            try:
+                out[key] = int(value)
+            except (TypeError, ValueError):
+                continue
+        elif key in {"evidence", "warnings"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
 def safe_system_dialog_action_metadata(metadata: dict) -> dict[str, Any]:
     """Return compact safe system dialog action metadata."""
     if not isinstance(metadata, dict):
@@ -703,6 +766,7 @@ def _render_step(idx: int, result: StepResult) -> str:
             "</details>"
         )
     scroll_discovery_html = ""
+    scroll_resolution_html = ""
     scroll_discovery = safe_scroll_discovery_metadata(target_metadata)
     if scroll_discovery:
         evidence = scroll_discovery.get("evidence", [])
@@ -730,6 +794,34 @@ def _render_step(idx: int, result: StepResult) -> str:
             '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Scroll Discovery</summary>'
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{scroll_rows}</ul>'
             "</details>"
+        )
+
+    scroll_resolution = safe_scroll_resolution_metadata(target_metadata)
+    if scroll_resolution:
+        evidence = scroll_resolution.get("evidence", [])
+        warnings = scroll_resolution.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        resolution_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(scroll_resolution[key]))}</li>'
+            for label, key in [
+                ("Enabled", "enabled"),
+                ("Attempted", "attempted"),
+                ("Attempt count", "attempt_count"),
+                ("Max scrolls", "max_scrolls"),
+                ("Found after scroll", "found_after_scroll"),
+                ("Final status", "final_status"),
+                ("Reason", "reason"),
+                ("Safe metadata only", "safe_metadata_only"),
+            ]
+            if key in scroll_resolution
+        )
+        resolution_rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        resolution_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        scroll_resolution_html = (
+            '<details style="margin-top:6px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Scroll Resolution</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{resolution_rows}</ul>'
+            '</details>'
         )
 
     wait_html = ""
@@ -809,6 +901,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {system_dialog_guardrails_html}
       {system_dialog_action_html}
       {scroll_discovery_html}
+      {scroll_resolution_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -1042,6 +1135,15 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     scroll_discovery_warning_counts: Counter[str] = Counter()
     scroll_discovery_max_scrolls_buckets = {"0": 0, "1-2": 0, "3-5": 0, "6+": 0}
     scroll_discovery_candidate_container_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
+    scroll_resolution_total_with_metadata = 0
+    scroll_resolution_enabled_count = 0
+    scroll_resolution_attempted_count = 0
+    scroll_resolution_found_after_scroll_count = 0
+    scroll_resolution_final_status_counts: Counter[str] = Counter()
+    scroll_resolution_reason_counts: Counter[str] = Counter()
+    scroll_resolution_warning_counts: Counter[str] = Counter()
+    scroll_resolution_max_scrolls_buckets = {"0": 0, "1-2": 0, "3-5": 0, "6+": 0}
+    scroll_resolution_attempt_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
 
     for result in results:
         status_counts[result.status] += 1
@@ -1070,6 +1172,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
         system_dialog_action = safe_system_dialog_action_metadata(metadata)
         scroll_discovery = safe_scroll_discovery_metadata(metadata)
+        scroll_resolution = safe_scroll_resolution_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -1182,6 +1285,42 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
                     scroll_discovery_candidate_container_count_buckets["2-3"] += 1
                 else:
                     scroll_discovery_candidate_container_count_buckets["4+"] += 1
+
+        if scroll_resolution:
+            scroll_resolution_total_with_metadata += 1
+            if scroll_resolution.get("enabled") is True:
+                scroll_resolution_enabled_count += 1
+            if scroll_resolution.get("attempted") is True:
+                scroll_resolution_attempted_count += 1
+            if scroll_resolution.get("found_after_scroll") is True:
+                scroll_resolution_found_after_scroll_count += 1
+            _count_categorical_field(scroll_resolution_final_status_counts, scroll_resolution.get("final_status"))
+            _count_categorical_field(scroll_resolution_reason_counts, scroll_resolution.get("reason"))
+            warnings = scroll_resolution.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(scroll_resolution_warning_counts, warning)
+            max_scrolls = scroll_resolution.get("max_scrolls")
+            if isinstance(max_scrolls, int):
+                if max_scrolls <= 0:
+                    scroll_resolution_max_scrolls_buckets["0"] += 1
+                elif max_scrolls <= 2:
+                    scroll_resolution_max_scrolls_buckets["1-2"] += 1
+                elif max_scrolls <= 5:
+                    scroll_resolution_max_scrolls_buckets["3-5"] += 1
+                else:
+                    scroll_resolution_max_scrolls_buckets["6+"] += 1
+            attempt_count = scroll_resolution.get("attempt_count")
+            if isinstance(attempt_count, int):
+                if attempt_count <= 0:
+                    scroll_resolution_attempt_count_buckets["0"] += 1
+                elif attempt_count == 1:
+                    scroll_resolution_attempt_count_buckets["1"] += 1
+                elif attempt_count <= 3:
+                    scroll_resolution_attempt_count_buckets["2-3"] += 1
+                else:
+                    scroll_resolution_attempt_count_buckets["4+"] += 1
+
         if graph_query_diagnostics:
             graph_query_total_events += 1
             _count_categorical_field(graph_query_status_counts, graph_query_diagnostics.get("status"))
@@ -1272,6 +1411,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "candidate_container_count_buckets": dict(scroll_discovery_candidate_container_count_buckets),
     }
 
+    scroll_resolution_summary = {
+        "total_with_scroll_resolution": scroll_resolution_total_with_metadata,
+        "enabled_count": scroll_resolution_enabled_count,
+        "attempted_count": scroll_resolution_attempted_count,
+        "found_after_scroll_count": scroll_resolution_found_after_scroll_count,
+        "final_status_counts": dict(scroll_resolution_final_status_counts),
+        "reason_counts": dict(scroll_resolution_reason_counts),
+        "warning_counts": dict(scroll_resolution_warning_counts),
+        "max_scrolls_buckets": dict(scroll_resolution_max_scrolls_buckets),
+        "attempt_count_buckets": dict(scroll_resolution_attempt_count_buckets),
+    }
+
     graph_query_summary = {
         "total_events": graph_query_total_events,
         "status_counts": dict(graph_query_status_counts),
@@ -1295,4 +1446,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "system_dialog_guardrails_summary": system_dialog_guardrails_summary,
         "system_dialog_action_summary": system_dialog_action_summary,
         "scroll_discovery_summary": scroll_discovery_summary,
+        "scroll_resolution_summary": scroll_resolution_summary,
     }
