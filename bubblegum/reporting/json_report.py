@@ -17,6 +17,7 @@ from bubblegum.reporting.html_report import (
     safe_system_dialog_detection_metadata,
     safe_system_dialog_guardrails_metadata,
     safe_system_dialog_action_metadata,
+    safe_repeated_region_diagnostics_metadata,
     safe_scroll_discovery_metadata,
     safe_scroll_resolution_metadata,
     sanitize_reporting_metadata,
@@ -37,6 +38,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
             system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
             system_dialog_action = safe_system_dialog_action_metadata(metadata)
+            repeated_region_diagnostics = safe_repeated_region_diagnostics_metadata(metadata)
             scroll_discovery = safe_scroll_discovery_metadata(metadata)
             scroll_resolution = safe_scroll_resolution_metadata(metadata)
             for key in list(metadata.keys()):
@@ -48,6 +50,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             metadata.pop("system_dialog_detection", None)
             metadata.pop("system_dialog_guardrails", None)
             metadata.pop("system_dialog_action", None)
+            metadata.pop("repeated_region_diagnostics", None)
             metadata.pop("scroll_discovery", None)
             metadata.pop("scroll_resolution", None)
             metadata.update(hydration)
@@ -63,6 +66,8 @@ def _safe_result_dump(result: StepResult) -> dict:
                 metadata["system_dialog_guardrails"] = system_dialog_guardrails
             if system_dialog_action:
                 metadata["system_dialog_action"] = system_dialog_action
+            if repeated_region_diagnostics:
+                metadata["repeated_region_diagnostics"] = repeated_region_diagnostics
             if scroll_discovery:
                 metadata["scroll_discovery"] = scroll_discovery
             if scroll_resolution:

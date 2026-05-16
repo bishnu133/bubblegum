@@ -969,3 +969,38 @@ def test_json_report_scroll_resolution_analytics_and_unsafe_ignored(tmp_path):
     assert s["warning_counts"] == {"w1": 1, "w2": 1}
     assert s["max_scrolls_buckets"] == {"0": 1, "1-2": 0, "3-5": 1, "6+": 0}
     assert s["attempt_count_buckets"] == {"0": 1, "1": 0, "2-3": 1, "4+": 0}
+
+def test_json_report_repeated_region_diagnostics_redacts_unsafe_fields(tmp_path):
+    out = tmp_path / "r.json"
+    result = StepResult(
+        status="passed",
+        action="tap",
+        confidence=1.0,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=1.0,
+            resolver_name="x",
+            metadata={
+                "repeated_region_diagnostics": {
+                    "status": "resolved",
+                    "region_type": "row",
+                    "matched_region_count": 1,
+                    "candidate_count": 2,
+                    "anchor_hint_type": "text",
+                    "target_action_hint": "edit",
+                    "reason": "same_region_anchor_match",
+                    "evidence": ["ok"],
+                    "warnings": [],
+                    "safe_metadata_only": True,
+                    "raw_xml": "SECRET",
+                    "raw_instruction": "SECRET",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=out)
+    payload = json.loads(out.read_text())
+    md = payload["results"][0]["target"]["metadata"]["repeated_region_diagnostics"]
+    assert "raw_xml" not in md
+    assert "raw_instruction" not in md
+    assert md["status"] == "resolved"
