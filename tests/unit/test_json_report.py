@@ -491,6 +491,55 @@ def test_json_report_includes_webview_diagnostics_analytics_and_ignores_unsafe_k
     assert summary["reason_counts"] == {"dom_detected": 1}
     assert summary["warning_counts"] == {"deferred": 1}
 
+def test_json_report_preserves_and_redacts_webview_eligibility_and_context_selection(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r", confidence=0.9, resolver_name="x",
+            metadata={
+                "webview_switch_eligibility": {
+                    "decision": "eligible", "reason": "opt_in_enabled", "instruction_hint_type": "web",
+                    "opt_in_present": True, "diagnostics_candidate": True, "guardrails_allowed": True,
+                    "webview_context_available": True, "multi_webview": False, "system_dialog_blocking": False,
+                    "switch_attempted": False, "warnings": ["w1"], "evidence": ["e1"], "raw_xml": "<x/>",
+                },
+                "webview_context_selection": {
+                    "decision": "selected", "reason": "single_candidate", "selection_policy": "first",
+                    "selected_context_type": "WEBVIEW", "selected_context_index": 0, "candidate_context_count": 1,
+                    "eligibility_decision": "eligible", "switch_attempted": False, "warnings": ["w2"], "evidence": ["e2"],
+                    "raw_context_names": ["SECRET"],
+                },
+            }
+        )
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    md = payload["results"][0]["target"]["metadata"]
+    assert md["webview_switch_eligibility"]["decision"] == "eligible"
+    assert "raw_xml" not in md["webview_switch_eligibility"]
+    assert md["webview_context_selection"]["selection_policy"] == "first"
+    assert "raw_context_names" not in md["webview_context_selection"]
+
+
+def test_json_report_includes_webview_eligibility_and_context_selection_analytics(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(status="passed", action="a", confidence=1.0, target=ResolvedTarget(
+        ref="r", confidence=1.0, resolver_name="x", metadata={
+            "webview_switch_eligibility": {"decision": "eligible", "reason": "r1", "instruction_hint_type": "web", "opt_in_present": True, "switch_attempted": False, "warnings": ["warn"], "raw_instruction": "x"},
+            "webview_context_selection": {"decision": "selected", "reason": "r2", "selection_policy": "first", "selected_context_type": "WEBVIEW", "eligibility_decision": "eligible", "candidate_context_count": 2, "switch_attempted": False, "warnings": ["warn2"], "context_name": "SECRET"},
+        }))
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    es = payload["analytics"]["webview_switch_eligibility_summary"]
+    cs = payload["analytics"]["webview_context_selection_summary"]
+    assert es["total_with_eligibility"] == 1 and es["decision_counts"] == {"eligible": 1}
+    assert es["warning_counts"] == {"warn": 1}
+    assert cs["total_with_context_selection"] == 1 and cs["selection_policy_counts"] == {"first": 1}
+    assert cs["candidate_context_count_buckets"] == {"0": 0, "1": 0, "2-3": 1, "4+": 0}
+
 def test_json_report_preserves_safe_system_dialog_detection_metadata(tmp_path):
     report_path = tmp_path / "bubblegum_report.json"
     result = StepResult(
