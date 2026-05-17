@@ -805,6 +805,37 @@ def test_html_report_escapes_webview_diagnostic_values(tmp_path):
     assert "&lt;bad&gt;" in text
     assert "<script>alert(1)</script>" not in text
 
+def test_html_report_renders_webview_eligibility_and_context_selection_sections(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(
+        ref="r", confidence=0.9, resolver_name="x", metadata={
+            "webview_switch_eligibility": {"decision": "eligible", "reason": "ok", "eligible_surface": "web", "switch_attempted": False, "warnings": ["none"], "evidence": ["ev"]},
+            "webview_context_selection": {"decision": "selected", "reason": "single", "selection_policy": "first", "selected_context_type": "WEBVIEW", "candidate_context_count": 1, "switch_attempted": False, "warnings": ["none"], "evidence": ["ev"]},
+        }))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Switch Eligibility" in text
+    assert "WebView Context Selection" in text
+
+def test_html_report_hides_webview_eligibility_and_context_selection_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    write_html_report([StepResult(status="passed", action="Tap", confidence=0.9)], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Switch Eligibility" not in text
+    assert "WebView Context Selection" not in text
+
+def test_html_report_escapes_webview_eligibility_and_context_selection_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(
+        ref="r", confidence=0.9, resolver_name="x", metadata={
+            "webview_switch_eligibility": {"decision": "<script>", "warnings": ["<warn>"], "evidence": []},
+            "webview_context_selection": {"decision": "<b>", "warnings": ["<warn2>"], "evidence": []},
+        }))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "&lt;script&gt;" in text
+    assert "&lt;b&gt;" in text
+
 def test_html_report_renders_system_dialog_section_when_present(tmp_path):
     out = tmp_path / "report.html"
     result = StepResult(

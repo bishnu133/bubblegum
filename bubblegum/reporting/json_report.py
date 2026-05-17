@@ -14,6 +14,8 @@ from bubblegum.reporting.html_report import (
     safe_graph_signals_metadata,
     safe_hydration_metadata,
     safe_webview_switch_diagnostics_metadata,
+    safe_webview_switch_eligibility_metadata,
+    safe_webview_context_selection_metadata,
     safe_system_dialog_detection_metadata,
     safe_system_dialog_guardrails_metadata,
     safe_system_dialog_action_metadata,
@@ -38,6 +40,8 @@ def _safe_result_dump(result: StepResult) -> dict:
             graph_signals = safe_graph_signals_metadata(metadata)
             graph_query_diagnostics = safe_graph_query_diagnostics_metadata(metadata)
             webview_diagnostics = safe_webview_switch_diagnostics_metadata(metadata)
+            webview_switch_eligibility = safe_webview_switch_eligibility_metadata(metadata)
+            webview_context_selection = safe_webview_context_selection_metadata(metadata)
             system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
             system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
             system_dialog_action = safe_system_dialog_action_metadata(metadata)
@@ -53,6 +57,8 @@ def _safe_result_dump(result: StepResult) -> dict:
             metadata.pop("graph_signals", None)
             metadata.pop("graph_query_diagnostics", None)
             metadata.pop("webview_switch_diagnostics", None)
+            metadata.pop("webview_switch_eligibility", None)
+            metadata.pop("webview_context_selection", None)
             metadata.pop("system_dialog_detection", None)
             metadata.pop("system_dialog_guardrails", None)
             metadata.pop("system_dialog_action", None)
@@ -70,6 +76,10 @@ def _safe_result_dump(result: StepResult) -> dict:
                 metadata["graph_query_diagnostics"] = graph_query_diagnostics
             if webview_diagnostics:
                 metadata["webview_switch_diagnostics"] = webview_diagnostics
+            if webview_switch_eligibility:
+                metadata["webview_switch_eligibility"] = webview_switch_eligibility
+            if webview_context_selection:
+                metadata["webview_context_selection"] = webview_context_selection
             if system_dialog_detection:
                 metadata["system_dialog_detection"] = system_dialog_detection
             if system_dialog_guardrails:
