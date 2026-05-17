@@ -941,6 +941,33 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{repeated_rows}</ul>'
             '</details>'
         )
+    icon_detection_html = ""
+    icon_detection = safe_icon_detection_metadata(target_metadata)
+    if icon_detection:
+        evidence = icon_detection.get("evidence", [])
+        warnings = icon_detection.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Status", "status"),
+            ("Icon hint type", "icon_hint_type"),
+            ("Target icon", "target_icon"),
+            ("Candidate count", "candidate_count"),
+            ("Matched candidate count", "matched_candidate_count"),
+            ("Reason", "reason"),
+        ]
+        icon_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(icon_detection[key]))}</li>'
+            for label, key in labels
+            if key in icon_detection
+        )
+        icon_rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        icon_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        icon_detection_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Icon Detection</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{icon_rows}</ul>'
+            '</details>'
+        )
 
     wait_html = ""
     if target_metadata.get("wait_used") is True:
@@ -1021,6 +1048,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {scroll_discovery_html}
       {scroll_resolution_html}
       {repeated_region_html}
+      {icon_detection_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -1272,6 +1300,14 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     repeated_region_warning_counts: Counter[str] = Counter()
     repeated_region_matched_region_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
     repeated_region_candidate_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
+    icon_detection_total_with_metadata = 0
+    icon_detection_status_counts: Counter[str] = Counter()
+    icon_detection_icon_hint_type_counts: Counter[str] = Counter()
+    icon_detection_target_icon_counts: Counter[str] = Counter()
+    icon_detection_reason_counts: Counter[str] = Counter()
+    icon_detection_warning_counts: Counter[str] = Counter()
+    icon_detection_candidate_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
+    icon_detection_matched_candidate_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
 
     for result in results:
         status_counts[result.status] += 1
@@ -1302,6 +1338,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         scroll_discovery = safe_scroll_discovery_metadata(metadata)
         scroll_resolution = safe_scroll_resolution_metadata(metadata)
         repeated_region = safe_repeated_region_diagnostics_metadata(metadata)
+        icon_detection = safe_icon_detection_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -1446,6 +1483,36 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
                     repeated_region_candidate_count_buckets["2-3"] += 1
                 else:
                     repeated_region_candidate_count_buckets["4+"] += 1
+        if icon_detection:
+            icon_detection_total_with_metadata += 1
+            _count_categorical_field(icon_detection_status_counts, icon_detection.get("status"))
+            _count_categorical_field(icon_detection_icon_hint_type_counts, icon_detection.get("icon_hint_type"))
+            _count_categorical_field(icon_detection_target_icon_counts, icon_detection.get("target_icon"))
+            _count_categorical_field(icon_detection_reason_counts, icon_detection.get("reason"))
+            warnings = icon_detection.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(icon_detection_warning_counts, warning)
+            candidate_count = icon_detection.get("candidate_count")
+            if isinstance(candidate_count, int):
+                if candidate_count <= 0:
+                    icon_detection_candidate_count_buckets["0"] += 1
+                elif candidate_count == 1:
+                    icon_detection_candidate_count_buckets["1"] += 1
+                elif candidate_count <= 3:
+                    icon_detection_candidate_count_buckets["2-3"] += 1
+                else:
+                    icon_detection_candidate_count_buckets["4+"] += 1
+            matched_candidate_count = icon_detection.get("matched_candidate_count")
+            if isinstance(matched_candidate_count, int):
+                if matched_candidate_count <= 0:
+                    icon_detection_matched_candidate_count_buckets["0"] += 1
+                elif matched_candidate_count == 1:
+                    icon_detection_matched_candidate_count_buckets["1"] += 1
+                elif matched_candidate_count <= 3:
+                    icon_detection_matched_candidate_count_buckets["2-3"] += 1
+                else:
+                    icon_detection_matched_candidate_count_buckets["4+"] += 1
         if scroll_resolution:
             scroll_resolution_total_with_metadata += 1
             if scroll_resolution.get("enabled") is True:
@@ -1594,6 +1661,16 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "max_scrolls_buckets": dict(scroll_resolution_max_scrolls_buckets),
         "attempt_count_buckets": dict(scroll_resolution_attempt_count_buckets),
     }
+    icon_detection_summary = {
+        "total_with_icon_detection": icon_detection_total_with_metadata,
+        "status_counts": dict(icon_detection_status_counts),
+        "icon_hint_type_counts": dict(icon_detection_icon_hint_type_counts),
+        "target_icon_counts": dict(icon_detection_target_icon_counts),
+        "reason_counts": dict(icon_detection_reason_counts),
+        "warning_counts": dict(icon_detection_warning_counts),
+        "candidate_count_buckets": dict(icon_detection_candidate_count_buckets),
+        "matched_candidate_count_buckets": dict(icon_detection_matched_candidate_count_buckets),
+    }
 
     graph_query_summary = {
         "total_events": graph_query_total_events,
@@ -1620,4 +1697,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "scroll_discovery_summary": scroll_discovery_summary,
         "scroll_resolution_summary": scroll_resolution_summary,
         "repeated_region_summary": repeated_region_summary,
+        "icon_detection_summary": icon_detection_summary,
     }

@@ -1095,3 +1095,55 @@ def test_json_report_sanitizes_icon_detection_metadata(tmp_path):
     assert "raw_instruction" not in icon
     assert "raw_content_desc" not in icon
     assert "raw_resource_id" not in icon
+
+
+def test_json_report_icon_detection_allowlists_safe_fields_only(tmp_path):
+    out = tmp_path / "r.json"
+    result = StepResult(
+        status="passed",
+        action="tap",
+        confidence=1.0,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=1.0,
+            resolver_name="x",
+            metadata={"icon_detection": {
+                "status": "resolved",
+                "icon_hint_type": "content_desc",
+                "target_icon": "search",
+                "candidate_count": 2,
+                "matched_candidate_count": 1,
+                "reason": "content_desc_match",
+                "evidence": ["ok"],
+                "warnings": ["w"],
+                "safe_metadata_only": True,
+                "raw_xml": "secret",
+                "page_source": "<xml/>",
+                "provider_payload": {"s": 1},
+            }},
+        ),
+    )
+    write_json_report([result], path=out)
+    icon = json.loads(out.read_text())["results"][0]["target"]["metadata"]["icon_detection"]
+    assert set(icon.keys()) == {
+        "status", "icon_hint_type", "target_icon", "candidate_count", "matched_candidate_count",
+        "reason", "evidence", "warnings", "safe_metadata_only"
+    }
+
+
+def test_json_report_includes_icon_detection_summary_and_ignores_unsafe_keys(tmp_path):
+    out = tmp_path / "r.json"
+    results = [
+        StepResult(status="passed", action="a", confidence=0.9, target=ResolvedTarget(ref="r1", confidence=0.9, resolver_name="x", metadata={"icon_detection": {"status": "resolved", "icon_hint_type": "content_desc", "target_icon": "search", "candidate_count": 2, "matched_candidate_count": 1, "reason": "content_desc_match", "warnings": ["w1"], "raw_xml": "secret"}})),
+        StepResult(status="failed", action="b", confidence=0.2, target=ResolvedTarget(ref="r2", confidence=0.2, resolver_name="x", metadata={"icon_detection": {"status": "no_match", "icon_hint_type": "resource_id", "target_icon": "menu", "candidate_count": 4, "matched_candidate_count": 0, "reason": "no_icon_match", "warnings": ["w2"], "provider_payload": {"x": 1}}})),
+    ]
+    write_json_report(results, path=out)
+    summary = json.loads(out.read_text())["analytics"]["icon_detection_summary"]
+    assert summary["total_with_icon_detection"] == 2
+    assert summary["status_counts"] == {"resolved": 1, "no_match": 1}
+    assert summary["icon_hint_type_counts"] == {"content_desc": 1, "resource_id": 1}
+    assert summary["target_icon_counts"] == {"search": 1, "menu": 1}
+    assert summary["reason_counts"] == {"content_desc_match": 1, "no_icon_match": 1}
+    assert summary["warning_counts"] == {"w1": 1, "w2": 1}
+    assert summary["candidate_count_buckets"] == {"0": 0, "1": 0, "2-3": 1, "4+": 1}
+    assert summary["matched_candidate_count_buckets"] == {"0": 1, "1": 1, "2-3": 0, "4+": 0}
