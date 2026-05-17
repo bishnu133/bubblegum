@@ -921,3 +921,88 @@ pytest tests/real_env/cloud/test_cloud_device_smoke.py -q
 - No WebView switching; no `driver.switch_to.context` calls.
 - Metadata checks assert no leakage of raw XML/DOM/page source/screenshot bytes/provider payloads/raw context names/package/process/raw capabilities/credentials/secrets.
 - Username/access key are required for session setup but must not be printed or persisted.
+
+## Cloud Device Reporting Artifact Validation (Phase 19N-Z)
+
+Skip-by-default cloud reporting artifact validation lives in:
+
+- `tests/real_env/cloud/test_cloud_device_smoke.py::test_cloud_device_reporting_artifacts_are_safe`
+
+Default behavior (no env vars):
+
+```bash
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -k reporting -q
+```
+
+Expected result: skipped with a clear gating message unless all required cloud real-env variables are provided.
+
+Required env vars:
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_CLOUD_DEVICE=1`
+- `BUBBLEGUM_CLOUD_PROVIDER` in `{pcloudy,browserstack,saucelabs,lambdatest,generic}`
+- `BUBBLEGUM_CLOUD_USERNAME`
+- `BUBBLEGUM_CLOUD_ACCESS_KEY`
+- `BUBBLEGUM_CLOUD_PLATFORM` in `{android,ios}`
+- `BUBBLEGUM_CLOUD_DEVICE_NAME`
+- One app launch selector:
+  - `BUBBLEGUM_CLOUD_APP`, or
+  - `BUBBLEGUM_CLOUD_APP_ID`, or
+  - `BUBBLEGUM_CLOUD_ANDROID_PACKAGE` + `BUBBLEGUM_CLOUD_ANDROID_ACTIVITY`, or
+  - `BUBBLEGUM_CLOUD_IOS_BUNDLE_ID`
+
+Report command (provider-neutral):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_CLOUD_DEVICE=1 \
+BUBBLEGUM_CLOUD_PROVIDER=<provider> \
+BUBBLEGUM_CLOUD_USERNAME=<from-env-only> \
+BUBBLEGUM_CLOUD_ACCESS_KEY=<from-env-only> \
+BUBBLEGUM_CLOUD_PLATFORM=android \
+BUBBLEGUM_CLOUD_DEVICE_NAME='<device>' \
+BUBBLEGUM_CLOUD_APP='<app-or-id>' \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -k reporting -q
+```
+
+Provider examples:
+
+```bash
+# pCloudy
+BUBBLEGUM_REAL_ENV=1 BUBBLEGUM_CLOUD_DEVICE=1 BUBBLEGUM_CLOUD_PROVIDER=pcloudy \
+BUBBLEGUM_CLOUD_USERNAME="$BUBBLEGUM_CLOUD_USERNAME" BUBBLEGUM_CLOUD_ACCESS_KEY="$BUBBLEGUM_CLOUD_ACCESS_KEY" \
+BUBBLEGUM_CLOUD_PLATFORM=android BUBBLEGUM_CLOUD_DEVICE_NAME='Pixel 7' BUBBLEGUM_CLOUD_APP='cloud:app-id' \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -k reporting -q
+
+# BrowserStack
+BUBBLEGUM_REAL_ENV=1 BUBBLEGUM_CLOUD_DEVICE=1 BUBBLEGUM_CLOUD_PROVIDER=browserstack \
+BUBBLEGUM_CLOUD_USERNAME="$BUBBLEGUM_CLOUD_USERNAME" BUBBLEGUM_CLOUD_ACCESS_KEY="$BUBBLEGUM_CLOUD_ACCESS_KEY" \
+BUBBLEGUM_CLOUD_PLATFORM=android BUBBLEGUM_CLOUD_DEVICE_NAME='Google Pixel 7' BUBBLEGUM_CLOUD_APP='bs://<app-id>' \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -k reporting -q
+
+# Sauce Labs
+BUBBLEGUM_REAL_ENV=1 BUBBLEGUM_CLOUD_DEVICE=1 BUBBLEGUM_CLOUD_PROVIDER=saucelabs \
+BUBBLEGUM_CLOUD_USERNAME="$BUBBLEGUM_CLOUD_USERNAME" BUBBLEGUM_CLOUD_ACCESS_KEY="$BUBBLEGUM_CLOUD_ACCESS_KEY" \
+BUBBLEGUM_CLOUD_PLATFORM=android BUBBLEGUM_CLOUD_DEVICE_NAME='Google Pixel 7 GoogleAPI Emulator' BUBBLEGUM_CLOUD_APP='storage:filename=app.apk' \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -k reporting -q
+
+# LambdaTest
+BUBBLEGUM_REAL_ENV=1 BUBBLEGUM_CLOUD_DEVICE=1 BUBBLEGUM_CLOUD_PROVIDER=lambdatest \
+BUBBLEGUM_CLOUD_USERNAME="$BUBBLEGUM_CLOUD_USERNAME" BUBBLEGUM_CLOUD_ACCESS_KEY="$BUBBLEGUM_CLOUD_ACCESS_KEY" \
+BUBBLEGUM_CLOUD_PLATFORM=android BUBBLEGUM_CLOUD_DEVICE_NAME='Galaxy S23' BUBBLEGUM_CLOUD_APP='lt://<app-id>' \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -k reporting -q
+
+# Generic Appium cloud (requires explicit URL)
+BUBBLEGUM_REAL_ENV=1 BUBBLEGUM_CLOUD_DEVICE=1 BUBBLEGUM_CLOUD_PROVIDER=generic \
+BUBBLEGUM_CLOUD_APPIUM_URL='https://your-cloud.example/wd/hub' \
+BUBBLEGUM_CLOUD_USERNAME="$BUBBLEGUM_CLOUD_USERNAME" BUBBLEGUM_CLOUD_ACCESS_KEY="$BUBBLEGUM_CLOUD_ACCESS_KEY" \
+BUBBLEGUM_CLOUD_PLATFORM=android BUBBLEGUM_CLOUD_DEVICE_NAME='Android Device' BUBBLEGUM_CLOUD_APP_ID='cloud-app-id' \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -k reporting -q
+```
+
+Artifact expectations:
+
+- Test writes one JSON report and one HTML report under pytest `tmp_path`.
+- JSON must parse and include analytics summaries.
+- Artifact payload is safe-by-design: no raw XML/DOM/hierarchy dumps, no screenshot bytes, no raw context names, no package/process names, no raw capabilities, and no credentials/tokens.
+- Credentials must come from environment variables only; never hardcode secrets in test code or config files.
