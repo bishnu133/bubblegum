@@ -1150,3 +1150,63 @@ def test_html_report_escapes_repeated_region_diagnostic_values(tmp_path):
     assert "card&lt;1&gt;" in text
     assert "&lt;bad&gt;" in text
     assert "<script>alert(1)</script>" not in text
+
+
+def test_html_report_renders_icon_detection_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap Icon",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"icon_detection": {
+                "status": "matched",
+                "icon_hint_type": "content_desc",
+                "target_icon": "settings",
+                "candidate_count": 3,
+                "matched_candidate_count": 1,
+                "reason": "icon_hint_matched",
+                "evidence": ["c1", "c2"],
+                "warnings": ["metadata_only"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "Icon Detection" in text
+    assert "Evidence count:</strong> 2" in text
+
+
+def test_html_report_hides_icon_detection_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9)
+    write_html_report([result], path=out)
+    assert "Icon Detection" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_icon_detection_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"icon_detection": {
+                "status": "<script>alert(1)</script>",
+                "target_icon": "gear<1>",
+                "warnings": ["<bad>"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in text
+    assert "gear&lt;1&gt;" in text
+    assert "&lt;bad&gt;" in text
+    assert "<script>alert(1)</script>" not in text
