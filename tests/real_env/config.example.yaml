@@ -1,8 +1,8 @@
 provider: local
 platform: web
-# For cloud smoke, generic provider requires BUBBLEGUM_APPIUM_SERVER_URL.
 appium_server_url: ${BUBBLEGUM_APPIUM_SERVER_URL}
 browser: chromium
+
 android_app: ${BUBBLEGUM_ANDROID_APP}
 android_package: ${BUBBLEGUM_ANDROID_PACKAGE}
 android_activity: ${BUBBLEGUM_ANDROID_ACTIVITY}
@@ -10,9 +10,23 @@ android_device_name: ${BUBBLEGUM_ANDROID_DEVICE_NAME}
 android_smoke_target_text: ${BUBBLEGUM_ANDROID_SMOKE_TARGET_TEXT}
 ios_app: ${BUBBLEGUM_IOS_APP}
 device_name: emulator-or-simulator-placeholder
+
 cloud_provider: ${BUBBLEGUM_CLOUD_PROVIDER}
+cloud_appium_url: ${BUBBLEGUM_CLOUD_APPIUM_URL}
 cloud_username: ${BUBBLEGUM_CLOUD_USERNAME}
 cloud_access_key: ${BUBBLEGUM_CLOUD_ACCESS_KEY}
+cloud_platform: ${BUBBLEGUM_CLOUD_PLATFORM}
+cloud_device_name: ${BUBBLEGUM_CLOUD_DEVICE_NAME}
+cloud_platform_version: ${BUBBLEGUM_CLOUD_PLATFORM_VERSION}
+cloud_automation_name: ${BUBBLEGUM_CLOUD_AUTOMATION_NAME}
+cloud_app: ${BUBBLEGUM_CLOUD_APP}
+cloud_app_id: ${BUBBLEGUM_CLOUD_APP_ID}
+cloud_session_name: ${BUBBLEGUM_CLOUD_SESSION_NAME}
+cloud_build_name: ${BUBBLEGUM_CLOUD_BUILD_NAME}
+cloud_android_package: ${BUBBLEGUM_CLOUD_ANDROID_PACKAGE}
+cloud_android_activity: ${BUBBLEGUM_CLOUD_ANDROID_ACTIVITY}
+cloud_ios_bundle_id: ${BUBBLEGUM_CLOUD_IOS_BUNDLE_ID}
+
 artifact_dir: artifacts/real_env
 enable_screenshots: false
 safe_metadata_only: true
