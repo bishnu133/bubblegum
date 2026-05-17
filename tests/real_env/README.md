@@ -33,9 +33,19 @@ If `BUBBLEGUM_REAL_ENV` is unset or not equal to `1`, tests in `tests/real_env` 
 - `BUBBLEGUM_ANDROID_ENABLE_SCROLL_ACTION` — set to `1` to enable explicit bounded scroll action (default is metadata-only, no scroll action).
 - `BUBBLEGUM_ANDROID_ENABLE_SCROLL_RESOLUTION` — set to `1` to enable explicit bounded scroll resolution smoke (default skip/metadata-only; no scroll by default).
 - `BUBBLEGUM_IOS_APP` — required for iOS target smoke skeleton.
-- `BUBBLEGUM_CLOUD_PROVIDER` — required for cloud smoke skeleton.
+- `BUBBLEGUM_CLOUD_PROVIDER` — required for cloud smoke harness (`pcloudy`, `browserstack`, `saucelabs`, `lambdatest`, `generic`).
 - `BUBBLEGUM_CLOUD_USERNAME` — required for cloud smoke skeleton.
 - `BUBBLEGUM_CLOUD_ACCESS_KEY` — required for cloud smoke skeleton.
+
+
+Cloud provider defaults for Phase 19N-Y smoke MVP:
+
+- `pcloudy` -> `https://device.pcloudy.com/appiumcloud/wd/hub`
+- `browserstack` -> `https://hub.browserstack.com/wd/hub`
+- `saucelabs` -> `https://ondemand.us-west-1.saucelabs.com/wd/hub`
+- `lambdatest` -> `https://mobile-hub.lambdatest.com/wd/hub`
+- `generic` -> requires explicit `BUBBLEGUM_APPIUM_SERVER_URL`
+
 
 ## Marker Strategy
 
@@ -797,3 +807,117 @@ Optional:
 - No WebView switching (`driver.switch_to.context`) is performed.
 - No raw XML/page source/screenshot bytes/context names/package/process/capabilities/credentials/secrets should be persisted in JSON/HTML artifacts.
 - Requires a working Appium server, Xcode iOS simulator runtime, and XCUITest automation setup.
+
+## Cloud Device Smoke MVP (Phase 19N-Y)
+
+Cloud smoke is opt-in and skip-by-default.
+
+### Required env vars
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_CLOUD_DEVICE=1`
+- `BUBBLEGUM_CLOUD_PROVIDER` in: `pcloudy`, `browserstack`, `saucelabs`, `lambdatest`, `generic`
+- `BUBBLEGUM_CLOUD_USERNAME`
+- `BUBBLEGUM_CLOUD_ACCESS_KEY`
+- `BUBBLEGUM_CLOUD_PLATFORM` in: `android`, `ios`
+- `BUBBLEGUM_CLOUD_DEVICE_NAME`
+- One launch selector:
+  - `BUBBLEGUM_CLOUD_APP`, or
+  - `BUBBLEGUM_CLOUD_APP_ID`, or
+  - `BUBBLEGUM_CLOUD_ANDROID_PACKAGE` + `BUBBLEGUM_CLOUD_ANDROID_ACTIVITY`, or
+  - `BUBBLEGUM_CLOUD_IOS_BUNDLE_ID`
+
+URL resolution:
+- Use `BUBBLEGUM_CLOUD_APPIUM_URL` first when set.
+- Else use `BUBBLEGUM_APPIUM_SERVER_URL` when set.
+- Else provider default URL for `pcloudy`/`browserstack`/`saucelabs`/`lambdatest`.
+- `generic` requires explicit `BUBBLEGUM_CLOUD_APPIUM_URL` or `BUBBLEGUM_APPIUM_SERVER_URL`.
+
+Credentials must come from environment variables only.
+
+### Command examples
+
+pCloudy example:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_CLOUD_DEVICE=1 \
+BUBBLEGUM_CLOUD_PROVIDER=pcloudy \
+BUBBLEGUM_CLOUD_USERNAME=<user> \
+BUBBLEGUM_CLOUD_ACCESS_KEY=<key> \
+BUBBLEGUM_CLOUD_PLATFORM=android \
+BUBBLEGUM_CLOUD_DEVICE_NAME="Pixel 7" \
+BUBBLEGUM_CLOUD_APP=<cloud-app-ref-or-url> \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -q
+```
+
+BrowserStack example:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_CLOUD_DEVICE=1 \
+BUBBLEGUM_CLOUD_PROVIDER=browserstack \
+BUBBLEGUM_CLOUD_USERNAME=<user> \
+BUBBLEGUM_CLOUD_ACCESS_KEY=<key> \
+BUBBLEGUM_CLOUD_PLATFORM=ios \
+BUBBLEGUM_CLOUD_DEVICE_NAME="iPhone 15" \
+BUBBLEGUM_CLOUD_APP_ID=<bs-app-id> \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -q
+```
+
+Sauce Labs example:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_CLOUD_DEVICE=1 \
+BUBBLEGUM_CLOUD_PROVIDER=saucelabs \
+BUBBLEGUM_CLOUD_USERNAME=<user> \
+BUBBLEGUM_CLOUD_ACCESS_KEY=<key> \
+BUBBLEGUM_CLOUD_PLATFORM=android \
+BUBBLEGUM_CLOUD_DEVICE_NAME="Google Pixel.*" \
+BUBBLEGUM_CLOUD_APP_ID=<storage-ref> \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -q
+```
+
+LambdaTest example:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_CLOUD_DEVICE=1 \
+BUBBLEGUM_CLOUD_PROVIDER=lambdatest \
+BUBBLEGUM_CLOUD_USERNAME=<user> \
+BUBBLEGUM_CLOUD_ACCESS_KEY=<key> \
+BUBBLEGUM_CLOUD_PLATFORM=android \
+BUBBLEGUM_CLOUD_DEVICE_NAME="Galaxy S23" \
+BUBBLEGUM_CLOUD_APP_ID=<lt-app-id> \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -q
+```
+
+generic Appium cloud example:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_CLOUD_DEVICE=1 \
+BUBBLEGUM_CLOUD_PROVIDER=generic \
+BUBBLEGUM_CLOUD_APPIUM_URL=https://cloud.example.com/wd/hub \
+BUBBLEGUM_CLOUD_USERNAME=<user> \
+BUBBLEGUM_CLOUD_ACCESS_KEY=<key> \
+BUBBLEGUM_CLOUD_PLATFORM=ios \
+BUBBLEGUM_CLOUD_DEVICE_NAME="iPhone 14" \
+BUBBLEGUM_CLOUD_IOS_BUNDLE_ID=com.example.app \
+pytest tests/real_env/cloud/test_cloud_device_smoke.py -q
+```
+
+### Expected skip behavior
+
+- Missing `BUBBLEGUM_REAL_ENV=1` or `BUBBLEGUM_CLOUD_DEVICE=1`: skipped.
+- Missing required cloud env vars: skipped.
+- Invalid provider/platform value: skipped.
+- Runtime/Appium/provider unavailability: skipped.
+
+### Safety and privacy expectations
+
+- No click/interaction behavior is performed.
+- No WebView switching; no `driver.switch_to.context` calls.
+- Metadata checks assert no leakage of raw XML/DOM/page source/screenshot bytes/provider payloads/raw context names/package/process/raw capabilities/credentials/secrets.
+- Username/access key are required for session setup but must not be printed or persisted.
