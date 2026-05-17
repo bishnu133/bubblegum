@@ -1210,3 +1210,62 @@ def test_html_report_escapes_icon_detection_values(tmp_path):
     assert "gear&lt;1&gt;" in text
     assert "&lt;bad&gt;" in text
     assert "<script>alert(1)</script>" not in text
+
+def test_html_report_renders_mobile_memory_signature_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"mobile_memory_signature": {
+                "platform": "android",
+                "surface_type": "hybrid",
+                "context_mode": "hybrid",
+                "dialog_state": "none",
+                "scroll_state": "candidate",
+                "repeated_region_status": "resolved",
+                "icon_target": "search",
+                "signature_parts": ["platform:android", "surface:hybrid"],
+                "warnings": ["metadata_only"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "Mobile Memory Signature" in text
+    assert "Signature parts count:</strong> 2" in text
+
+
+def test_html_report_hides_mobile_memory_signature_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    write_html_report([StepResult(status="passed", action="Tap", confidence=0.9)], path=out)
+    assert "Mobile Memory Signature" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_mobile_memory_signature_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref="r",
+            confidence=0.9,
+            resolver_name="x",
+            metadata={"mobile_memory_signature": {
+                "platform": "android<script>",
+                "surface_type": "hybrid<unsafe>",
+                "warnings": ["<b>bad</b>"],
+            }},
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "android&lt;script&gt;" in text
+    assert "hybrid&lt;unsafe&gt;" in text
+    assert "&lt;b&gt;bad&lt;/b&gt;" in text
+    assert "android<script>" not in text

@@ -1147,3 +1147,105 @@ def test_json_report_includes_icon_detection_summary_and_ignores_unsafe_keys(tmp
     assert summary["warning_counts"] == {"w1": 1, "w2": 1}
     assert summary["candidate_count_buckets"] == {"0": 0, "1": 0, "2-3": 1, "4+": 1}
     assert summary["matched_candidate_count_buckets"] == {"0": 1, "1": 1, "2-3": 0, "4+": 0}
+
+def test_json_report_preserves_safe_mobile_memory_signature_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap Login",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="memory_cache",
+            metadata={
+                "mobile_memory_signature": {
+                    "enabled": True,
+                    "platform": "android",
+                    "surface_type": "hybrid",
+                    "context_mode": "hybrid",
+                    "dialog_state": "none",
+                    "scroll_state": "candidate",
+                    "repeated_region_status": "resolved",
+                    "icon_target": "search",
+                    "signature_parts": ["platform:android", "surface:hybrid"],
+                    "warnings": ["metadata_only"],
+                    "safe_metadata_only": True,
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    sig = payload["results"][0]["target"]["metadata"]["mobile_memory_signature"]
+    assert sig["platform"] == "android"
+    assert sig["signature_parts"] == ["platform:android", "surface:hybrid"]
+
+
+def test_json_report_redacts_unsafe_mobile_memory_signature_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap Login",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="memory_cache",
+            metadata={
+                "mobile_memory_signature": {
+                    "platform": "android",
+                    "surface_type": "android_native",
+                    "raw_xml": "<root/>",
+                    "provider_payload": {"secret": 1},
+                    "raw_resource_id": "id",
+                    "credentials": "abc",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    sig = payload["results"][0]["target"]["metadata"]["mobile_memory_signature"]
+    assert sig["platform"] == "android"
+    assert "raw_xml" not in sig
+    assert "provider_payload" not in sig
+    assert "raw_resource_id" not in sig
+    assert "credentials" not in sig
+
+
+def test_json_report_includes_mobile_memory_signature_analytics_summary(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="passed",
+            action="Tap",
+            confidence=0.9,
+            target=ResolvedTarget(
+                ref="r",
+                confidence=0.9,
+                resolver_name="x",
+                metadata={"mobile_memory_signature": {
+                    "platform": "android",
+                    "surface_type": "hybrid",
+                    "context_mode": "hybrid",
+                    "dialog_state": "none",
+                    "scroll_state": "candidate",
+                    "repeated_region_status": "resolved",
+                    "icon_target": "search",
+                    "warnings": ["metadata_only", "candidate"],
+                    "raw_xml": "<unsafe/>",
+                }},
+            ),
+        ),
+        StepResult(status="failed", action="Noop", confidence=0.1),
+    ]
+
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    summary = payload["analytics"]["mobile_memory_signature_summary"]
+    assert summary["total_with_mobile_memory_signature"] == 1
+    assert summary["platform_counts"] == {"android": 1}
+    assert summary["surface_type_counts"] == {"hybrid": 1}
+    assert summary["warning_counts"]["metadata_only"] == 1
+    assert "raw_xml" not in summary["warning_counts"]
