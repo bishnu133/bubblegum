@@ -975,6 +975,320 @@
           }
         }
       ]
+    },
+    {
+      "case_id": "oi_mobile_ios_icon_accessibility_label_native",
+      "elements": [
+        {
+          "id": "ios_icon_search_nav",
+          "channel": "mobile",
+          "platform": "ios",
+          "source_kind": "seed_synthetic",
+          "label": "Search",
+          "name": "Search",
+          "widget_type": "XCUIElementTypeButton",
+          "metadata": {
+            "surface": "native",
+            "icon_only": true
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_ios_alert_system_dialog_metadata",
+      "elements": [
+        {
+          "id": "ios_sys_alert_title",
+          "channel": "mobile",
+          "platform": "ios",
+          "source_kind": "seed_synthetic",
+          "text": "Allow Tracking?",
+          "widget_type": "XCUIElementTypeAlert",
+          "metadata": {
+            "surface": "system_dialog"
+          }
+        },
+        {
+          "id": "ios_sys_allow_tracking",
+          "channel": "mobile",
+          "platform": "ios",
+          "source_kind": "seed_synthetic",
+          "label": "Allow",
+          "name": "Allow",
+          "widget_type": "XCUIElementTypeButton",
+          "metadata": {
+            "surface": "system_dialog"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_ios_repeated_card_primary_action",
+      "elements": [
+        {
+          "id": "ios_card_order5011",
+          "channel": "mobile",
+          "platform": "ios",
+          "source_kind": "seed_synthetic",
+          "text": "Order #5011",
+          "widget_type": "XCUIElementTypeCell"
+        },
+        {
+          "id": "ios_retry_order5011",
+          "channel": "mobile",
+          "platform": "ios",
+          "source_kind": "seed_synthetic",
+          "label": "Retry",
+          "name": "Retry",
+          "widget_type": "XCUIElementTypeButton",
+          "parent_id": "ios_card_order5011"
+        },
+        {
+          "id": "ios_card_order5012",
+          "channel": "mobile",
+          "platform": "ios",
+          "source_kind": "seed_synthetic",
+          "text": "Order #5012",
+          "widget_type": "XCUIElementTypeCell"
+        },
+        {
+          "id": "ios_retry_order5012",
+          "channel": "mobile",
+          "platform": "ios",
+          "source_kind": "seed_synthetic",
+          "label": "Retry",
+          "name": "Retry",
+          "widget_type": "XCUIElementTypeButton",
+          "parent_id": "ios_card_order5012"
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_icon_only_inside_repeated_row",
+      "elements": [
+        {
+          "id": "android_row_account8842",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "\u2022\u2022\u2022\u2022 8842",
+          "class_name": "android.view.ViewGroup"
+        },
+        {
+          "id": "android_icon_overflow_row8842",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "content_desc": "More options",
+          "class_name": "android.widget.ImageButton",
+          "parent_id": "android_row_account8842"
+        },
+        {
+          "id": "android_row_account9921",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "\u2022\u2022\u2022\u2022 9921",
+          "class_name": "android.view.ViewGroup"
+        },
+        {
+          "id": "android_icon_overflow_row9921",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "content_desc": "More options",
+          "class_name": "android.widget.ImageButton",
+          "parent_id": "android_row_account9921"
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_scroll_repeated_row_combined",
+      "elements": [
+        {
+          "id": "android_row_invoice3388",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Invoice #3388",
+          "class_name": "android.view.ViewGroup",
+          "metadata": {
+            "offscreen_candidate": true
+          }
+        },
+        {
+          "id": "android_retry_invoice3388",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Retry",
+          "class_name": "android.widget.Button",
+          "parent_id": "android_row_invoice3388",
+          "metadata": {
+            "requires_scroll_hint": true
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_ambiguous_repeated_icon_negative",
+      "elements": [
+        {
+          "id": "android_star_icon_row1",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "content_desc": "Star",
+          "class_name": "android.widget.ImageButton"
+        },
+        {
+          "id": "android_star_icon_row2",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "content_desc": "Star",
+          "class_name": "android.widget.ImageButton"
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_memory_signature_anchor_case",
+      "elements": [
+        {
+          "id": "android_card_checkout_regular",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Checkout",
+          "class_name": "android.view.ViewGroup",
+          "metadata": {
+            "memory_signature": "checkout_regular"
+          }
+        },
+        {
+          "id": "android_continue_regular",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Continue",
+          "class_name": "android.widget.Button",
+          "parent_id": "android_card_checkout_regular"
+        },
+        {
+          "id": "android_card_checkout_remembered",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Checkout",
+          "class_name": "android.view.ViewGroup",
+          "metadata": {
+            "memory_signature": "checkout_remembered"
+          }
+        },
+        {
+          "id": "android_continue_remembered",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Continue",
+          "class_name": "android.widget.Button",
+          "parent_id": "android_card_checkout_remembered"
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_hybrid_webview_diagnostic_no_switch",
+      "elements": [
+        {
+          "id": "android_native_pay_primary",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Pay",
+          "class_name": "android.widget.Button",
+          "metadata": {
+            "surface": "native",
+            "contexts": [
+              "NATIVE_APP",
+              "WEBVIEW_com.fake.pay"
+            ]
+          }
+        },
+        {
+          "id": "android_web_pay",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Pay",
+          "role": "button",
+          "metadata": {
+            "surface": "webview",
+            "context": "WEBVIEW_com.fake.pay"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_system_dialog_vs_app_modal_distinction",
+      "elements": [
+        {
+          "id": "android_sys_cancel",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Cancel",
+          "class_name": "android.widget.Button",
+          "metadata": {
+            "surface": "system_dialog"
+          }
+        },
+        {
+          "id": "android_appmodal_cancel",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Cancel",
+          "class_name": "android.widget.Button",
+          "metadata": {
+            "surface": "app_modal"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_weak_label_imagebutton",
+      "elements": [
+        {
+          "id": "android_text_travel_backpack",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "text": "Travel Backpack",
+          "bounds": {
+            "x": 24,
+            "y": 520,
+            "width": 180,
+            "height": 32
+          }
+        },
+        {
+          "id": "android_icon_favorite_backpack",
+          "channel": "mobile",
+          "platform": "android",
+          "source_kind": "seed_synthetic",
+          "content_desc": "",
+          "class_name": "android.widget.ImageButton",
+          "bounds": {
+            "x": 250,
+            "y": 516,
+            "width": 40,
+            "height": 40
+          },
+          "metadata": {
+            "weak_label": true
+          }
+        }
+      ]
     }
   ]
 }
