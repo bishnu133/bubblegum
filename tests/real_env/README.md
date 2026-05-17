@@ -648,6 +648,29 @@ Safety/privacy expectations:
 - No `driver.switch_to.context` usage.
 - No raw hierarchy payloads, raw capabilities, screenshot bytes, credentials/secrets, raw instruction text, or provider payloads in icon diagnostics.
 
+
+
+Android icon detection reporting artifact validation (JSON + HTML under pytest `tmp_path`):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_ICON_SMOKE=1 \
+BUBBLEGUM_ANDROID_ICON_TARGET=search \
+pytest tests/real_env/android/test_android_icon_smoke.py -k reporting_artifacts_are_safe -q
+```
+
+Reporting artifact expectations:
+
+- Skips by default unless all required Android/Appium/icon opt-in vars are present.
+- Writes one JSON report and one HTML report under pytest `tmp_path` (ephemeral test temp artifacts).
+- Validates parseable JSON and presence of `icon_detection_summary` analytics.
+- Validates HTML includes `Icon Detection` reporting section content.
+- Enforces safety redaction in both artifacts: no raw XML/DOM/hierarchy dumps, screenshots/screenshot bytes, provider payloads, raw context/package/process identifiers, raw candidate fields, raw Appium capability payloads, credentials, or secrets.
+- Meaningful validation requires the active app screen to include icon-like UI elements for the requested icon target.
+
 Practical note:
 
 - For meaningful validation, the currently visible app screen should contain icon-like UI elements that match the requested icon target (for example `search`, `delete`, `settings`).
