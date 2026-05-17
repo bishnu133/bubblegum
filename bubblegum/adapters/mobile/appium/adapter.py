@@ -48,6 +48,7 @@ from bubblegum.core.mobile.system_dialog_actions import execute_system_dialog_ac
 from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
 from bubblegum.core.mobile.webview_switch_eligibility import evaluate_webview_switch_eligibility
+from bubblegum.core.mobile.webview_context_selection import select_webview_context
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -218,6 +219,12 @@ class AppiumAdapter(BaseAdapter):
             system_dialog_detection=app_state.get("system_dialog_detection") if isinstance(app_state.get("system_dialog_detection"), dict) else None,
             explicit_opt_in=False,
             mode="dry_run",
+        )
+        app_state["webview_context_selection"] = select_webview_context(
+            context_inventory=context_inventory,
+            webview_switch_eligibility=app_state.get("webview_switch_eligibility") if isinstance(app_state.get("webview_switch_eligibility"), dict) else None,
+            selection_policy="single_webview_only",
+            preferred_context_hint=None,
         )
         app_state["system_dialog_guardrails"] = evaluate_system_dialog_guardrails(
             system_dialog_detection=app_state.get("system_dialog_detection") if isinstance(app_state.get("system_dialog_detection"), dict) else None,
