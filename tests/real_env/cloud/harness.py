@@ -48,13 +48,15 @@ def resolve_cloud_provider() -> str:
 
 def build_cloud_harness_config() -> CloudHarnessConfig:
     provider = resolve_cloud_provider()
-    appium_server_url = os.getenv("BUBBLEGUM_APPIUM_SERVER_URL", "").strip()
+    appium_server_url = os.getenv("BUBBLEGUM_CLOUD_APPIUM_URL", "").strip()
+    if not appium_server_url:
+        appium_server_url = os.getenv("BUBBLEGUM_APPIUM_SERVER_URL", "").strip()
     if not appium_server_url:
         appium_server_url = _PROVIDER_DEFAULT_APPIUM_URL[provider]
 
     if not appium_server_url:
         pytest.skip(
-            "Real-environment cloud smoke harness requires BUBBLEGUM_APPIUM_SERVER_URL "
+            "Real-environment cloud smoke harness requires BUBBLEGUM_CLOUD_APPIUM_URL or BUBBLEGUM_APPIUM_SERVER_URL "
             "for provider='generic'."
         )
 

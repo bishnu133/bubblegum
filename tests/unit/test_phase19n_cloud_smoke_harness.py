@@ -51,3 +51,15 @@ def test_cloud_harness_rejects_unknown_provider(
 
     with pytest.raises(pytest.skip.Exception):
         build_cloud_harness_config()
+
+
+def test_cloud_harness_prefers_cloud_appium_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BUBBLEGUM_CLOUD_PROVIDER", "browserstack")
+    monkeypatch.setenv("BUBBLEGUM_CLOUD_APPIUM_URL", "https://example-cloud/wd/hub")
+    monkeypatch.setenv("BUBBLEGUM_APPIUM_SERVER_URL", "https://example-fallback/wd/hub")
+
+    config = build_cloud_harness_config()
+
+    assert config.appium_server_url == "https://example-cloud/wd/hub"
