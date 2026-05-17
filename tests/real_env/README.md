@@ -1006,3 +1006,93 @@ Artifact expectations:
 - JSON must parse and include analytics summaries.
 - Artifact payload is safe-by-design: no raw XML/DOM/hierarchy dumps, no screenshot bytes, no raw context names, no package/process names, no raw capabilities, and no credentials/tokens.
 - Credentials must come from environment variables only; never hardcode secrets in test code or config files.
+
+## Phase 20A Cloud Capability Matrix Hardening
+
+### Provider capability matrix
+
+| Provider | Namespace key | Credentials inside namespace | Session key | Build key |
+|---|---|---|---|---|
+| pCloudy | `pCloudy_Options` | `username`, `accessKey` | `sessionName` | `build` |
+| BrowserStack | `bstack:options` | `userName`, `accessKey` | `sessionName` | `build` |
+| Sauce Labs | `sauce:options` | `username`, `accessKey` | `name` | `build` |
+| LambdaTest | `LT:Options` | `user`, `accessKey` | `name` | `build` |
+| generic Appium cloud | none (W3C/Appium-only caps) | n/a | n/a | n/a |
+
+Required common cloud envs:
+
+- `BUBBLEGUM_CLOUD_PROVIDER`
+- `BUBBLEGUM_CLOUD_PLATFORM` (`android` or `ios`)
+- `BUBBLEGUM_CLOUD_DEVICE_NAME`
+- `BUBBLEGUM_CLOUD_USERNAME`
+- `BUBBLEGUM_CLOUD_ACCESS_KEY`
+- one launch selector: `BUBBLEGUM_CLOUD_APP`, `BUBBLEGUM_CLOUD_APP_ID`, (`BUBBLEGUM_CLOUD_ANDROID_PACKAGE` + `BUBBLEGUM_CLOUD_ANDROID_ACTIVITY`), or `BUBBLEGUM_CLOUD_IOS_BUNDLE_ID`
+
+Optional cloud envs:
+
+- `BUBBLEGUM_CLOUD_PLATFORM_VERSION`
+- `BUBBLEGUM_CLOUD_AUTOMATION_NAME`
+- `BUBBLEGUM_CLOUD_SESSION_NAME`
+- `BUBBLEGUM_CLOUD_BUILD_NAME`
+
+### URL precedence
+
+1. `BUBBLEGUM_CLOUD_APPIUM_URL` (highest precedence)
+2. `BUBBLEGUM_APPIUM_SERVER_URL` (fallback)
+3. provider default URL (non-generic providers)
+4. for `generic`, explicit URL is required; otherwise cloud harness skips
+
+### Env-only credentials rule
+
+- Credentials must be provided via environment variables only.
+- Do not hardcode usernames/access keys in tests, config files, or source.
+
+### Safety / privacy expectations
+
+- Do not log or print raw capabilities.
+- Do not persist usernames/access keys/provider payloads.
+- Do not include raw XML/page source/screenshot bytes/package names/process names/context names.
+- Cloud reporting and summaries should remain sanitized metadata-only.
+
+### Cloud examples (env-only)
+
+pCloudy:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=pcloudy
+BUBBLEGUM_CLOUD_USERNAME=$BUBBLEGUM_CLOUD_USERNAME
+BUBBLEGUM_CLOUD_ACCESS_KEY=$BUBBLEGUM_CLOUD_ACCESS_KEY
+```
+
+BrowserStack:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=browserstack
+BUBBLEGUM_CLOUD_USERNAME=$BUBBLEGUM_CLOUD_USERNAME
+BUBBLEGUM_CLOUD_ACCESS_KEY=$BUBBLEGUM_CLOUD_ACCESS_KEY
+```
+
+Sauce Labs:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=saucelabs
+BUBBLEGUM_CLOUD_USERNAME=$BUBBLEGUM_CLOUD_USERNAME
+BUBBLEGUM_CLOUD_ACCESS_KEY=$BUBBLEGUM_CLOUD_ACCESS_KEY
+```
+
+LambdaTest:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=lambdatest
+BUBBLEGUM_CLOUD_USERNAME=$BUBBLEGUM_CLOUD_USERNAME
+BUBBLEGUM_CLOUD_ACCESS_KEY=$BUBBLEGUM_CLOUD_ACCESS_KEY
+```
+
+generic Appium cloud:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=generic
+BUBBLEGUM_CLOUD_APPIUM_URL=https://<your-cloud-appium-host>/wd/hub
+BUBBLEGUM_CLOUD_USERNAME=$BUBBLEGUM_CLOUD_USERNAME
+BUBBLEGUM_CLOUD_ACCESS_KEY=$BUBBLEGUM_CLOUD_ACCESS_KEY
+```
