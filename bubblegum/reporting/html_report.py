@@ -321,6 +321,28 @@ _UNSAFE_WEBVIEW_DIAGNOSTIC_KEYS = {
     "process_name",
 }
 
+
+_SAFE_CLOUD_PROVIDER_SUMMARY_FIELDS = (
+    "provider",
+    "provider_namespace",
+    "platform",
+    "device_name_present",
+    "app_launch_strategy",
+    "url_source",
+    "automation_name",
+    "session_name_present",
+    "build_name_present",
+    "safe_metadata_only",
+    "warnings",
+)
+
+_UNSAFE_CLOUD_PROVIDER_KEYS = {
+    "username", "access_key", "password", "token", "secret", "credentials",
+    "raw_capabilities", "provider_payload", "raw_url", "app", "app_id",
+    "package_name", "process_name", "raw_context_name", "raw_xml", "hierarchy_xml",
+    "raw_dom", "screenshot", "screenshot_bytes", "page_source",
+}
+
 _SAFE_GRAPH_SIGNAL_FIELDS = (
     "label_for_match",
     "same_row_match",
@@ -405,8 +427,35 @@ def sanitize_reporting_metadata(metadata: dict) -> dict:
     """Remove known unsafe fields from report surfaces."""
     if not isinstance(metadata, dict):
         return {}
-    return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS and k not in _UNSAFE_RETRY_KEYS and k not in _UNSAFE_WAIT_KEYS}
+    return {k: v for k, v in metadata.items() if k not in _UNSAFE_HYDRATION_KEYS and k not in _UNSAFE_RETRY_KEYS and k not in _UNSAFE_WAIT_KEYS and k not in _UNSAFE_CLOUD_PROVIDER_KEYS}
 
+
+
+def safe_cloud_provider_summary_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe cloud provider summary metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("cloud_provider_summary")
+    if not isinstance(raw, dict):
+        raw = metadata.get("cloud_provider_metadata")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_CLOUD_PROVIDER_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_CLOUD_PROVIDER_SUMMARY_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key == "warnings":
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif key in {"device_name_present", "session_name_present", "build_name_present", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif value is not None:
+            out[key] = str(value)
+    return out
 
 def safe_graph_signals_metadata(metadata: dict) -> dict[str, Any]:
     """Return compact report-safe graph signal metadata."""
@@ -1061,6 +1110,34 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{icon_rows}</ul>'
             '</details>'
         )
+    cloud_provider_summary_html = ""
+    cloud_provider_summary = safe_cloud_provider_summary_metadata(target_metadata)
+    if cloud_provider_summary:
+        warnings = cloud_provider_summary.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Provider", "provider"),
+            ("Provider namespace", "provider_namespace"),
+            ("Platform", "platform"),
+            ("Device name present", "device_name_present"),
+            ("App launch strategy", "app_launch_strategy"),
+            ("URL source", "url_source"),
+            ("Automation name", "automation_name"),
+            ("Session name present", "session_name_present"),
+            ("Build name present", "build_name_present"),
+        ]
+        cloud_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(cloud_provider_summary[key]))}</li>'
+            for label, key in labels
+            if key in cloud_provider_summary
+        )
+        cloud_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        cloud_provider_summary_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Cloud Provider Summary</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{cloud_rows}</ul>'
+            '</details>'
+        )
 
     wait_html = ""
     if target_metadata.get("wait_used") is True:
@@ -1143,6 +1220,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {repeated_region_html}
       {mobile_memory_signature_html}
       {icon_detection_html}
+      {cloud_provider_summary_html}
       {wait_html}
       {retry_html}
       {traces_html}
@@ -1411,6 +1489,14 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     mobile_memory_signature_repeated_region_status_counts: Counter[str] = Counter()
     mobile_memory_signature_icon_target_counts: Counter[str] = Counter()
     mobile_memory_signature_warning_counts: Counter[str] = Counter()
+    cloud_provider_total_with_summary = 0
+    cloud_provider_counts: Counter[str] = Counter()
+    cloud_provider_namespace_counts: Counter[str] = Counter()
+    cloud_platform_counts: Counter[str] = Counter()
+    cloud_app_launch_strategy_counts: Counter[str] = Counter()
+    cloud_url_source_counts: Counter[str] = Counter()
+    cloud_automation_name_counts: Counter[str] = Counter()
+    cloud_warning_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -1443,6 +1529,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         repeated_region = safe_repeated_region_diagnostics_metadata(metadata)
         icon_detection = safe_icon_detection_metadata(metadata)
         mobile_memory_signature = safe_mobile_memory_signature_metadata(metadata)
+        cloud_provider_summary = safe_cloud_provider_summary_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -1569,6 +1656,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             if isinstance(warnings, list):
                 for warning in warnings:
                     _count_categorical_field(mobile_memory_signature_warning_counts, warning)
+        if cloud_provider_summary:
+            cloud_provider_total_with_summary += 1
+            _count_categorical_field(cloud_provider_counts, cloud_provider_summary.get("provider"))
+            _count_categorical_field(cloud_provider_namespace_counts, cloud_provider_summary.get("provider_namespace"))
+            _count_categorical_field(cloud_platform_counts, cloud_provider_summary.get("platform"))
+            _count_categorical_field(cloud_app_launch_strategy_counts, cloud_provider_summary.get("app_launch_strategy"))
+            _count_categorical_field(cloud_url_source_counts, cloud_provider_summary.get("url_source"))
+            _count_categorical_field(cloud_automation_name_counts, cloud_provider_summary.get("automation_name"))
+            warnings = cloud_provider_summary.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(cloud_warning_counts, warning)
 
         if repeated_region:
             repeated_region_total_with_metadata += 1
@@ -1802,6 +1901,16 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "candidate_count_buckets": dict(icon_detection_candidate_count_buckets),
         "matched_candidate_count_buckets": dict(icon_detection_matched_candidate_count_buckets),
     }
+    cloud_provider_summary_analytics = {
+        "total_with_cloud_provider_summary": cloud_provider_total_with_summary,
+        "provider_counts": dict(cloud_provider_counts),
+        "provider_namespace_counts": dict(cloud_provider_namespace_counts),
+        "platform_counts": dict(cloud_platform_counts),
+        "app_launch_strategy_counts": dict(cloud_app_launch_strategy_counts),
+        "url_source_counts": dict(cloud_url_source_counts),
+        "automation_name_counts": dict(cloud_automation_name_counts),
+        "warning_counts": dict(cloud_warning_counts),
+    }
 
     graph_query_summary = {
         "total_events": graph_query_total_events,
@@ -1830,4 +1939,5 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "repeated_region_summary": repeated_region_summary,
         "mobile_memory_signature_summary": mobile_memory_signature_summary,
         "icon_detection_summary": icon_detection_summary,
+        "cloud_provider_summary": cloud_provider_summary_analytics,
     }

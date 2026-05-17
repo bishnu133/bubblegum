@@ -165,10 +165,33 @@ def build_cloud_capabilities() -> dict[str, object]:
 
 def cloud_config_safe_summary() -> dict[str, str]:
     cfg = build_cloud_harness_config()
+    platform = _optional_env("BUBBLEGUM_CLOUD_PLATFORM").lower()
+    automation_name = _optional_env("BUBBLEGUM_CLOUD_AUTOMATION_NAME")
+    app_launch_strategy = "unknown"
+    if _optional_env("BUBBLEGUM_CLOUD_APP"):
+        app_launch_strategy = "app_path_or_url"
+    elif _optional_env("BUBBLEGUM_CLOUD_APP_ID"):
+        app_launch_strategy = "app_id"
+    elif _optional_env("BUBBLEGUM_CLOUD_ANDROID_PACKAGE") and _optional_env("BUBBLEGUM_CLOUD_ANDROID_ACTIVITY"):
+        app_launch_strategy = "android_package_activity"
+    elif _optional_env("BUBBLEGUM_CLOUD_IOS_BUNDLE_ID"):
+        app_launch_strategy = "ios_bundle_id"
+
+    url_source = "provider_default"
+    if _optional_env("BUBBLEGUM_CLOUD_APPIUM_URL"):
+        url_source = "cloud_appium_url"
+    elif _optional_env("BUBBLEGUM_APPIUM_SERVER_URL"):
+        url_source = "appium_server_url"
+
     return {
         "provider": cfg.provider,
-        "appium_server_url": cfg.appium_server_url,
-        "capability_namespace": cfg.capability_namespace,
-        "platform": _optional_env("BUBBLEGUM_CLOUD_PLATFORM").lower(),
-        "device_name": _optional_env("BUBBLEGUM_CLOUD_DEVICE_NAME"),
+        "provider_namespace": cfg.capability_namespace,
+        "platform": platform,
+        "device_name_present": "1" if bool(_optional_env("BUBBLEGUM_CLOUD_DEVICE_NAME")) else "0",
+        "app_launch_strategy": app_launch_strategy,
+        "url_source": url_source,
+        "automation_name": automation_name or ("UiAutomator2" if platform == "android" else "XCUITest" if platform == "ios" else ""),
+        "session_name_present": "1" if bool(_optional_env("BUBBLEGUM_CLOUD_SESSION_NAME")) else "0",
+        "build_name_present": "1" if bool(_optional_env("BUBBLEGUM_CLOUD_BUILD_NAME")) else "0",
+        "safe_metadata_only": "1",
     }
