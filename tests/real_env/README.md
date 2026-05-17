@@ -674,3 +674,62 @@ Reporting artifact expectations:
 Practical note:
 
 - For meaningful validation, the currently visible app screen should contain icon-like UI elements that match the requested icon target (for example `search`, `delete`, `settings`).
+
+## iOS Simulator Smoke MVP (Phase 19N-V)
+
+This iOS simulator smoke harness is **opt-in** and skip-by-default.
+It validates safe Appium iOS context collection and mobile metadata generation only.
+No clicking/interaction and no WebView context switching are performed.
+
+### Required environment variables
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_APPIUM_SERVER_URL`
+- `BUBBLEGUM_IOS_DEVICE_NAME`
+- One of:
+  - `BUBBLEGUM_IOS_APP`, or
+  - `BUBBLEGUM_IOS_BUNDLE_ID`
+
+### Optional environment variables
+
+- `BUBBLEGUM_IOS_PLATFORM_VERSION`
+- `BUBBLEGUM_IOS_AUTOMATION_NAME` (defaults to `XCUITest`)
+
+### iOS simulator smoke command
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_IOS_DEVICE_NAME="iPhone 15" \
+BUBBLEGUM_IOS_BUNDLE_ID="com.example.myapp" \
+pytest tests/real_env/ios/test_ios_simulator_smoke.py -q
+```
+
+(Or replace `BUBBLEGUM_IOS_BUNDLE_ID` with `BUBBLEGUM_IOS_APP=/path/to/MyApp.app`.)
+
+### Expected skip behavior
+
+- If `BUBBLEGUM_REAL_ENV` is not `1`, iOS smoke tests skip.
+- If required iOS/Appium vars are missing, iOS smoke tests skip with a clear reason.
+- If Appium Python client is not installed, tests skip via `pytest.importorskip`.
+- If Appium server / simulator runtime is unavailable, tests skip with runtime diagnostics.
+
+### Safety/privacy expectations
+
+The smoke test asserts report-safe metadata behavior and rejects unsafe fields such as:
+
+- `raw_xml`, `raw_dom`, `hierarchy_xml` payload embedding in metadata
+- `screenshot_bytes`
+- `provider_payload`
+- `raw_context_name`
+- `package_name`, `process_name`
+- `raw_capabilities`
+- credential/secret fields
+
+### Runtime prerequisites
+
+You must have a working iOS Appium setup, including:
+
+- Appium server,
+- Xcode with iOS Simulator runtime,
+- XCUITest-compatible session configuration.
