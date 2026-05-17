@@ -733,3 +733,67 @@ You must have a working iOS Appium setup, including:
 - Appium server,
 - Xcode with iOS Simulator runtime,
 - XCUITest-compatible session configuration.
+
+## iOS Simulator Reporting Artifact Validation
+
+These iOS simulator smoke tests are **opt-in** and remain skip-by-default unless explicitly enabled.
+
+### Command
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_IOS_DEVICE_NAME=<simulator-name> \
+BUBBLEGUM_IOS_APP=<path-to-ios-app> \
+pytest tests/real_env/ios/test_ios_simulator_smoke.py -k reporting -q
+```
+
+Bundle-id launch variant:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_IOS_DEVICE_NAME=<simulator-name> \
+BUBBLEGUM_IOS_BUNDLE_ID=<ios.bundle.id> \
+pytest tests/real_env/ios/test_ios_simulator_smoke.py -k reporting -q
+```
+
+Optional:
+
+- `BUBBLEGUM_IOS_PLATFORM_VERSION`
+- `BUBBLEGUM_IOS_AUTOMATION_NAME` (defaults to `XCUITest`)
+
+### Required env vars
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_APPIUM_SERVER_URL`
+- `BUBBLEGUM_IOS_DEVICE_NAME`
+- one of:
+  - `BUBBLEGUM_IOS_APP`
+  - `BUBBLEGUM_IOS_BUNDLE_ID`
+
+### Expected skip behavior
+
+- If `BUBBLEGUM_REAL_ENV` is not `1`, test skips with real-env gating reason.
+- If required iOS/Appium vars are missing, test skips with a clear missing-variable list.
+- If Appium runtime/session cannot start, test skips with runtime reason.
+
+### Artifact behavior (`tmp_path`)
+
+- Writes one JSON report and one HTML report under pytest `tmp_path`.
+- Validates JSON parses and contains report analytics.
+- Validates safe iOS mobile metadata sections when present:
+  - `framework_detection`
+  - `webview_switch_diagnostics`
+  - `webview_switch_guardrails`
+  - `system_dialog_detection`
+  - `system_dialog_guardrails`
+  - `scroll_discovery`
+  - `mobile_memory_signature` (when safely generated)
+
+### Safety/privacy expectations
+
+- Context/reporting validation only; no interaction/click behavior is required by this test.
+- No WebView switching (`driver.switch_to.context`) is performed.
+- No raw XML/page source/screenshot bytes/context names/package/process/capabilities/credentials/secrets should be persisted in JSON/HTML artifacts.
+- Requires a working Appium server, Xcode iOS simulator runtime, and XCUITest automation setup.

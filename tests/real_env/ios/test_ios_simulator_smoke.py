@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 
 import pytest
 
 from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
-from bubblegum.core.schemas import ContextRequest
+from bubblegum.core.schemas import ContextRequest, ResolvedTarget, StepResult
+from bubblegum.reporting.html_report import write_html_report
+from bubblegum.reporting.json_report import write_json_report
 from tests.real_env.conftest import require_real_env_enabled
 
 
@@ -124,6 +127,150 @@ def test_ios_simulator_smoke_collect_context_mvp() -> None:
             "page_source",
         }
         _assert_no_forbidden_keys(app_state, forbidden_keys)
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+
+def test_ios_simulator_reporting_artifacts_are_safe(tmp_path) -> None:
+    appium_webdriver = pytest.importorskip("appium.webdriver")
+    options_module = pytest.importorskip("appium.options.ios")
+
+    appium_url, values, has_app = _required_ios_env()
+
+    options = options_module.XCUITestOptions()
+    options.platform_name = "iOS"
+    options.device_name = values["BUBBLEGUM_IOS_DEVICE_NAME"]
+    options.automation_name = values["BUBBLEGUM_IOS_AUTOMATION_NAME"] or "XCUITest"
+
+    if values["BUBBLEGUM_IOS_PLATFORM_VERSION"]:
+        options.platform_version = values["BUBBLEGUM_IOS_PLATFORM_VERSION"]
+
+    if has_app:
+        options.app = values["BUBBLEGUM_IOS_APP"]
+    else:
+        options.bundle_id = values["BUBBLEGUM_IOS_BUNDLE_ID"]
+
+    try:
+        driver = appium_webdriver.Remote(appium_url, options=options)
+    except Exception as exc:  # pragma: no cover - runtime-dependent skip path
+        pytest.skip(f"Unable to start iOS simulator reporting Appium session: {exc}")
+
+    try:
+        adapter = AppiumAdapter(driver)
+        ui_context = asyncio.run(
+            adapter.collect_context(ContextRequest(include_screenshot=False, include_hierarchy=True))
+        )
+
+        app_state = ui_context.app_state
+        safe_keys = (
+            "framework_detection",
+            "webview_switch_diagnostics",
+            "webview_switch_guardrails",
+            "system_dialog_detection",
+            "system_dialog_guardrails",
+            "scroll_discovery",
+        )
+        for key in safe_keys:
+            assert key in app_state
+
+        metadata = {k: app_state[k] for k in safe_keys}
+        if "mobile_memory_signature" in app_state:
+            metadata["mobile_memory_signature"] = app_state["mobile_memory_signature"]
+
+        metadata.update({
+            "raw_xml": "<xml leaked>",
+            "hierarchy_xml": "<hierarchy leaked>",
+            "raw_dom": "<dom leaked>",
+            "screenshot": "base64-image",
+            "screenshot_bytes": "base64-bytes",
+            "page_source": "<page source>",
+            "provider_payload": {"token": "secret"},
+            "raw_context_name": "WEBVIEW_com.example.ios",
+            "package_name": "com.example.ios",
+            "process_name": "WebContent",
+            "raw_capabilities": {"udid": "sim-udid"},
+            "exception_trace": "traceback...",
+            "raw_instruction": "tap login",
+            "credentials": {"username": "user@example.com"},
+            "secrets": ["top-secret"],
+            "full hierarchy payload": "leaked-full-hierarchy",
+        })
+
+        step = StepResult(
+            status="passed",
+            action="iOS simulator context collection reporting smoke",
+            confidence=1.0,
+            target=ResolvedTarget(
+                ref="ios-smoke://context-collection",
+                confidence=1.0,
+                resolver_name="ios_simulator_smoke",
+                metadata=metadata,
+            ),
+        )
+
+        json_path = tmp_path / "ios_smoke_report.json"
+        html_path = tmp_path / "ios_smoke_report.html"
+        write_json_report([step], path=json_path, title="iOS Simulator Smoke Report")
+        write_html_report([step], path=html_path, title="iOS Simulator Smoke Report")
+
+        assert json_path.exists()
+        assert html_path.exists()
+
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        assert payload["title"] == "iOS Simulator Smoke Report"
+        assert isinstance(payload.get("analytics"), dict)
+
+        target_md = payload["results"][0]["target"]["metadata"]
+        for key in safe_keys:
+            assert key in target_md
+        if "mobile_memory_signature" in metadata:
+            assert "mobile_memory_signature" in target_md
+
+        for forbidden in (
+            "raw_xml",
+            "hierarchy_xml",
+            "raw_dom",
+            "screenshot",
+            "screenshot_bytes",
+            "page_source",
+            "provider_payload",
+            "raw_context_name",
+            "package_name",
+            "process_name",
+            "raw_capabilities",
+            "exception_trace",
+            "raw_instruction",
+            "credentials",
+            "secrets",
+            "full hierarchy payload",
+        ):
+            assert forbidden not in target_md
+
+        html_text = html_path.read_text(encoding="utf-8")
+        assert "iOS Simulator Smoke Report" in html_text
+        assert "WebView Dry-Run Diagnostics" in html_text
+        assert "System Dialog Detection" in html_text
+        assert "Scroll Discovery" in html_text
+        if "mobile_memory_signature" in metadata:
+            assert "Mobile Memory Signature" in html_text
+
+        for forbidden_text in (
+            "<xml leaked>",
+            "<hierarchy leaked>",
+            "<dom leaked>",
+            "base64-image",
+            "base64-bytes",
+            "WEBVIEW_com.example.ios",
+            "com.example.ios",
+            "provider_payload",
+            "sim-udid",
+            "top-secret",
+            "leaked-full-hierarchy",
+        ):
+            assert forbidden_text not in html_text
     finally:
         try:
             driver.quit()
