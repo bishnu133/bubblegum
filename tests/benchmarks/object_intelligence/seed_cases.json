@@ -1813,6 +1813,553 @@
         "near-price-status",
         "seed"
       ]
+    },
+    {
+      "case_id": "oi_mobile_ios_icon_accessibility_label_native",
+      "category": "mobile_icon_targeting",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/ios_icon_accessibility_label.json",
+      "instruction": "Tap the Search icon in the iOS navigation bar.",
+      "action_type": "click",
+      "target_text": "Search",
+      "expected_target": {
+        "ref": "ios.icon.search.navbar"
+      },
+      "acceptable_refs": [
+        "ios.icon.search.navbar"
+      ],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_accessibility_label": true,
+        "has_icon_class_hint": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.66,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ios.icon.search.navbar"
+        }
+      },
+      "tags": [
+        "mobile",
+        "ios-native",
+        "icon-only",
+        "accessibility-label",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_ios_alert_system_dialog_metadata",
+      "category": "mobile_system_dialog_classification",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/ios_system_dialog_metadata.json",
+      "instruction": "Tap Allow on the iOS system alert.",
+      "action_type": "click",
+      "target_text": "Allow",
+      "expected_target": {
+        "ref": "ios.sys.allow.tracking"
+      },
+      "acceptable_refs": [
+        "ios.sys.allow.tracking"
+      ],
+      "expected_relation": {
+        "type": "within_surface",
+        "anchor_ref": "surface.system_dialog.ios"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_system_surface_metadata": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.63,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ios.sys.allow.tracking"
+        }
+      },
+      "tags": [
+        "mobile",
+        "ios-native",
+        "system-dialog",
+        "metadata",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_ios_repeated_card_primary_action",
+      "category": "mobile_repeated_card_scope",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/ios_repeated_cards.json",
+      "instruction": "Tap Retry for Order #5012.",
+      "action_type": "click",
+      "target_text": "Retry",
+      "expected_target": {
+        "ref": "ios.retry.order5012"
+      },
+      "acceptable_refs": [
+        "ios.retry.order5012"
+      ],
+      "expected_relation": {
+        "type": "inside_repeated_item",
+        "anchor_ref": "ios.card.order5012"
+      },
+      "expected_graph_signals": {
+        "has_repeated_container": true,
+        "has_anchor_match": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.64,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ios.retry.order5012"
+        }
+      },
+      "tags": [
+        "mobile",
+        "ios-native",
+        "repeated-card",
+        "relational",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_icon_only_inside_repeated_row",
+      "category": "mobile_icon_targeting",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/android_repeated_rows_icon_only.json",
+      "instruction": "Tap the overflow icon for account ending 9921.",
+      "action_type": "click",
+      "target_text": "More options",
+      "expected_target": {
+        "ref": "android.icon.overflow.row9921"
+      },
+      "acceptable_refs": [
+        "android.icon.overflow.row9921"
+      ],
+      "expected_relation": {
+        "type": "inside_repeated_item",
+        "anchor_ref": "android.row.account9921"
+      },
+      "expected_graph_signals": {
+        "has_repeated_container": true,
+        "has_icon_class_hint": true,
+        "has_anchor_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.62,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.icon.overflow.row9921"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android-native",
+        "icon-only",
+        "repeated-row",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_scroll_repeated_row_combined",
+      "category": "mobile_scroll_repeated_scope",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/android_scroll_repeated_rows.json",
+      "instruction": "Tap Retry for Invoice #3388 in the off-screen list.",
+      "action_type": "click",
+      "target_text": "Retry",
+      "expected_target": {
+        "ref": "android.retry.invoice3388"
+      },
+      "acceptable_refs": [
+        "android.retry.invoice3388"
+      ],
+      "expected_relation": {
+        "type": "inside_repeated_item",
+        "anchor_ref": "android.row.invoice3388"
+      },
+      "expected_graph_signals": {
+        "has_repeated_container": true,
+        "has_offscreen_hint": true,
+        "has_anchor_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.retry.invoice3388"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android-native",
+        "scroll",
+        "off-screen",
+        "repeated-row",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_ambiguous_repeated_icon_negative",
+      "category": "mobile_icon_ambiguity",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/android_repeated_icons_ambiguous.json",
+      "instruction": "Tap the star icon.",
+      "action_type": "click",
+      "target_text": "Star",
+      "expected_target": {
+        "ref": "none"
+      },
+      "acceptable_refs": [],
+      "expected_relation": null,
+      "expected_graph_signals": {
+        "has_icon_class_hint": true,
+        "has_repeated_container": true,
+        "has_label_match": "n/a"
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.0,
+        "max": 0.59
+      },
+      "expected_failure_mode": "ambiguous_candidate",
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "ambiguous"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "ambiguous_candidate"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android-native",
+        "icon-only",
+        "repeated-row",
+        "ambiguity",
+        "negative",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_memory_signature_anchor_case",
+      "category": "mobile_memory_signature_regression",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/android_memory_signature_anchor.json",
+      "instruction": "Tap Continue on the remembered checkout card.",
+      "action_type": "click",
+      "target_text": "Continue",
+      "expected_target": {
+        "ref": "android.continue.checkout.remembered"
+      },
+      "acceptable_refs": [
+        "android.continue.checkout.remembered"
+      ],
+      "expected_relation": {
+        "type": "within_card",
+        "anchor_ref": "android.card.checkout.remembered"
+      },
+      "expected_graph_signals": {
+        "has_label_match": true,
+        "has_memory_signature_hint": true,
+        "has_card_anchor": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.61,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.continue.checkout.remembered"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android-native",
+        "memory-signature",
+        "relational",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_hybrid_webview_diagnostic_no_switch",
+      "category": "mobile_hybrid_diagnostics",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/hybrid_no_switch_diagnostic.json",
+      "instruction": "Tap Pay in the native shell if duplicate labels exist across surfaces.",
+      "action_type": "click",
+      "target_text": "Pay",
+      "expected_target": {
+        "ref": "android.native.pay.primary"
+      },
+      "acceptable_refs": [
+        "android.native.pay.primary"
+      ],
+      "expected_relation": {
+        "type": "within_surface",
+        "anchor_ref": "surface.native.android"
+      },
+      "expected_graph_signals": {
+        "has_hybrid_surface_hints": true,
+        "has_context_metadata": true,
+        "has_label_match": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.native.pay.primary"
+        }
+      },
+      "tags": [
+        "mobile",
+        "hybrid",
+        "webview",
+        "diagnostic",
+        "no-switch",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_system_dialog_vs_app_modal_distinction",
+      "category": "mobile_surface_disambiguation",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/system_vs_app_modal.json",
+      "instruction": "Tap Cancel on the app modal, not the system dialog.",
+      "action_type": "click",
+      "target_text": "Cancel",
+      "expected_target": {
+        "ref": "android.appmodal.cancel"
+      },
+      "acceptable_refs": [
+        "android.appmodal.cancel"
+      ],
+      "expected_relation": {
+        "type": "within_surface",
+        "anchor_ref": "surface.app_modal.android"
+      },
+      "expected_graph_signals": {
+        "has_surface_disambiguation": true,
+        "has_label_match": true,
+        "has_multiple_surfaces": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.appmodal.cancel"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android-native",
+        "system-dialog",
+        "app-modal",
+        "disambiguation",
+        "seed"
+      ]
+    },
+    {
+      "case_id": "oi_mobile_android_weak_label_imagebutton",
+      "category": "mobile_icon_targeting",
+      "channel": "mobile",
+      "platform_framework": "appium_mobile_seed",
+      "fixture_path": "tests/fixtures/mobile/synthetic/android_weak_label_imagebutton.json",
+      "instruction": "Tap the favorite image button beside \"Travel Backpack\".",
+      "action_type": "click",
+      "target_text": "Favorite",
+      "expected_target": {
+        "ref": "android.icon.favorite.backpack"
+      },
+      "acceptable_refs": [
+        "android.icon.favorite.backpack"
+      ],
+      "expected_relation": {
+        "type": "near_text",
+        "anchor_ref": "android.text.travel_backpack"
+      },
+      "expected_graph_signals": {
+        "has_icon_class_hint": true,
+        "has_weak_label": true,
+        "has_nearby_anchor": true
+      },
+      "allowed_resolvers": [
+        "appium_hierarchy"
+      ],
+      "expected_confidence_range": {
+        "min": 0.6,
+        "max": 1.0
+      },
+      "expected_failure_mode": null,
+      "baseline_expectations": {
+        "bubblegum_current": {
+          "expected": "pass"
+        },
+        "playwright_raw_role_text": {
+          "expected": "n/a_mobile"
+        },
+        "llm_vision_raw": {
+          "expected": "placeholder",
+          "status": "not_automated_yet"
+        },
+        "manual_expected": {
+          "expected": "android.icon.favorite.backpack"
+        }
+      },
+      "tags": [
+        "mobile",
+        "android-native",
+        "icon-only",
+        "weak-label",
+        "relational",
+        "seed"
+      ]
     }
   ]
 }
