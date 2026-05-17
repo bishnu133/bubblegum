@@ -47,6 +47,7 @@ from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery
 from bubblegum.core.mobile.system_dialog_actions import execute_system_dialog_action, resolve_system_dialog_action_candidate
 from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
+from bubblegum.core.mobile.webview_switch_eligibility import evaluate_webview_switch_eligibility
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -207,6 +208,16 @@ class AppiumAdapter(BaseAdapter):
             capabilities=self._safe_capabilities(),
             app_state=app_state,
             hierarchy_xml=hierarchy_xml,
+        )
+        app_state["webview_switch_eligibility"] = evaluate_webview_switch_eligibility(
+            instruction=None,
+            context_inventory=context_inventory,
+            framework_detection=app_state.get("framework_detection") if isinstance(app_state.get("framework_detection"), dict) else None,
+            webview_switch_diagnostics=app_state.get("webview_switch_diagnostics") if isinstance(app_state.get("webview_switch_diagnostics"), dict) else None,
+            webview_switch_guardrails=app_state.get("webview_switch_guardrails") if isinstance(app_state.get("webview_switch_guardrails"), dict) else None,
+            system_dialog_detection=app_state.get("system_dialog_detection") if isinstance(app_state.get("system_dialog_detection"), dict) else None,
+            explicit_opt_in=False,
+            mode="dry_run",
         )
         app_state["system_dialog_guardrails"] = evaluate_system_dialog_guardrails(
             system_dialog_detection=app_state.get("system_dialog_detection") if isinstance(app_state.get("system_dialog_detection"), dict) else None,
