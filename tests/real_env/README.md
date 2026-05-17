@@ -33,9 +33,19 @@ If `BUBBLEGUM_REAL_ENV` is unset or not equal to `1`, tests in `tests/real_env` 
 - `BUBBLEGUM_ANDROID_ENABLE_SCROLL_ACTION` — set to `1` to enable explicit bounded scroll action (default is metadata-only, no scroll action).
 - `BUBBLEGUM_ANDROID_ENABLE_SCROLL_RESOLUTION` — set to `1` to enable explicit bounded scroll resolution smoke (default skip/metadata-only; no scroll by default).
 - `BUBBLEGUM_IOS_APP` — required for iOS target smoke skeleton.
-- `BUBBLEGUM_CLOUD_PROVIDER` — required for cloud smoke skeleton.
+- `BUBBLEGUM_CLOUD_PROVIDER` — required for cloud smoke harness (`pcloudy`, `browserstack`, `saucelabs`, `lambdatest`, `generic`).
 - `BUBBLEGUM_CLOUD_USERNAME` — required for cloud smoke skeleton.
 - `BUBBLEGUM_CLOUD_ACCESS_KEY` — required for cloud smoke skeleton.
+
+
+Cloud provider defaults for Phase 19N-Y smoke MVP:
+
+- `pcloudy` -> `https://device.pcloudy.com/appiumcloud/wd/hub`
+- `browserstack` -> `https://hub.browserstack.com/wd/hub`
+- `saucelabs` -> `https://ondemand.us-west-1.saucelabs.com/wd/hub`
+- `lambdatest` -> `https://mobile-hub.lambdatest.com/wd/hub`
+- `generic` -> requires explicit `BUBBLEGUM_APPIUM_SERVER_URL`
+
 
 ## Marker Strategy
 

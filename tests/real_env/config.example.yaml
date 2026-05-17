@@ -1,5 +1,6 @@
 provider: local
 platform: web
+# For cloud smoke, generic provider requires BUBBLEGUM_APPIUM_SERVER_URL.
 appium_server_url: ${BUBBLEGUM_APPIUM_SERVER_URL}
 browser: chromium
 android_app: ${BUBBLEGUM_ANDROID_APP}
