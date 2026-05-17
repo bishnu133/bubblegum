@@ -127,6 +127,8 @@ def test_safe_summary_excludes_secrets(monkeypatch, capsys):
 
     assert "username" not in summary
     assert "access_key" not in summary
-    assert "capabilities" not in summary
+    assert "appium_server_url" not in summary
+    assert "provider_namespace" in summary
+    assert "safe_metadata_only" in summary
     assert captured.out == ""
     assert captured.err == ""

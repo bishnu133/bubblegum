@@ -1269,3 +1269,32 @@ def test_html_report_escapes_mobile_memory_signature_values(tmp_path):
     assert "hybrid&lt;unsafe&gt;" in text
     assert "&lt;b&gt;bad&lt;/b&gt;" in text
     assert "android<script>" not in text
+
+def test_html_report_renders_cloud_provider_summary_section_when_present(tmp_path):
+    out = tmp_path / 'report.html'
+    result = StepResult(status='passed', action='Tap', confidence=0.9,
+        target=ResolvedTarget(ref='r', confidence=0.9, resolver_name='x', metadata={
+            'cloud_provider_summary': {'provider': 'browserstack', 'platform': 'android', 'provider_namespace': 'bstack:options'}
+        }))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding='utf-8')
+    assert 'Cloud Provider Summary' in text
+    assert 'browserstack' in text
+
+
+def test_html_report_hides_cloud_provider_summary_section_when_absent(tmp_path):
+    out = tmp_path / 'report.html'
+    write_html_report([StepResult(status='passed', action='Tap', confidence=0.9)], path=out)
+    assert 'Cloud Provider Summary' not in out.read_text(encoding='utf-8')
+
+
+def test_html_report_escapes_cloud_provider_summary_values(tmp_path):
+    out = tmp_path / 'report.html'
+    result = StepResult(status='passed', action='Tap', confidence=0.9,
+        target=ResolvedTarget(ref='r', confidence=0.9, resolver_name='x', metadata={
+            'cloud_provider_summary': {'provider': '<script>x</script>', 'warnings': ['a<b']}
+        }))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding='utf-8')
+    assert '<script>x</script>' not in text
+    assert '&lt;script&gt;x&lt;/script&gt;' in text

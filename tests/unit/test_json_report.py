@@ -1249,3 +1249,37 @@ def test_json_report_includes_mobile_memory_signature_analytics_summary(tmp_path
     assert summary["surface_type_counts"] == {"hybrid": 1}
     assert summary["warning_counts"]["metadata_only"] == 1
     assert "raw_xml" not in summary["warning_counts"]
+
+def test_json_report_cloud_provider_summary_safe_and_redacted(tmp_path):
+    out = tmp_path / 'report.json'
+    result = StepResult(
+        status='passed', action='cloud', confidence=0.9,
+        target=ResolvedTarget(ref='x', confidence=0.9, resolver_name='r', metadata={
+            'cloud_provider_summary': {
+                'provider': 'browserstack', 'provider_namespace': 'bstack:options', 'platform': 'android',
+                'device_name_present': True, 'app_launch_strategy': 'app_id', 'url_source': 'cloud_appium_url',
+                'automation_name': 'UiAutomator2', 'session_name_present': True, 'build_name_present': False,
+                'safe_metadata_only': True, 'warnings': ['ok'], 'username': 'u', 'raw_url': 'https://u:p@host',
+                'raw_capabilities': {'x': 'y'},
+            }
+        })
+    )
+    write_json_report([result], path=out)
+    payload = json.loads(out.read_text())
+    md = payload['results'][0]['target']['metadata']['cloud_provider_summary']
+    assert md['provider'] == 'browserstack'
+    assert 'username' not in md and 'raw_url' not in md and 'raw_capabilities' not in md
+    summary = payload['analytics']['cloud_provider_summary']
+    assert summary['total_with_cloud_provider_summary'] == 1
+    assert summary['provider_counts']['browserstack'] == 1
+
+
+def test_json_report_cloud_provider_unsafe_keys_do_not_affect_analytics(tmp_path):
+    out = tmp_path / 'report.json'
+    result = StepResult(status='passed', action='cloud', confidence=0.9,
+        target=ResolvedTarget(ref='x', confidence=0.9, resolver_name='r', metadata={
+            'cloud_provider_summary': {'username': 'u', 'token': 't', 'raw_url': 'x'}
+        }))
+    write_json_report([result], path=out)
+    summary = json.loads(out.read_text())['analytics']['cloud_provider_summary']
+    assert summary['total_with_cloud_provider_summary'] == 0

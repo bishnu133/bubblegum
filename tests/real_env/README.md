@@ -1096,3 +1096,48 @@ BUBBLEGUM_CLOUD_APPIUM_URL=https://<your-cloud-appium-host>/wd/hub
 BUBBLEGUM_CLOUD_USERNAME=$BUBBLEGUM_CLOUD_USERNAME
 BUBBLEGUM_CLOUD_ACCESS_KEY=$BUBBLEGUM_CLOUD_ACCESS_KEY
 ```
+
+## Phase 20B — Cloud Provider Reporting Matrix
+
+Reporting now includes a **Cloud Provider Summary** block for cloud smoke artifacts (JSON + HTML), with privacy-safe metadata only.
+
+Safe fields shown in reports:
+- `provider`
+- `provider_namespace`
+- `platform`
+- `device_name_present`
+- `app_launch_strategy`
+- `url_source`
+- `automation_name`
+- `session_name_present`
+- `build_name_present`
+- `safe_metadata_only`
+- optional `warnings`
+
+Fields never reported:
+- credentials/secrets (`username`, `access_key`, `password`, `token`, `secret`, `credentials`)
+- raw capabilities/provider payloads (`raw_capabilities`, `provider_payload`)
+- raw URL values (`raw_url`)
+- app identifiers/paths (`app`, `app_id`)
+- package/process/context internals (`package_name`, `process_name`, `raw_context_name`)
+- raw DOM/XML/page dumps (`raw_xml`, `hierarchy_xml`, `raw_dom`, `page_source`)
+- screenshot bytes (`screenshot`, `screenshot_bytes`)
+
+Example summary payload (safe):
+
+```json
+{
+  "provider": "browserstack",
+  "provider_namespace": "bstack:options",
+  "platform": "android",
+  "device_name_present": true,
+  "app_launch_strategy": "app_id",
+  "url_source": "cloud_appium_url",
+  "automation_name": "UiAutomator2",
+  "session_name_present": true,
+  "build_name_present": false,
+  "safe_metadata_only": true
+}
+```
+
+Supported providers remain unchanged: **pCloudy, BrowserStack, Sauce Labs, LambdaTest, and generic Appium cloud**.

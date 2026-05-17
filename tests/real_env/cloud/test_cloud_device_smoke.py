@@ -10,7 +10,7 @@ from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
 from bubblegum.core.schemas import ContextRequest, ResolvedTarget, StepResult
 from bubblegum.reporting.html_report import write_html_report
 from bubblegum.reporting.json_report import write_json_report
-from tests.real_env.cloud.harness import build_cloud_harness_config
+from tests.real_env.cloud.harness import build_cloud_harness_config, cloud_config_safe_summary
 from tests.real_env.conftest import require_real_env_enabled
 
 
@@ -233,6 +233,7 @@ def test_cloud_device_reporting_artifacts_are_safe(tmp_path) -> None:
             assert key in app_state
 
         metadata = {k: app_state[k] for k in safe_keys}
+        metadata["cloud_provider_summary"] = cloud_config_safe_summary()
         if "mobile_memory_signature" in app_state:
             metadata["mobile_memory_signature"] = app_state["mobile_memory_signature"]
 
