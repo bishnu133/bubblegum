@@ -590,3 +590,64 @@ Safety/privacy expectations:
 - No WebView context switching.
 - No raw XML/page-source/screenshot bytes/provider payload/capabilities/credentials leakage in diagnostics or report artifacts.
 - Meaningful validation requires an app screen that actually contains repeated cards/lists/rows.
+
+## Android Icon Detection Smoke (Phase 19N-Q)
+
+This smoke is Android real-env only and is **skip-by-default**.
+It validates safe/compact `icon_detection` metadata generation from a live Appium Android session.
+
+Run command:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_ICON_SMOKE=1 \
+BUBBLEGUM_ANDROID_ICON_TARGET=search \
+pytest tests/real_env/android/test_android_icon_smoke.py -q
+```
+
+Installed app variant:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-name> \
+BUBBLEGUM_ANDROID_PACKAGE=<app-package> \
+BUBBLEGUM_ANDROID_ACTIVITY=<launcher-activity> \
+BUBBLEGUM_ANDROID_ICON_SMOKE=1 \
+BUBBLEGUM_ANDROID_ICON_TARGET=search \
+pytest tests/real_env/android/test_android_icon_smoke.py -q
+```
+
+Required environment variables:
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_APPIUM_SERVER_URL`
+- `BUBBLEGUM_ANDROID_DEVICE_NAME`
+- `BUBBLEGUM_ANDROID_APP` **or** (`BUBBLEGUM_ANDROID_PACKAGE` + `BUBBLEGUM_ANDROID_ACTIVITY`)
+- `BUBBLEGUM_ANDROID_ICON_SMOKE=1`
+- `BUBBLEGUM_ANDROID_ICON_TARGET`
+
+Optional strictness controls:
+
+- `BUBBLEGUM_ANDROID_ICON_EXPECT_STATUS=<status>`
+- `BUBBLEGUM_ANDROID_ICON_REQUIRE_RESOLVED=1` (strict resolved-only mode)
+
+Expected skip behavior:
+
+- Skips when real-env is disabled.
+- Skips when Android/Appium env vars are missing.
+- Skips when icon smoke opt-in vars are missing.
+- Skips when Appium runtime/session startup is unavailable.
+
+Safety/privacy expectations:
+
+- Metadata-only validation; no clicks/interactions are performed.
+- No `driver.switch_to.context` usage.
+- No raw hierarchy payloads, raw capabilities, screenshot bytes, credentials/secrets, raw instruction text, or provider payloads in icon diagnostics.
+
+Practical note:
+
+- For meaningful validation, the currently visible app screen should contain icon-like UI elements that match the requested icon target (for example `search`, `delete`, `settings`).
