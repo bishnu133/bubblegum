@@ -43,6 +43,7 @@ from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.memory.layer import MemoryLayer
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 from bubblegum.core.grounding.signals import make_signals
+from bubblegum.core.mobile.memory_signature import build_mobile_memory_signature
 
 logger = logging.getLogger(__name__)
 
@@ -140,13 +141,23 @@ class MemoryCacheResolver(Resolver):
             return
 
         step_h = _step_hash(intent)
+        metadata = dict(target.metadata or {})
+        if intent.channel == "mobile":
+            mobile_sig = intent.context.get("mobile_memory_signature")
+            if isinstance(mobile_sig, dict):
+                metadata["mobile_memory_signature"] = dict(mobile_sig)
+            else:
+                metadata["mobile_memory_signature"] = build_mobile_memory_signature(
+                    ui_context=type("_UI", (), {"app_state": intent.context.get("app_state", {})})(),
+                    target_metadata=metadata,
+                )
         self._layer.record_success(
             screen_signature=screen_sig,
             step_hash=step_h,
             resolver_name=target.resolver_name,
             ref=target.ref,
             confidence=target.confidence,
-            metadata=target.metadata,
+            metadata=metadata,
         )
 
     def record_failure(self, intent: StepIntent) -> None:

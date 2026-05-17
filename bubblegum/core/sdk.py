@@ -50,6 +50,7 @@ from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
 from bubblegum.core.parser import extract_expected, infer_action_type
 from bubblegum.core.planner import build_options, build_validation_plan, context_request, make_intent
 from bubblegum.core.recovery import remove_explicit_selector, used_explicit_selector
+from bubblegum.core.mobile.memory_signature import build_mobile_memory_signature
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -606,6 +607,14 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
         intent.context["screenshot"] = ui_ctx.screenshot
     if ui_ctx.screen_signature:
         intent.context["screen_signature"] = ui_ctx.screen_signature
+    if ui_ctx.app_state:
+        intent.context["app_state"] = dict(ui_ctx.app_state)
+
+    if intent.channel == "mobile":
+        intent.context["mobile_memory_signature"] = build_mobile_memory_signature(
+            ui_context=ui_ctx,
+            target_metadata=None,
+        )
 
     # Runtime config flags exposed in context for resolver eligibility checks.
     intent.context.setdefault("config_ocr_enabled", _config.ocr_enabled)
