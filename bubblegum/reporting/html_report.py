@@ -272,6 +272,42 @@ _UNSAFE_ICON_DETECTION_KEYS = {
     "raw_candidate_text", "raw_content_desc", "raw_resource_id",
 }
 
+
+_SAFE_MOBILE_MEMORY_SIGNATURE_FIELDS = (
+    "enabled",
+    "platform",
+    "surface_type",
+    "context_mode",
+    "dialog_state",
+    "scroll_state",
+    "repeated_region_status",
+    "icon_target",
+    "signature_parts",
+    "warnings",
+    "safe_metadata_only",
+)
+
+_UNSAFE_MOBILE_MEMORY_SIGNATURE_KEYS = {
+    "raw_xml",
+    "hierarchy_xml",
+    "raw_dom",
+    "screenshot",
+    "screenshot_bytes",
+    "page_source",
+    "provider_payload",
+    "raw_context_name",
+    "package_name",
+    "process_name",
+    "raw_capabilities",
+    "exception_trace",
+    "raw_instruction",
+    "raw_candidate_text",
+    "raw_content_desc",
+    "raw_resource_id",
+    "credentials",
+    "secrets",
+}
+
 _UNSAFE_WEBVIEW_DIAGNOSTIC_KEYS = {
     "raw_xml",
     "hierarchy_xml",
@@ -413,6 +449,32 @@ def safe_graph_query_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
 
 
 
+
+
+
+def safe_mobile_memory_signature_metadata(metadata: dict) -> dict[str, Any]:
+    """Return compact safe mobile memory signature metadata."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("mobile_memory_signature")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_MOBILE_MEMORY_SIGNATURE_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_MOBILE_MEMORY_SIGNATURE_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"enabled", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"signature_parts", "warnings"}:
+            if isinstance(value, (list, tuple)):
+                out[key] = [str(v) for v in value]
+            elif value is not None:
+                out[key] = [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
 
 def safe_webview_switch_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
     """Return compact safe webview dry-run diagnostics."""
@@ -941,6 +1003,37 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{repeated_rows}</ul>'
             '</details>'
         )
+    mobile_memory_signature_html = ""
+    mobile_memory_signature = safe_mobile_memory_signature_metadata(target_metadata)
+    if mobile_memory_signature:
+        signature_parts = mobile_memory_signature.get("signature_parts", [])
+        warnings = mobile_memory_signature.get("warnings", [])
+        signature_parts_display = ", ".join(str(p) for p in signature_parts) if signature_parts else "none"
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [
+            ("Platform", "platform"),
+            ("Surface type", "surface_type"),
+            ("Context mode", "context_mode"),
+            ("Dialog state", "dialog_state"),
+            ("Scroll state", "scroll_state"),
+            ("Repeated region status", "repeated_region_status"),
+            ("Icon target", "icon_target"),
+        ]
+        mobile_sig_rows = "".join(
+            f'<li><strong>{label}:</strong> {html.escape(str(mobile_memory_signature[key]))}</li>'
+            for label, key in labels
+            if key in mobile_memory_signature
+        )
+        mobile_sig_rows += f'<li><strong>Signature parts count:</strong> {html.escape(str(len(signature_parts)))}</li>'
+        mobile_sig_rows += f'<li><strong>Signature parts:</strong> {html.escape(signature_parts_display)}</li>'
+        mobile_sig_rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        mobile_memory_signature_html = (
+            '<details style="margin-top:8px;">'
+            '<summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">Mobile Memory Signature</summary>'
+            f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{mobile_sig_rows}</ul>'
+            '</details>'
+        )
+
     icon_detection_html = ""
     icon_detection = safe_icon_detection_metadata(target_metadata)
     if icon_detection:
@@ -1048,6 +1141,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {scroll_discovery_html}
       {scroll_resolution_html}
       {repeated_region_html}
+      {mobile_memory_signature_html}
       {icon_detection_html}
       {wait_html}
       {retry_html}
@@ -1308,6 +1402,15 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     icon_detection_warning_counts: Counter[str] = Counter()
     icon_detection_candidate_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
     icon_detection_matched_candidate_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
+    mobile_memory_signature_total_with_metadata = 0
+    mobile_memory_signature_platform_counts: Counter[str] = Counter()
+    mobile_memory_signature_surface_type_counts: Counter[str] = Counter()
+    mobile_memory_signature_context_mode_counts: Counter[str] = Counter()
+    mobile_memory_signature_dialog_state_counts: Counter[str] = Counter()
+    mobile_memory_signature_scroll_state_counts: Counter[str] = Counter()
+    mobile_memory_signature_repeated_region_status_counts: Counter[str] = Counter()
+    mobile_memory_signature_icon_target_counts: Counter[str] = Counter()
+    mobile_memory_signature_warning_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -1339,6 +1442,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         scroll_resolution = safe_scroll_resolution_metadata(metadata)
         repeated_region = safe_repeated_region_diagnostics_metadata(metadata)
         icon_detection = safe_icon_detection_metadata(metadata)
+        mobile_memory_signature = safe_mobile_memory_signature_metadata(metadata)
         status = hydration.get("hydration_status")
         if isinstance(status, str) and status:
             hydration_total_events += 1
@@ -1451,6 +1555,20 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
                     scroll_discovery_candidate_container_count_buckets["2-3"] += 1
                 else:
                     scroll_discovery_candidate_container_count_buckets["4+"] += 1
+
+        if mobile_memory_signature:
+            mobile_memory_signature_total_with_metadata += 1
+            _count_categorical_field(mobile_memory_signature_platform_counts, mobile_memory_signature.get("platform"))
+            _count_categorical_field(mobile_memory_signature_surface_type_counts, mobile_memory_signature.get("surface_type"))
+            _count_categorical_field(mobile_memory_signature_context_mode_counts, mobile_memory_signature.get("context_mode"))
+            _count_categorical_field(mobile_memory_signature_dialog_state_counts, mobile_memory_signature.get("dialog_state"))
+            _count_categorical_field(mobile_memory_signature_scroll_state_counts, mobile_memory_signature.get("scroll_state"))
+            _count_categorical_field(mobile_memory_signature_repeated_region_status_counts, mobile_memory_signature.get("repeated_region_status"))
+            _count_categorical_field(mobile_memory_signature_icon_target_counts, mobile_memory_signature.get("icon_target"))
+            warnings = mobile_memory_signature.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(mobile_memory_signature_warning_counts, warning)
 
         if repeated_region:
             repeated_region_total_with_metadata += 1
@@ -1661,6 +1779,19 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "max_scrolls_buckets": dict(scroll_resolution_max_scrolls_buckets),
         "attempt_count_buckets": dict(scroll_resolution_attempt_count_buckets),
     }
+
+    mobile_memory_signature_summary = {
+        "total_with_mobile_memory_signature": mobile_memory_signature_total_with_metadata,
+        "platform_counts": dict(mobile_memory_signature_platform_counts),
+        "surface_type_counts": dict(mobile_memory_signature_surface_type_counts),
+        "context_mode_counts": dict(mobile_memory_signature_context_mode_counts),
+        "dialog_state_counts": dict(mobile_memory_signature_dialog_state_counts),
+        "scroll_state_counts": dict(mobile_memory_signature_scroll_state_counts),
+        "repeated_region_status_counts": dict(mobile_memory_signature_repeated_region_status_counts),
+        "icon_target_counts": dict(mobile_memory_signature_icon_target_counts),
+        "warning_counts": dict(mobile_memory_signature_warning_counts),
+    }
+
     icon_detection_summary = {
         "total_with_icon_detection": icon_detection_total_with_metadata,
         "status_counts": dict(icon_detection_status_counts),
@@ -1697,5 +1828,6 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "scroll_discovery_summary": scroll_discovery_summary,
         "scroll_resolution_summary": scroll_resolution_summary,
         "repeated_region_summary": repeated_region_summary,
+        "mobile_memory_signature_summary": mobile_memory_signature_summary,
         "icon_detection_summary": icon_detection_summary,
     }

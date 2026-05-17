@@ -21,6 +21,7 @@ from bubblegum.reporting.html_report import (
     safe_scroll_discovery_metadata,
     safe_scroll_resolution_metadata,
     safe_icon_detection_metadata,
+    safe_mobile_memory_signature_metadata,
     sanitize_reporting_metadata,
 )
 
@@ -43,6 +44,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             scroll_discovery = safe_scroll_discovery_metadata(metadata)
             scroll_resolution = safe_scroll_resolution_metadata(metadata)
             icon_detection = safe_icon_detection_metadata(metadata)
+            mobile_memory_signature = safe_mobile_memory_signature_metadata(metadata)
             for key in list(metadata.keys()):
                 if key.startswith("hydration_") or key in {"match_field", "match_count"}:
                     metadata.pop(key, None)
@@ -56,6 +58,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             metadata.pop("scroll_discovery", None)
             metadata.pop("scroll_resolution", None)
             metadata.pop("icon_detection", None)
+            metadata.pop("mobile_memory_signature", None)
             metadata.update(hydration)
             if graph_signals:
                 metadata["graph_signals"] = graph_signals
@@ -77,6 +80,8 @@ def _safe_result_dump(result: StepResult) -> dict:
                 metadata["scroll_resolution"] = scroll_resolution
             if icon_detection:
                 metadata["icon_detection"] = icon_detection
+            if mobile_memory_signature:
+                metadata["mobile_memory_signature"] = mobile_memory_signature
             target["metadata"] = metadata
     return payload
 
