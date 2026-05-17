@@ -1059,3 +1059,39 @@ def test_json_report_repeated_region_summary_counts_and_unsafe_ignored(tmp_path)
     assert summary["warning_counts"] == {"w1": 1, "w2": 1}
     assert summary["matched_region_count_buckets"] == {"0": 1, "1": 1, "2-3": 0, "4+": 0}
     assert summary["candidate_count_buckets"] == {"0": 0, "1": 0, "2-3": 1, "4+": 1}
+
+def test_json_report_sanitizes_icon_detection_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap search",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='xpath=//icon',
+            confidence=0.9,
+            resolver_name="appium_hierarchy",
+            metadata={
+                "icon_detection": {
+                    "status": "resolved",
+                    "icon_hint_type": "content_desc",
+                    "target_icon": "search",
+                    "candidate_count": 2,
+                    "matched_candidate_count": 1,
+                    "reason": "content_desc_match",
+                    "evidence": ["icon:search"],
+                    "warnings": [],
+                    "safe_metadata_only": True,
+                    "raw_instruction": "tap search icon",
+                    "raw_content_desc": "Search",
+                    "raw_resource_id": "id/ic_search",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    icon = payload["results"][0]["target"]["metadata"]["icon_detection"]
+    assert icon["status"] == "resolved"
+    assert "raw_instruction" not in icon
+    assert "raw_content_desc" not in icon
+    assert "raw_resource_id" not in icon

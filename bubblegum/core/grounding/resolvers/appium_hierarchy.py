@@ -45,6 +45,7 @@ from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 from bubblegum.core.grounding.signals import make_signals
 from bubblegum.core.mobile.repeated_structure import disambiguate_within_repeated_region
+from bubblegum.core.mobile.icon_detection import resolve_icon_target_hint
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,7 @@ class AppiumHierarchyResolver(Resolver):
                     "bounds": (element.get("bounds") or "").strip(),
                     "enabled": (element.get("enabled") or "true").strip().lower() != "false",
                     "displayed": (element.get("visible-to-user") or "true").strip().lower() != "false",
+                    "attributes": {"clickable": (element.get("clickable") or "").strip().lower() == "true"},
                     "source_ref": source_ref,
                     "parent_id": parent_lookup.get(id(element)),
                     "children_ids": children_lookup.get(source_ref, []),
@@ -168,6 +170,19 @@ class AppiumHierarchyResolver(Resolver):
             graph=graph,
         ) if len(candidates) > 1 else None
 
+
+        icon_diag = None
+        if candidates:
+            icon_diag = resolve_icon_target_hint(
+                instruction=intent.instruction,
+                candidates=candidates,
+                elements=normalized_elements,
+                graph=graph,
+                repeated_region_diagnostics=repeated_diag,
+            )
+            if isinstance(icon_diag, dict) and icon_diag.get("status") == "resolved" and icon_diag.get("selected_candidate_ref"):
+                selected_ref = icon_diag.get("selected_candidate_ref")
+                candidates = [c for c in candidates if c.ref == selected_ref] or candidates
         enriched: list[ResolvedTarget] = []
         for target in candidates:
             meta = dict(target.metadata)
@@ -199,6 +214,19 @@ class AppiumHierarchyResolver(Resolver):
                 meta["repeated_region_diagnostics"] = safe_diag
             if repeated_diag and repeated_diag.get("status") == "resolved" and repeated_diag.get("selected_candidate_ref") == target.ref:
                 meta["repeated_region_diagnostics"]["status"] = "resolved"
+            if isinstance(icon_diag, dict):
+                safe_icon = {
+                    "status": icon_diag.get("status", "unknown"),
+                    "icon_hint_type": icon_diag.get("icon_hint_type", "unknown"),
+                    "target_icon": icon_diag.get("target_icon", "unknown"),
+                    "candidate_count": int(icon_diag.get("candidate_count", len(candidates))),
+                    "matched_candidate_count": int(icon_diag.get("matched_candidate_count", 0)),
+                    "reason": icon_diag.get("reason", "unknown"),
+                    "evidence": [str(v) for v in icon_diag.get("evidence", [])],
+                    "warnings": [str(v) for v in icon_diag.get("warnings", [])],
+                    "safe_metadata_only": True,
+                }
+                meta["icon_detection"] = safe_icon
             enriched.append(target.model_copy(update={"metadata": meta}))
 
         logger.debug(
