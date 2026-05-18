@@ -836,6 +836,38 @@ def test_html_report_escapes_webview_eligibility_and_context_selection_values(tm
     assert "&lt;script&gt;" in text
     assert "&lt;b&gt;" in text
 
+def test_html_report_renders_webview_switch_execution_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(
+        ref="r", confidence=0.9, resolver_name="x", metadata={
+            "webview_switch_execution": {
+                "switch_enabled": True, "switch_attempted": True, "switch_status": "switched",
+                "restore_attempted": True, "restore_status": "restored", "original_context_type": "native",
+                "selected_context_type": "webview", "context_selection_reason": "single", "reason": "ok",
+                "evidence": ["e1", "e2"], "warnings": ["warn"],
+            }
+        }))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Switch Execution" in text
+    assert "Evidence count:</strong> 2" in text
+
+def test_html_report_hides_webview_switch_execution_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    write_html_report([StepResult(status="passed", action="Tap", confidence=0.9)], path=out)
+    assert "WebView Switch Execution" not in out.read_text(encoding="utf-8")
+
+def test_html_report_escapes_webview_switch_execution_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(
+        ref="r", confidence=0.9, resolver_name="x", metadata={
+            "webview_switch_execution": {"switch_status": "<script>", "warnings": ["<warn>"], "evidence": []}
+        }))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "&lt;script&gt;" in text
+    assert "&lt;warn&gt;" in text
+
 def test_html_report_renders_system_dialog_section_when_present(tmp_path):
     out = tmp_path / "report.html"
     result = StepResult(
