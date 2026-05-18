@@ -49,6 +49,7 @@ from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagn
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
 from bubblegum.core.mobile.webview_switch_eligibility import evaluate_webview_switch_eligibility
 from bubblegum.core.mobile.webview_context_selection import select_webview_context
+from bubblegum.core.mobile.webview_switch_config import is_webview_switching_enabled_for_operation
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -123,6 +124,24 @@ def _infer_context_mode(has_native: bool, has_webview: bool, available_count: in
     if available_count > 0:
         return "unknown"
     return "unknown"
+
+
+
+def _safe_wiring_reason(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    allowed = {
+        "disabled_by_config",
+        "mode_off",
+        "operation_not_allowed",
+        "enabled",
+        "missing_eligibility",
+        "eligibility_not_allowed",
+        "missing_context_selection",
+        "context_not_selected",
+        "selected_context_type_not_webview",
+        "switch_ready",
+    }
+    return normalized if normalized in allowed else "unknown"
 
 _ARTIFACTS_DIR = Path("artifacts")
 
@@ -494,6 +513,79 @@ class AppiumAdapter(BaseAdapter):
                 continue
 
         raise ValueError(f"No extractable text found for ref={ref!r}")
+
+
+    def _prepare_webview_switch_metadata_for_operation(
+        self,
+        *,
+        operation_type: str,
+        instruction: str | None,
+        target_metadata: dict | None,
+        config,
+    ) -> dict[str, object]:
+        del instruction
+        metadata = target_metadata if isinstance(target_metadata, dict) else {}
+        eligibility = metadata.get("webview_switch_eligibility") if isinstance(metadata.get("webview_switch_eligibility"), dict) else None
+        selection = metadata.get("webview_context_selection") if isinstance(metadata.get("webview_context_selection"), dict) else None
+
+        out: dict[str, object] = {
+            "switch_enabled": False,
+            "switch_mode": "unknown",
+            "operation_type": str(operation_type or "unknown").strip().lower() or "unknown",
+            "eligibility_decision": "unknown",
+            "selection_decision": "unknown",
+            "selected_context_type": "unknown",
+            "switch_ready": False,
+            "reason": "unknown",
+            "safe_metadata_only": True,
+        }
+
+        if config is None:
+            out["reason"] = "disabled_by_config"
+            return {"webview_switch_wiring_plan": out}
+
+        switch_cfg = is_webview_switching_enabled_for_operation(config=config, operation_type=operation_type)
+        out["switch_enabled"] = bool(switch_cfg.get("enabled"))
+        out["switch_mode"] = str(switch_cfg.get("mode") or "unknown")
+        out["reason"] = _safe_wiring_reason(switch_cfg.get("reason"))
+
+        if not out["switch_enabled"]:
+            return {"webview_switch_wiring_plan": out}
+
+        eligibility_decision = str((eligibility or {}).get("decision") or "unknown").strip().lower()
+        if eligibility_decision not in {"allowed", "blocked", "deferred", "unknown"}:
+            eligibility_decision = "unknown"
+        out["eligibility_decision"] = eligibility_decision
+
+        if eligibility is None:
+            out["reason"] = "missing_eligibility"
+            return {"webview_switch_wiring_plan": out}
+        if eligibility_decision != "allowed":
+            out["reason"] = "eligibility_not_allowed"
+            return {"webview_switch_wiring_plan": out}
+
+        selection_decision = str((selection or {}).get("decision") or "unknown").strip().lower()
+        if selection_decision not in {"selected", "blocked", "deferred", "unknown"}:
+            selection_decision = "unknown"
+        out["selection_decision"] = selection_decision
+
+        if selection is None:
+            out["reason"] = "missing_context_selection"
+            return {"webview_switch_wiring_plan": out}
+        if selection_decision != "selected":
+            out["reason"] = "context_not_selected"
+            return {"webview_switch_wiring_plan": out}
+
+        selected_context_type = _sanitize_context_type((selection or {}).get("selected_context_type"))
+        out["selected_context_type"] = "webview" if selected_context_type in {"webview", "webview/chromium"} else "unknown"
+        if out["selected_context_type"] != "webview":
+            out["reason"] = "selected_context_type_not_webview"
+            return {"webview_switch_wiring_plan": out}
+
+        out["switch_ready"] = True
+        out["reason"] = "switch_ready"
+        return {"webview_switch_wiring_plan": out}
+
 
 
     def execute_system_dialog_action(
