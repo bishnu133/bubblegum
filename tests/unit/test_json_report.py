@@ -540,6 +540,52 @@ def test_json_report_includes_webview_eligibility_and_context_selection_analytic
     assert cs["total_with_context_selection"] == 1 and cs["selection_policy_counts"] == {"first": 1}
     assert cs["candidate_context_count_buckets"] == {"0": 0, "1": 0, "2-3": 1, "4+": 0}
 
+def test_json_report_preserves_and_redacts_webview_switch_execution(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(status="passed", action="a", confidence=1.0, target=ResolvedTarget(
+        ref="r", confidence=1.0, resolver_name="x", metadata={
+            "webview_switch_execution": {
+                "switch_enabled": True, "switch_attempted": True, "switch_status": "switched",
+                "restore_attempted": True, "restore_status": "restored", "original_context_type": "native",
+                "selected_context_type": "webview", "context_selection_reason": "single_candidate",
+                "reason": "execution_ok", "evidence": ["e1"], "warnings": ["w1"], "safe_metadata_only": True,
+                "raw_context_name": "SECRET", "exception_trace": "trace", "exception_message": "boom",
+            }
+        }))
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ws = payload["results"][0]["target"]["metadata"]["webview_switch_execution"]
+    assert ws["switch_enabled"] is True
+    assert ws["selected_context_type"] == "webview"
+    assert "raw_context_name" not in ws
+    assert "exception_trace" not in ws
+    assert "exception_message" not in ws
+
+def test_json_report_includes_webview_switch_execution_analytics_and_ignores_unsafe_keys(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(status="passed", action="a", confidence=1.0, target=ResolvedTarget(
+        ref="r", confidence=1.0, resolver_name="x", metadata={
+            "webview_switch_execution": {
+                "switch_enabled": True, "switch_attempted": True, "switch_status": "switched",
+                "restore_attempted": True, "restore_status": "restored", "original_context_type": "native",
+                "selected_context_type": "webview", "reason": "execution_ok", "warnings": ["deferred"],
+                "raw_context_name": "SHOULD_NOT_COUNT",
+            }
+        }))
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    summary = payload["analytics"]["webview_switch_execution_summary"]
+    assert summary["total_with_switch_execution"] == 1
+    assert summary["switch_enabled_count"] == 1
+    assert summary["switch_attempted_count"] == 1
+    assert summary["restore_attempted_count"] == 1
+    assert summary["switch_status_counts"] == {"switched": 1}
+    assert summary["restore_status_counts"] == {"restored": 1}
+    assert summary["original_context_type_counts"] == {"native": 1}
+    assert summary["selected_context_type_counts"] == {"webview": 1}
+    assert summary["reason_counts"] == {"execution_ok": 1}
+    assert summary["warning_counts"] == {"deferred": 1}
+
 def test_json_report_preserves_safe_system_dialog_detection_metadata(tmp_path):
     report_path = tmp_path / "bubblegum_report.json"
     result = StepResult(

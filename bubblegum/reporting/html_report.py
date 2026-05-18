@@ -130,6 +130,11 @@ _SAFE_WEBVIEW_CONTEXT_SELECTION_FIELDS = (
     "candidate_context_count", "eligibility_decision", "switch_attempted", "evidence", "warnings",
     "safe_metadata_only",
 )
+_SAFE_WEBVIEW_SWITCH_EXECUTION_FIELDS = (
+    "switch_enabled", "switch_attempted", "switch_status", "restore_attempted", "restore_status",
+    "original_context_type", "selected_context_type", "context_selection_reason", "reason", "evidence",
+    "warnings", "safe_metadata_only",
+)
 
 
 _SAFE_SYSTEM_DIALOG_FIELDS = (
@@ -254,6 +259,12 @@ _UNSAFE_SCROLL_DISCOVERY_KEYS = {
     "process_name",
     "exception_trace",
     "raw_instruction",
+}
+_UNSAFE_WEBVIEW_SWITCH_EXECUTION_KEYS = {
+    "raw_context_name", "raw_context_names", "context_name", "context_names", "selected_context_name",
+    "original_context_name", "raw_xml", "hierarchy_xml", "raw_dom", "screenshot", "screenshot_bytes",
+    "page_source", "provider_payload", "raw_capabilities", "credentials", "secrets", "exception_trace",
+    "exception_message",
 }
 
 _UNSAFE_SYSTEM_DIALOG_KEYS = {
@@ -614,6 +625,26 @@ def safe_webview_context_selection_metadata(metadata: dict) -> dict[str, Any]:
             out[key] = str(value)
     return out
 
+def safe_webview_switch_execution_metadata(metadata: dict) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("webview_switch_execution")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_WEBVIEW_SWITCH_EXECUTION_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_WEBVIEW_SWITCH_EXECUTION_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"switch_enabled", "switch_attempted", "restore_attempted", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"evidence", "warnings"}:
+            out[key] = [str(v) for v in value] if isinstance(value, (list, tuple)) else [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
 def safe_repeated_region_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         return {}
@@ -920,6 +951,7 @@ def _render_step(idx: int, result: StepResult) -> str:
     webview_diagnostics = safe_webview_switch_diagnostics_metadata(target_metadata)
     webview_switch_eligibility = safe_webview_switch_eligibility_metadata(target_metadata)
     webview_context_selection = safe_webview_context_selection_metadata(target_metadata)
+    webview_switch_execution = safe_webview_switch_execution_metadata(target_metadata)
     if webview_diagnostics:
         evidence = webview_diagnostics.get("evidence", [])
         warnings = webview_diagnostics.get("warnings", [])
@@ -969,6 +1001,16 @@ def _render_step(idx: int, result: StepResult) -> str:
         rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
         rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
         webview_context_selection_html = ('<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">WebView Context Selection</summary>' f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{rows}</ul></details>')
+    webview_switch_execution_html = ""
+    if webview_switch_execution:
+        evidence = webview_switch_execution.get("evidence", [])
+        warnings = webview_switch_execution.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [("Switch enabled", "switch_enabled"), ("Switch attempted", "switch_attempted"), ("Switch status", "switch_status"), ("Restore attempted", "restore_attempted"), ("Restore status", "restore_status"), ("Original context type", "original_context_type"), ("Selected context type", "selected_context_type"), ("Context selection reason", "context_selection_reason"), ("Reason", "reason")]
+        rows = "".join(f'<li><strong>{label}:</strong> {html.escape(str(webview_switch_execution[key]))}</li>' for label, key in labels if key in webview_switch_execution)
+        rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        webview_switch_execution_html = ('<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">WebView Switch Execution</summary>' f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{rows}</ul></details>')
 
     system_dialog_html = ""
     system_dialog_detection = safe_system_dialog_detection_metadata(target_metadata)
@@ -1304,6 +1346,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {webview_html}
       {webview_switch_eligibility_html}
       {webview_context_selection_html}
+      {webview_switch_execution_html}
       {system_dialog_html}
       {system_dialog_guardrails_html}
       {system_dialog_action_html}
@@ -1610,6 +1653,16 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     webview_context_selection_switch_attempted_count = 0
     webview_context_selection_warning_counts: Counter[str] = Counter()
     webview_context_selection_candidate_context_count_buckets = {"0": 0, "1": 0, "2-3": 0, "4+": 0}
+    webview_switch_execution_total = 0
+    webview_switch_execution_enabled_count = 0
+    webview_switch_execution_attempted_count = 0
+    webview_switch_execution_restore_attempted_count = 0
+    webview_switch_execution_status_counts: Counter[str] = Counter()
+    webview_switch_execution_restore_status_counts: Counter[str] = Counter()
+    webview_switch_execution_original_context_type_counts: Counter[str] = Counter()
+    webview_switch_execution_selected_context_type_counts: Counter[str] = Counter()
+    webview_switch_execution_reason_counts: Counter[str] = Counter()
+    webview_switch_execution_warning_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -1636,6 +1689,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         webview_diagnostics = safe_webview_switch_diagnostics_metadata(metadata)
         webview_switch_eligibility = safe_webview_switch_eligibility_metadata(metadata)
         webview_context_selection = safe_webview_context_selection_metadata(metadata)
+        webview_switch_execution = safe_webview_switch_execution_metadata(metadata)
         system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
         system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
         system_dialog_action = safe_system_dialog_action_metadata(metadata)
@@ -1723,6 +1777,23 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
                     webview_context_selection_candidate_context_count_buckets["2-3"] += 1
                 else:
                     webview_context_selection_candidate_context_count_buckets["4+"] += 1
+        if webview_switch_execution:
+            webview_switch_execution_total += 1
+            if webview_switch_execution.get("switch_enabled") is True:
+                webview_switch_execution_enabled_count += 1
+            if webview_switch_execution.get("switch_attempted") is True:
+                webview_switch_execution_attempted_count += 1
+            if webview_switch_execution.get("restore_attempted") is True:
+                webview_switch_execution_restore_attempted_count += 1
+            _count_categorical_field(webview_switch_execution_status_counts, webview_switch_execution.get("switch_status"))
+            _count_categorical_field(webview_switch_execution_restore_status_counts, webview_switch_execution.get("restore_status"))
+            _count_categorical_field(webview_switch_execution_original_context_type_counts, webview_switch_execution.get("original_context_type"))
+            _count_categorical_field(webview_switch_execution_selected_context_type_counts, webview_switch_execution.get("selected_context_type"))
+            _count_categorical_field(webview_switch_execution_reason_counts, webview_switch_execution.get("reason"))
+            warnings = webview_switch_execution.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(webview_switch_execution_warning_counts, warning)
         if system_dialog_detection:
             system_dialog_total_with_detection += 1
             if system_dialog_detection.get("dialog_detected") is True:
@@ -1999,6 +2070,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "warning_counts": dict(webview_context_selection_warning_counts),
         "candidate_context_count_buckets": dict(webview_context_selection_candidate_context_count_buckets),
     }
+    webview_switch_execution_summary = {
+        "total_with_switch_execution": webview_switch_execution_total,
+        "switch_enabled_count": webview_switch_execution_enabled_count,
+        "switch_attempted_count": webview_switch_execution_attempted_count,
+        "restore_attempted_count": webview_switch_execution_restore_attempted_count,
+        "switch_status_counts": dict(webview_switch_execution_status_counts),
+        "restore_status_counts": dict(webview_switch_execution_restore_status_counts),
+        "original_context_type_counts": dict(webview_switch_execution_original_context_type_counts),
+        "selected_context_type_counts": dict(webview_switch_execution_selected_context_type_counts),
+        "reason_counts": dict(webview_switch_execution_reason_counts),
+        "warning_counts": dict(webview_switch_execution_warning_counts),
+    }
 
     system_dialog_summary = {
         "total_with_detection": system_dialog_total_with_detection,
@@ -2120,6 +2203,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "webview_diagnostics_summary": webview_diagnostics_summary,
         "webview_switch_eligibility_summary": webview_switch_eligibility_summary,
         "webview_context_selection_summary": webview_context_selection_summary,
+        "webview_switch_execution_summary": webview_switch_execution_summary,
         "system_dialog_summary": system_dialog_summary,
         "system_dialog_guardrails_summary": system_dialog_guardrails_summary,
         "system_dialog_action_summary": system_dialog_action_summary,
