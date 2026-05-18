@@ -454,6 +454,14 @@ class AppiumAdapter(BaseAdapter):
         """
         t0 = time.monotonic()
 
+        wiring_plan = self._prepare_webview_switch_metadata_for_operation(
+            operation_type="validate",
+            instruction=plan.expected_value,
+            target_metadata=None,
+            config=getattr(self, "_config", None),
+        )
+        logger.debug("AppiumAdapter.validate webview switch wiring plan: %s", wiring_plan)
+
         try:
             passed, actual = self._run_assertion(plan)
             duration_ms = int((time.monotonic() - t0) * 1000)
@@ -498,6 +506,15 @@ class AppiumAdapter(BaseAdapter):
           5) element.get_attribute("name")
         """
         del timeout_ms  # reserved for future wait/retry strategy
+        target_metadata = ref.get("metadata") if isinstance(ref, dict) else None
+        wiring_plan = self._prepare_webview_switch_metadata_for_operation(
+            operation_type="extract",
+            instruction=None,
+            target_metadata=target_metadata if isinstance(target_metadata, dict) else None,
+            config=getattr(self, "_config", None),
+        )
+        logger.debug("AppiumAdapter.extract_text webview switch wiring plan: %s", wiring_plan)
+
         element = self._find_element(ref)
 
         text_value = (getattr(element, "text", None) or "").strip()
@@ -544,7 +561,8 @@ class AppiumAdapter(BaseAdapter):
             out["reason"] = "disabled_by_config"
             return {"webview_switch_wiring_plan": out}
 
-        switch_cfg = is_webview_switching_enabled_for_operation(config=config, operation_type=operation_type)
+        config_operation_type = "verify" if out["operation_type"] == "validate" else out["operation_type"]
+        switch_cfg = is_webview_switching_enabled_for_operation(config=config, operation_type=config_operation_type)
         out["switch_enabled"] = bool(switch_cfg.get("enabled"))
         out["switch_mode"] = str(switch_cfg.get("mode") or "unknown")
         out["reason"] = _safe_wiring_reason(switch_cfg.get("reason"))
