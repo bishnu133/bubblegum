@@ -101,6 +101,7 @@ def execute_webview_switch_guarded(
     get_current_context: Callable[[], str | None] | None = None,
     switch_context: Callable[[dict], None] | None = None,
     restore_context: Callable[[str | None], None] | None = None,
+    operation_callable: Callable[[], object] | None = None,
 ) -> dict:
     plan = build_webview_switch_execution_plan(
         webview_switch_eligibility=webview_switch_eligibility,
@@ -130,6 +131,8 @@ def execute_webview_switch_guarded(
         switched = True
         plan["switch_status"] = "switched"
         plan["reason"] = "switch_succeeded"
+        if callable(operation_callable):
+            operation_callable()
     except Exception as exc:
         plan["switch_status"] = "failed"
         plan["reason"] = _sanitize_exception(exc)

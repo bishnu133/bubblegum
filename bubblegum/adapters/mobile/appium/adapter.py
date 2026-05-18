@@ -50,6 +50,7 @@ from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_gua
 from bubblegum.core.mobile.webview_switch_eligibility import evaluate_webview_switch_eligibility
 from bubblegum.core.mobile.webview_context_selection import select_webview_context
 from bubblegum.core.mobile.webview_switch_config import is_webview_switching_enabled_for_operation
+from bubblegum.core.mobile.webview_switch_execution import execute_webview_switch_guarded
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -169,6 +170,13 @@ class AppiumAdapter(BaseAdapter):
             self.platform = plat.lower()
         except Exception:
             self.platform = "android"
+        self._webview_get_current_context = None
+        self._webview_switch_context = None
+        self._webview_restore_context = None
+        self._webview_validate_operation = None
+        self._webview_extract_operation = None
+        self._webview_validate_metadata = None
+        self._last_webview_switch_execution = None
 
     # ------------------------------------------------------------------
     # BaseAdapter implementation
@@ -457,13 +465,13 @@ class AppiumAdapter(BaseAdapter):
         wiring_plan = self._prepare_webview_switch_metadata_for_operation(
             operation_type="validate",
             instruction=plan.expected_value,
-            target_metadata=None,
+            target_metadata=self._webview_validate_metadata if isinstance(getattr(self, "_webview_validate_metadata", None), dict) else None,
             config=getattr(self, "_config", None),
         )
         logger.debug("AppiumAdapter.validate webview switch wiring plan: %s", wiring_plan)
 
         try:
-            passed, actual = self._run_assertion(plan)
+            passed, actual = self._run_assertion_with_optional_fake_webview_switch(plan, wiring_plan)
             duration_ms = int((time.monotonic() - t0) * 1000)
             return ValidationResult(passed=passed, actual_value=actual, duration_ms=duration_ms)
         except Exception as exc:
@@ -515,12 +523,13 @@ class AppiumAdapter(BaseAdapter):
         )
         logger.debug("AppiumAdapter.extract_text webview switch wiring plan: %s", wiring_plan)
 
-        element = self._find_element(ref)
+        return self._extract_text_with_optional_fake_webview_switch(ref, wiring_plan)
 
+    def _extract_text_base(self, ref) -> str:
+        element = self._find_element(ref)
         text_value = (getattr(element, "text", None) or "").strip()
         if text_value:
             return text_value
-
         for attr in ("content-desc", "value", "text", "name"):
             try:
                 value = (element.get_attribute(attr) or "").strip()
@@ -528,8 +537,57 @@ class AppiumAdapter(BaseAdapter):
                     return value
             except Exception:
                 continue
-
         raise ValueError(f"No extractable text found for ref={ref!r}")
+
+    def _run_assertion_with_optional_fake_webview_switch(self, plan: ValidationPlan, wiring_plan: dict[str, object]) -> tuple[bool, str]:
+        execution_args = self._build_fake_switch_execution_args("validate", wiring_plan)
+        if execution_args is None:
+            return self._run_assertion(plan)
+        outcome: dict[str, object] = {"value": (False, "validation failed")}
+
+        def _op():
+            outcome["value"] = self._webview_validate_operation(plan) if callable(self._webview_validate_operation) else self._run_assertion(plan)
+
+        execution = execute_webview_switch_guarded(operation_callable=_op, **execution_args)
+        self._last_webview_switch_execution = {"webview_switch_execution": execution}
+        if execution.get("switch_status") == "failed" or execution.get("restore_status") == "failed":
+            return False, "webview_switch_safety_failed"
+        result = outcome.get("value")
+        return result if isinstance(result, tuple) and len(result) == 2 else (False, "validation failed")
+
+    def _extract_text_with_optional_fake_webview_switch(self, ref, wiring_plan: dict[str, object]) -> str:
+        execution_args = self._build_fake_switch_execution_args("extract", wiring_plan)
+        if execution_args is None:
+            return self._extract_text_base(ref)
+        outcome: dict[str, object] = {"value": ""}
+
+        def _op():
+            outcome["value"] = self._webview_extract_operation(ref) if callable(self._webview_extract_operation) else self._extract_text_base(ref)
+
+        execution = execute_webview_switch_guarded(operation_callable=_op, **execution_args)
+        self._last_webview_switch_execution = {"webview_switch_execution": execution}
+        if isinstance(ref, dict) and isinstance(ref.get("metadata"), dict):
+            ref["metadata"]["webview_switch_execution"] = execution
+        if execution.get("switch_status") == "failed" or execution.get("restore_status") == "failed":
+            return ""
+        return str(outcome.get("value") or "")
+
+    def _build_fake_switch_execution_args(self, operation_type: str, wiring_plan: dict[str, object]) -> dict[str, object] | None:
+        if operation_type not in {"validate", "extract"}:
+            return None
+        plan = wiring_plan.get("webview_switch_wiring_plan") if isinstance(wiring_plan, dict) else None
+        if not isinstance(plan, dict) or not plan.get("switch_ready"):
+            return None
+        if not callable(self._webview_switch_context):
+            return None
+        return {
+            "webview_switch_eligibility": {"decision": "allowed"},
+            "webview_context_selection": {"decision": "selected", "selected_context_type": "webview"},
+            "explicit_opt_in": True,
+            "get_current_context": self._webview_get_current_context,
+            "switch_context": self._webview_switch_context,
+            "restore_context": self._webview_restore_context,
+        }
 
 
     def _prepare_webview_switch_metadata_for_operation(
