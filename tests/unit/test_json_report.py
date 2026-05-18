@@ -1378,3 +1378,76 @@ def test_json_report_cloud_provider_unsafe_keys_do_not_affect_analytics(tmp_path
     write_json_report([result], path=out)
     summary = json.loads(out.read_text())['analytics']['cloud_provider_summary']
     assert summary['total_with_cloud_provider_summary'] == 0
+
+def test_json_report_preserves_safe_webview_switch_wiring_plan_metadata(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_wiring_plan": {
+                    "enabled": True,
+                    "reason": "enabled",
+                    "operation_type": "execute",
+                    "mode": "opt_in",
+                    "eligibility_decision": "allowed",
+                    "context_selection_decision": "selected",
+                    "switch_ready": True,
+                    "safe_metadata_only": True,
+                    "warnings": ["w1"],
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    md = json.loads(report_path.read_text(encoding="utf-8"))["results"][0]["target"]["metadata"]
+    plan = md["webview_switch_wiring_plan"]
+    assert plan["enabled"] is True
+    assert plan["switch_ready"] is True
+    assert plan["reason"] == "enabled"
+
+
+def test_json_report_redacts_unsafe_webview_switch_wiring_plan_metadata_and_analytics(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_wiring_plan": {
+                    "enabled": True,
+                    "reason": "enabled",
+                    "operation_type": "execute",
+                    "mode": "opt_in",
+                    "eligibility_decision": "allowed",
+                    "context_selection_decision": "selected",
+                    "switch_ready": True,
+                    "warnings": ["kept"],
+                    "raw_context_name": "WEBVIEW_secret",
+                    "context_names": ["WEBVIEW_secret"],
+                    "exception_message": "boom",
+                }
+            },
+        ),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    plan = payload["results"][0]["target"]["metadata"]["webview_switch_wiring_plan"]
+    assert "raw_context_name" not in plan
+    assert "context_names" not in plan
+    assert "exception_message" not in plan
+    summary = payload["analytics"]["webview_switch_wiring_plan_summary"]
+    assert summary["total_with_wiring_plan"] == 1
+    assert summary["enabled_count"] == 1
+    assert summary["switch_ready_count"] == 1
+    assert summary["reason_counts"] == {"enabled": 1}
+    assert "WEBVIEW_secret" not in str(summary)
