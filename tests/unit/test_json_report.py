@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import json
 
+from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
+from bubblegum.core.config import BubblegumConfig, WebviewSwitchingConfig
 from bubblegum.core.schemas import ArtifactRef, ErrorInfo, ResolvedTarget, ResolverTrace, StepResult
 from bubblegum.reporting.html_report import build_report_analytics
 from bubblegum.reporting.json_report import write_json_report
+
+
+class _Driver:
+    capabilities = {"platformName": "Android"}
 
 
 def _sample_result() -> StepResult:
@@ -1451,3 +1457,48 @@ def test_json_report_redacts_unsafe_webview_switch_wiring_plan_metadata_and_anal
     assert summary["switch_ready_count"] == 1
     assert summary["reason_counts"] == {"enabled": 1}
     assert "WEBVIEW_secret" not in str(summary)
+
+
+def test_json_report_accepts_adapter_skeleton_wiring_plan_validate_extract(tmp_path):
+    cfg = BubblegumConfig(
+        webview_switching=WebviewSwitchingConfig(
+            enable_webview_switching=True,
+            webview_switching_mode="opt_in",
+            webview_switch_allowed_operations=["verify", "extract"],
+        )
+    )
+    adapter = AppiumAdapter(_Driver())
+    adapter._config = cfg
+
+    validate_plan = adapter._prepare_webview_switch_metadata_for_operation(
+        operation_type="validate",
+        instruction="Login",
+        target_metadata={
+            "webview_switch_eligibility": {"decision": "allowed"},
+            "webview_context_selection": {"decision": "selected", "selected_context_type": "webview"},
+        },
+        config=cfg,
+    )["webview_switch_wiring_plan"]
+    extract_plan = adapter._prepare_webview_switch_metadata_for_operation(
+        operation_type="extract",
+        instruction=None,
+        target_metadata={
+            "webview_switch_eligibility": {"decision": "allowed"},
+            "webview_context_selection": {"decision": "selected", "selected_context_type": "webview"},
+        },
+        config=cfg,
+    )["webview_switch_wiring_plan"]
+
+    report_path = tmp_path / "bubblegum_report.json"
+    write_json_report(
+        [
+            StepResult(status="passed", action="Validate", confidence=1, target=ResolvedTarget(ref="a", confidence=1, resolver_name="x", metadata={"webview_switch_wiring_plan": validate_plan})),
+            StepResult(status="passed", action="Extract", confidence=1, target=ResolvedTarget(ref="b", confidence=1, resolver_name="x", metadata={"webview_switch_wiring_plan": extract_plan})),
+        ],
+        path=report_path,
+    )
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    summary = payload["analytics"]["webview_switch_wiring_plan_summary"]
+    assert summary["operation_type_counts"] == {"validate": 1, "extract": 1}
+    assert payload["results"][0]["target"]["metadata"]["webview_switch_wiring_plan"]["operation_type"] == "validate"
+    assert payload["results"][1]["target"]["metadata"]["webview_switch_wiring_plan"]["operation_type"] == "extract"

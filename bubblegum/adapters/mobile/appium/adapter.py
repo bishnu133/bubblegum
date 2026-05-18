@@ -546,12 +546,11 @@ class AppiumAdapter(BaseAdapter):
         selection = metadata.get("webview_context_selection") if isinstance(metadata.get("webview_context_selection"), dict) else None
 
         out: dict[str, object] = {
-            "switch_enabled": False,
-            "switch_mode": "unknown",
+            "enabled": False,
+            "mode": "unknown",
             "operation_type": str(operation_type or "unknown").strip().lower() or "unknown",
             "eligibility_decision": "unknown",
-            "selection_decision": "unknown",
-            "selected_context_type": "unknown",
+            "context_selection_decision": "unknown",
             "switch_ready": False,
             "reason": "unknown",
             "safe_metadata_only": True,
@@ -563,11 +562,11 @@ class AppiumAdapter(BaseAdapter):
 
         config_operation_type = "verify" if out["operation_type"] == "validate" else out["operation_type"]
         switch_cfg = is_webview_switching_enabled_for_operation(config=config, operation_type=config_operation_type)
-        out["switch_enabled"] = bool(switch_cfg.get("enabled"))
-        out["switch_mode"] = str(switch_cfg.get("mode") or "unknown")
+        out["enabled"] = bool(switch_cfg.get("enabled"))
+        out["mode"] = str(switch_cfg.get("mode") or "unknown")
         out["reason"] = _safe_wiring_reason(switch_cfg.get("reason"))
 
-        if not out["switch_enabled"]:
+        if not out["enabled"]:
             return {"webview_switch_wiring_plan": out}
 
         eligibility_decision = str((eligibility or {}).get("decision") or "unknown").strip().lower()
@@ -585,7 +584,7 @@ class AppiumAdapter(BaseAdapter):
         selection_decision = str((selection or {}).get("decision") or "unknown").strip().lower()
         if selection_decision not in {"selected", "blocked", "deferred", "unknown"}:
             selection_decision = "unknown"
-        out["selection_decision"] = selection_decision
+        out["context_selection_decision"] = selection_decision
 
         if selection is None:
             out["reason"] = "missing_context_selection"
@@ -595,8 +594,7 @@ class AppiumAdapter(BaseAdapter):
             return {"webview_switch_wiring_plan": out}
 
         selected_context_type = _sanitize_context_type((selection or {}).get("selected_context_type"))
-        out["selected_context_type"] = "webview" if selected_context_type in {"webview", "webview/chromium"} else "unknown"
-        if out["selected_context_type"] != "webview":
+        if selected_context_type not in {"webview", "webview/chromium"}:
             out["reason"] = "selected_context_type_not_webview"
             return {"webview_switch_wiring_plan": out}
 

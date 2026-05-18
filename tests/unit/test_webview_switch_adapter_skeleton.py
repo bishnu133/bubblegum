@@ -116,4 +116,4 @@ def test_config_enabled_extract_prepares_wiring_only():
     )["webview_switch_wiring_plan"]
 
     assert out["switch_ready"] is True
-    assert out["selected_context_type"] == "webview"
+    assert out["context_selection_decision"] == "selected"

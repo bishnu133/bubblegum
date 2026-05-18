@@ -40,7 +40,7 @@ def test_wiring_plan_default_config_no_switch():
     out = _adapter()._prepare_webview_switch_metadata_for_operation(
         operation_type="execute", instruction=None, target_metadata={}, config=BubblegumConfig()
     )["webview_switch_wiring_plan"]
-    assert out["switch_enabled"] is False
+    assert out["enabled"] is False
     assert out["reason"] in {"disabled_by_config", "mode_off", "operation_not_allowed"}
     assert out["switch_ready"] is False
 
@@ -49,7 +49,7 @@ def test_wiring_plan_mode_off_no_switch():
     out = _adapter()._prepare_webview_switch_metadata_for_operation(
         operation_type="execute", instruction=None, target_metadata={}, config=_cfg(enabled=True, mode="off", ops=["execute"])
     )["webview_switch_wiring_plan"]
-    assert out["switch_enabled"] is False
+    assert out["enabled"] is False
     assert out["reason"] == "mode_off"
 
 
@@ -57,7 +57,7 @@ def test_wiring_plan_operation_not_allowed_no_switch():
     out = _adapter()._prepare_webview_switch_metadata_for_operation(
         operation_type="validate", instruction=None, target_metadata={}, config=_cfg(enabled=True, mode="opt_in", ops=["extract"])
     )["webview_switch_wiring_plan"]
-    assert out["switch_enabled"] is False
+    assert out["enabled"] is False
     assert out["reason"] == "operation_not_allowed"
 
 
@@ -65,7 +65,7 @@ def test_wiring_plan_missing_eligibility_no_switch():
     out = _adapter()._prepare_webview_switch_metadata_for_operation(
         operation_type="execute", instruction=None, target_metadata={}, config=_cfg(enabled=True, mode="opt_in", ops=["execute"])
     )["webview_switch_wiring_plan"]
-    assert out["switch_enabled"] is True
+    assert out["enabled"] is True
     assert out["switch_ready"] is False
     assert out["reason"] == "missing_eligibility"
 
@@ -77,7 +77,7 @@ def test_wiring_plan_missing_context_selection_no_switch():
         target_metadata={"webview_switch_eligibility": _eligible()},
         config=_cfg(enabled=True, mode="opt_in", ops=["execute"]),
     )["webview_switch_wiring_plan"]
-    assert out["switch_enabled"] is True
+    assert out["enabled"] is True
     assert out["switch_ready"] is False
     assert out["reason"] == "missing_context_selection"
 
@@ -151,6 +151,6 @@ def test_wiring_plan_raw_context_name_not_leaked():
         config=_cfg(enabled=True, mode="opt_in", ops=["execute"]),
     )["webview_switch_wiring_plan"]
     assert out["switch_ready"] is True
-    assert out["selected_context_type"] == "webview"
+    assert out["context_selection_decision"] == "selected"
     assert "selected_context" not in out
     assert "WEBVIEW_com.example" not in str(out)
