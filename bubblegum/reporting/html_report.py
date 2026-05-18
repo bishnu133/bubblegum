@@ -135,6 +135,10 @@ _SAFE_WEBVIEW_SWITCH_EXECUTION_FIELDS = (
     "original_context_type", "selected_context_type", "context_selection_reason", "reason", "evidence",
     "warnings", "safe_metadata_only",
 )
+_SAFE_WEBVIEW_SWITCH_WIRING_PLAN_FIELDS = (
+    "enabled", "reason", "operation_type", "mode", "eligibility_decision",
+    "context_selection_decision", "switch_ready", "safe_metadata_only", "warnings",
+)
 
 
 _SAFE_SYSTEM_DIALOG_FIELDS = (
@@ -265,6 +269,12 @@ _UNSAFE_WEBVIEW_SWITCH_EXECUTION_KEYS = {
     "original_context_name", "raw_xml", "hierarchy_xml", "raw_dom", "screenshot", "screenshot_bytes",
     "page_source", "provider_payload", "raw_capabilities", "credentials", "secrets", "exception_trace",
     "exception_message",
+}
+_UNSAFE_WEBVIEW_SWITCH_WIRING_PLAN_KEYS = {
+    "raw_context_name", "raw_context_names", "context_name", "context_names", "selected_context_name",
+    "original_context_name", "raw_xml", "hierarchy_xml", "raw_dom", "screenshot", "screenshot_bytes",
+    "page_source", "provider_payload", "raw_capabilities", "credentials", "secrets", "exception_trace",
+    "exception_message", "raw_instruction",
 }
 
 _UNSAFE_SYSTEM_DIALOG_KEYS = {
@@ -645,6 +655,27 @@ def safe_webview_switch_execution_metadata(metadata: dict) -> dict[str, Any]:
             out[key] = str(value)
     return out
 
+def safe_webview_switch_wiring_plan_metadata(metadata: dict) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("webview_switch_wiring_plan")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_WEBVIEW_SWITCH_WIRING_PLAN_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_WEBVIEW_SWITCH_WIRING_PLAN_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"enabled", "switch_ready", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key == "warnings":
+            out[key] = [str(v) for v in value] if isinstance(value, (list, tuple)) else [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
+
 def safe_repeated_region_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         return {}
@@ -952,6 +983,7 @@ def _render_step(idx: int, result: StepResult) -> str:
     webview_switch_eligibility = safe_webview_switch_eligibility_metadata(target_metadata)
     webview_context_selection = safe_webview_context_selection_metadata(target_metadata)
     webview_switch_execution = safe_webview_switch_execution_metadata(target_metadata)
+    webview_switch_wiring_plan = safe_webview_switch_wiring_plan_metadata(target_metadata)
     if webview_diagnostics:
         evidence = webview_diagnostics.get("evidence", [])
         warnings = webview_diagnostics.get("warnings", [])
@@ -1011,6 +1043,15 @@ def _render_step(idx: int, result: StepResult) -> str:
         rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
         rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
         webview_switch_execution_html = ('<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">WebView Switch Execution</summary>' f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{rows}</ul></details>')
+
+    webview_switch_wiring_plan_html = ""
+    if webview_switch_wiring_plan:
+        warnings = webview_switch_wiring_plan.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [("Enabled", "enabled"), ("Reason", "reason"), ("Operation type", "operation_type"), ("Mode", "mode"), ("Eligibility decision", "eligibility_decision"), ("Context selection decision", "context_selection_decision"), ("Switch ready", "switch_ready")]
+        rows = "".join(f'<li><strong>{label}:</strong> {html.escape(str(webview_switch_wiring_plan[key]))}</li>' for label, key in labels if key in webview_switch_wiring_plan)
+        rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        webview_switch_wiring_plan_html = ('<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">WebView Switch Wiring Plan</summary>' f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{rows}</ul></details>')
 
     system_dialog_html = ""
     system_dialog_detection = safe_system_dialog_detection_metadata(target_metadata)
@@ -1347,6 +1388,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {webview_switch_eligibility_html}
       {webview_context_selection_html}
       {webview_switch_execution_html}
+      {webview_switch_wiring_plan_html}
       {system_dialog_html}
       {system_dialog_guardrails_html}
       {system_dialog_action_html}
@@ -1663,6 +1705,15 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     webview_switch_execution_selected_context_type_counts: Counter[str] = Counter()
     webview_switch_execution_reason_counts: Counter[str] = Counter()
     webview_switch_execution_warning_counts: Counter[str] = Counter()
+    webview_switch_wiring_plan_total = 0
+    webview_switch_wiring_plan_enabled_count = 0
+    webview_switch_wiring_plan_switch_ready_count = 0
+    webview_switch_wiring_plan_reason_counts: Counter[str] = Counter()
+    webview_switch_wiring_plan_operation_type_counts: Counter[str] = Counter()
+    webview_switch_wiring_plan_mode_counts: Counter[str] = Counter()
+    webview_switch_wiring_plan_eligibility_decision_counts: Counter[str] = Counter()
+    webview_switch_wiring_plan_context_selection_decision_counts: Counter[str] = Counter()
+    webview_switch_wiring_plan_warning_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -1690,6 +1741,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         webview_switch_eligibility = safe_webview_switch_eligibility_metadata(metadata)
         webview_context_selection = safe_webview_context_selection_metadata(metadata)
         webview_switch_execution = safe_webview_switch_execution_metadata(metadata)
+        webview_switch_wiring_plan = safe_webview_switch_wiring_plan_metadata(metadata)
         system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
         system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
         system_dialog_action = safe_system_dialog_action_metadata(metadata)
@@ -1794,6 +1846,21 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             if isinstance(warnings, list):
                 for warning in warnings:
                     _count_categorical_field(webview_switch_execution_warning_counts, warning)
+        if webview_switch_wiring_plan:
+            webview_switch_wiring_plan_total += 1
+            if webview_switch_wiring_plan.get("enabled") is True:
+                webview_switch_wiring_plan_enabled_count += 1
+            if webview_switch_wiring_plan.get("switch_ready") is True:
+                webview_switch_wiring_plan_switch_ready_count += 1
+            _count_categorical_field(webview_switch_wiring_plan_reason_counts, webview_switch_wiring_plan.get("reason"))
+            _count_categorical_field(webview_switch_wiring_plan_operation_type_counts, webview_switch_wiring_plan.get("operation_type"))
+            _count_categorical_field(webview_switch_wiring_plan_mode_counts, webview_switch_wiring_plan.get("mode"))
+            _count_categorical_field(webview_switch_wiring_plan_eligibility_decision_counts, webview_switch_wiring_plan.get("eligibility_decision"))
+            _count_categorical_field(webview_switch_wiring_plan_context_selection_decision_counts, webview_switch_wiring_plan.get("context_selection_decision"))
+            warnings = webview_switch_wiring_plan.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(webview_switch_wiring_plan_warning_counts, warning)
         if system_dialog_detection:
             system_dialog_total_with_detection += 1
             if system_dialog_detection.get("dialog_detected") is True:
@@ -2083,6 +2150,18 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "warning_counts": dict(webview_switch_execution_warning_counts),
     }
 
+    webview_switch_wiring_plan_summary = {
+        "total_with_wiring_plan": webview_switch_wiring_plan_total,
+        "enabled_count": webview_switch_wiring_plan_enabled_count,
+        "switch_ready_count": webview_switch_wiring_plan_switch_ready_count,
+        "reason_counts": dict(webview_switch_wiring_plan_reason_counts),
+        "operation_type_counts": dict(webview_switch_wiring_plan_operation_type_counts),
+        "mode_counts": dict(webview_switch_wiring_plan_mode_counts),
+        "eligibility_decision_counts": dict(webview_switch_wiring_plan_eligibility_decision_counts),
+        "context_selection_decision_counts": dict(webview_switch_wiring_plan_context_selection_decision_counts),
+        "warning_counts": dict(webview_switch_wiring_plan_warning_counts),
+    }
+
     system_dialog_summary = {
         "total_with_detection": system_dialog_total_with_detection,
         "detected_count": system_dialog_detected_count,
@@ -2204,6 +2283,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "webview_switch_eligibility_summary": webview_switch_eligibility_summary,
         "webview_context_selection_summary": webview_context_selection_summary,
         "webview_switch_execution_summary": webview_switch_execution_summary,
+        "webview_switch_wiring_plan_summary": webview_switch_wiring_plan_summary,
         "system_dialog_summary": system_dialog_summary,
         "system_dialog_guardrails_summary": system_dialog_guardrails_summary,
         "system_dialog_action_summary": system_dialog_action_summary,

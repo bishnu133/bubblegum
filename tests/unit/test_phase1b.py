@@ -1361,3 +1361,62 @@ def test_html_report_escapes_cloud_provider_summary_values(tmp_path):
     text = out.read_text(encoding='utf-8')
     assert '<script>x</script>' not in text
     assert '&lt;script&gt;x&lt;/script&gt;' in text
+
+def test_html_report_renders_webview_switch_wiring_plan_section_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_wiring_plan": {
+                    "enabled": True,
+                    "reason": "enabled",
+                    "operation_type": "execute",
+                    "mode": "opt_in",
+                    "eligibility_decision": "allowed",
+                    "context_selection_decision": "selected",
+                    "switch_ready": True,
+                    "warnings": ["warn"],
+                }
+            },
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Switch Wiring Plan" in text
+    assert "enabled" in text
+
+
+def test_html_report_hides_webview_switch_wiring_plan_section_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    write_html_report([StepResult(status="passed", action="Tap", confidence=0.9)], path=out)
+    assert "WebView Switch Wiring Plan" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_webview_switch_wiring_plan_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(
+        status="passed",
+        action="Tap",
+        confidence=0.9,
+        target=ResolvedTarget(
+            ref='text="Login"',
+            confidence=0.9,
+            resolver_name="x",
+            metadata={
+                "webview_switch_wiring_plan": {
+                    "reason": '<script>alert("x")</script>',
+                    "warnings": ["<b>warn</b>"],
+                }
+            },
+        ),
+    )
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert '<script>alert("x")</script>' not in text
+    assert "&lt;script&gt;" in text
