@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,41 @@ class DebugConfig(BaseModel):
     log_resolver_traces: bool = True       # safe — logs resolver names + confidence only
 
 
+class WebviewSwitchingConfig(BaseModel):
+    enable_webview_switching: bool = False
+    webview_switching_mode: str = "off"  # off | dry_run | opt_in
+    webview_switch_allowed_operations: list[str] = Field(default_factory=list)
+    require_restore_context: bool = True
+    fail_closed_on_restore_failure: bool = True
+    webview_context_selection_policy: str = "single_webview_only"  # single_webview_only | first_available | hint_match
+    max_webview_switch_attempts: int = 1
+
+    @field_validator("webview_switching_mode")
+    @classmethod
+    def _validate_mode(cls, value: str) -> str:
+        normalized = str(value).strip().lower()
+        allowed = {"off", "dry_run", "opt_in"}
+        if normalized not in allowed:
+            raise ValueError(f"webview_switching_mode must be one of {sorted(allowed)}")
+        return normalized
+
+    @field_validator("webview_context_selection_policy")
+    @classmethod
+    def _validate_selection_policy(cls, value: str) -> str:
+        normalized = str(value).strip().lower()
+        allowed = {"single_webview_only", "first_available", "hint_match"}
+        if normalized not in allowed:
+            raise ValueError(f"webview_context_selection_policy must be one of {sorted(allowed)}")
+        return normalized
+
+    @field_validator("max_webview_switch_attempts")
+    @classmethod
+    def _validate_max_attempts(cls, value: int) -> int:
+        if int(value) < 1:
+            raise ValueError("max_webview_switch_attempts must be >= 1")
+        return int(value)
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -76,6 +111,7 @@ class BubblegumConfig(BaseModel):
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
+    webview_switching: WebviewSwitchingConfig = Field(default_factory=WebviewSwitchingConfig)
 
     # ------------------------------------------------------------------
     # Factory

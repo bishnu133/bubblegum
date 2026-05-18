@@ -120,3 +120,12 @@ def test_ocr_vision_flags_respected_via_resolver_eligibility():
     assert vision is not None
     assert ocr.can_run(intent) is False
     assert vision.can_run(intent) is False
+
+
+def test_webview_switching_config_defaults_in_runtime():
+    cfg = BubblegumConfig()
+    configure_runtime(config=cfg)
+    from bubblegum.core import sdk
+
+    assert sdk._config.webview_switching.webview_switching_mode == "off"
+    assert sdk._config.webview_switching.enable_webview_switching is False
