@@ -110,7 +110,7 @@ def test_config_enabled_extract_prepares_wiring_only():
         instruction=None,
         target_metadata={
             "webview_switch_eligibility": {"decision": "allowed"},
-            "webview_context_selection": {"decision": "selected", "selected_context_type": "WEBVIEW_something"},
+            "webview_context_selection": {"decision": "selected", "selected_context_type": "webview", "selected_context_index": 0},
         },
         config=adapter._config,
     )["webview_switch_wiring_plan"]
