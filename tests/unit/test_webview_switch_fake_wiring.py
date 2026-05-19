@@ -21,6 +21,18 @@ class _Element:
 class _Driver:
     capabilities = {"platformName": "Android"}
     page_source = "hello"
+    contexts = ["NATIVE_APP", "WEBVIEW_test"]
+    current_context = "NATIVE_APP"
+
+    class _SwitchTo:
+        def __init__(self, outer):
+            self._outer = outer
+
+        def context(self, name: str):
+            self._outer.current_context = name
+
+    def __init__(self):
+        self.switch_to = self._SwitchTo(self)
 
     def find_element(self, *_args, **_kwargs):
         return _Element("base-text")
@@ -42,7 +54,7 @@ def _metadata():
         "webview_context_selection": {
             "decision": "selected",
             "selected_context_type": "webview",
-            "selected_context": "WEBVIEW_secret",
+            "selected_context_index": 0,
             "safe_metadata_only": True,
         },
     }
@@ -214,7 +226,7 @@ def test_no_fake_callables_means_no_switch_attempt():
     ad._run_assertion = lambda _plan: (True, "ok")
     out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="x")))
     assert out.passed is True
-    assert ad._last_webview_switch_execution is None
+    assert isinstance(ad._last_webview_switch_execution, dict)
 
 
 def test_json_report_accepts_fake_wiring_extract_metadata(tmp_path):

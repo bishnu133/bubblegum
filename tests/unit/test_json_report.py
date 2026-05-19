@@ -21,6 +21,18 @@ class _WebviewFakeElement:
 class _WebviewFakeDriver:
     capabilities = {"platformName": "Android"}
     page_source = "hello"
+    contexts = ["NATIVE_APP", "WEBVIEW_test"]
+    current_context = "NATIVE_APP"
+
+    class _SwitchTo:
+        def __init__(self, outer):
+            self._outer = outer
+
+        def context(self, name: str):
+            self._outer.current_context = name
+
+    def __init__(self):
+        self.switch_to = self._SwitchTo(self)
 
     def find_element(self, *_args, **_kwargs):
         return _WebviewFakeElement("base-text")
@@ -42,7 +54,7 @@ def _webview_metadata():
         "webview_context_selection": {
             "decision": "selected",
             "selected_context_type": "webview",
-            "selected_context": "WEBVIEW_secret",
+            "selected_context_index": 0,
             "safe_metadata_only": True,
         },
     }

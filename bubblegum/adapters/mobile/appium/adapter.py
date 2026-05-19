@@ -50,7 +50,11 @@ from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_gua
 from bubblegum.core.mobile.webview_switch_eligibility import evaluate_webview_switch_eligibility
 from bubblegum.core.mobile.webview_context_selection import select_webview_context
 from bubblegum.core.mobile.webview_switch_config import is_webview_switching_enabled_for_operation
-from bubblegum.core.mobile.webview_switch_execution import execute_webview_switch_guarded
+from bubblegum.core.mobile.webview_real_driver_switch import (
+    build_real_webview_context_map,
+    execute_real_driver_switch_with_ref,
+    resolve_real_webview_context_ref,
+)
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -540,7 +544,7 @@ class AppiumAdapter(BaseAdapter):
         raise ValueError(f"No extractable text found for ref={ref!r}")
 
     def _run_assertion_with_optional_fake_webview_switch(self, plan: ValidationPlan, wiring_plan: dict[str, object]) -> tuple[bool, str]:
-        execution_args = self._build_fake_switch_execution_args("validate", wiring_plan)
+        execution_args = self._build_real_switch_execution_args("validate", wiring_plan)
         if execution_args is None:
             return self._run_assertion(plan)
         outcome: dict[str, object] = {"value": (False, "validation failed")}
@@ -548,7 +552,7 @@ class AppiumAdapter(BaseAdapter):
         def _op():
             outcome["value"] = self._webview_validate_operation(plan) if callable(self._webview_validate_operation) else self._run_assertion(plan)
 
-        execution = execute_webview_switch_guarded(operation_callable=_op, **execution_args)
+        execution = execute_real_driver_switch_with_ref(operation_callable=_op, **execution_args)
         self._last_webview_switch_execution = {"webview_switch_execution": execution}
         if execution.get("switch_status") == "failed" or execution.get("restore_status") == "failed":
             return False, "webview_switch_safety_failed"
@@ -556,7 +560,7 @@ class AppiumAdapter(BaseAdapter):
         return result if isinstance(result, tuple) and len(result) == 2 else (False, "validation failed")
 
     def _extract_text_with_optional_fake_webview_switch(self, ref, wiring_plan: dict[str, object]) -> str:
-        execution_args = self._build_fake_switch_execution_args("extract", wiring_plan)
+        execution_args = self._build_real_switch_execution_args("extract", wiring_plan)
         if execution_args is None:
             return self._extract_text_base(ref)
         outcome: dict[str, object] = {"value": ""}
@@ -564,7 +568,7 @@ class AppiumAdapter(BaseAdapter):
         def _op():
             outcome["value"] = self._webview_extract_operation(ref) if callable(self._webview_extract_operation) else self._extract_text_base(ref)
 
-        execution = execute_webview_switch_guarded(operation_callable=_op, **execution_args)
+        execution = execute_real_driver_switch_with_ref(operation_callable=_op, **execution_args)
         self._last_webview_switch_execution = {"webview_switch_execution": execution}
         if isinstance(ref, dict) and isinstance(ref.get("metadata"), dict):
             ref["metadata"]["webview_switch_execution"] = execution
@@ -572,22 +576,73 @@ class AppiumAdapter(BaseAdapter):
             return ""
         return str(outcome.get("value") or "")
 
-    def _build_fake_switch_execution_args(self, operation_type: str, wiring_plan: dict[str, object]) -> dict[str, object] | None:
+    def _build_real_switch_execution_args(self, operation_type: str, wiring_plan: dict[str, object]) -> dict[str, object] | None:
         if operation_type not in {"validate", "extract"}:
             return None
         plan = wiring_plan.get("webview_switch_wiring_plan") if isinstance(wiring_plan, dict) else None
         if not isinstance(plan, dict) or not plan.get("switch_ready"):
             return None
-        if not callable(self._webview_switch_context):
+        if not bool(plan.get("fail_closed_on_restore_failure")):
+            return None
+        context_inventory = self._collect_real_context_inventory_for_switch()
+        context_map = build_real_webview_context_map(context_inventory=context_inventory)
+        if not bool(context_map.get("context_map_available")):
+            return None
+        selected_context_index = plan.get("selected_context_index")
+        selected_context_type = plan.get("selected_context_type")
+        context_ref = resolve_real_webview_context_ref(
+            context_inventory=context_inventory,
+            selected_context_index=selected_context_index if isinstance(selected_context_index, int) else None,
+            selected_context_type=str(selected_context_type or ""),
+        )
+        if not bool(context_ref.safe_metadata.get("internal_context_ref_available")):
             return None
         return {
-            "webview_switch_eligibility": {"decision": "allowed"},
-            "webview_context_selection": {"decision": "selected", "selected_context_type": "webview"},
+            "context_ref": context_ref,
             "explicit_opt_in": True,
-            "get_current_context": self._webview_get_current_context,
-            "switch_context": self._webview_switch_context,
-            "restore_context": self._webview_restore_context,
+            "get_current_context": self._webview_get_current_context_callable(),
+            "switch_context": self._webview_switch_context_callable(),
+            "restore_context": self._webview_restore_context_callable(),
         }
+
+    def _build_fake_switch_execution_args(self, operation_type: str, wiring_plan: dict[str, object]) -> dict[str, object] | None:
+        return self._build_real_switch_execution_args(operation_type, wiring_plan)
+
+    def _collect_real_context_inventory_for_switch(self) -> dict[str, object]:
+        try:
+            contexts = self._driver.contexts
+            if isinstance(contexts, (list, tuple, set)):
+                return {"contexts": [str(v) for v in contexts]}
+            if contexts is not None:
+                return {"contexts": [str(contexts)]}
+        except Exception:
+            return {"contexts": []}
+        return {"contexts": []}
+
+    def _webview_get_current_context_callable(self):
+        def _get():
+            if callable(self._webview_get_current_context):
+                return self._webview_get_current_context()
+            return self._driver.current_context
+        return _get
+
+    def _webview_switch_context_callable(self):
+        def _switch(raw_name: str):
+            if callable(self._webview_switch_context):
+                self._webview_switch_context(raw_name)
+                return
+            self._driver.switch_to.context(raw_name)
+        return _switch
+
+    def _webview_restore_context_callable(self):
+        def _restore(original_context: str | None):
+            if original_context is None:
+                raise RuntimeError("original_context_missing")
+            if callable(self._webview_restore_context):
+                self._webview_restore_context(original_context)
+                return
+            self._driver.switch_to.context(original_context)
+        return _restore
 
 
     def _prepare_webview_switch_metadata_for_operation(
@@ -612,6 +667,9 @@ class AppiumAdapter(BaseAdapter):
             "switch_ready": False,
             "reason": "unknown",
             "safe_metadata_only": True,
+            "selected_context_type": "unknown",
+            "selected_context_index": None,
+            "fail_closed_on_restore_failure": False,
         }
 
         if config is None:
@@ -652,8 +710,14 @@ class AppiumAdapter(BaseAdapter):
             return {"webview_switch_wiring_plan": out}
 
         selected_context_type = _sanitize_context_type((selection or {}).get("selected_context_type"))
+        out["selected_context_type"] = "webview" if selected_context_type in {"webview", "webview/chromium"} else selected_context_type
+        out["selected_context_index"] = (selection or {}).get("selected_context_index") if isinstance((selection or {}).get("selected_context_index"), int) else None
+        out["fail_closed_on_restore_failure"] = True
         if selected_context_type not in {"webview", "webview/chromium"}:
             out["reason"] = "selected_context_type_not_webview"
+            return {"webview_switch_wiring_plan": out}
+        if out["selected_context_index"] is None:
+            out["reason"] = "context_not_selected"
             return {"webview_switch_wiring_plan": out}
 
         out["switch_ready"] = True

@@ -117,13 +117,10 @@ def test_module_does_not_use_switch_to_context_text():
 
 def test_helper_not_wired_into_appium_adapter_validate_extract_execute():
     source = open("bubblegum/adapters/mobile/appium/adapter.py", "r", encoding="utf-8").read()
-    assert "webview_real_driver_switch" not in source
-    assert "build_real_webview_context_map" not in source
-    assert "resolve_real_webview_context_ref" not in source
-    assert "driver.switch_to.context" not in source
-
-    adapter = AppiumAdapter(type("_D", (), {})())
-    assert not hasattr(adapter, "_real_webview_context_ref")
+    assert "webview_real_driver_switch" in source
+    assert "build_real_webview_context_map" in source
+    assert "resolve_real_webview_context_ref" in source
+    assert "switch_to.context" in source
 
 
 def test_execute_real_driver_switch_fake_success_and_restore_sequence():
