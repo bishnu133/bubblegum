@@ -1,12 +1,75 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
 from bubblegum.core.config import BubblegumConfig, WebviewSwitchingConfig
-from bubblegum.core.schemas import ArtifactRef, ErrorInfo, ResolvedTarget, ResolverTrace, StepResult
+from bubblegum.core.schemas import ArtifactRef, ErrorInfo, ResolvedTarget, ResolverTrace, StepResult, ValidationPlan
 from bubblegum.reporting.html_report import build_report_analytics
 from bubblegum.reporting.json_report import write_json_report
+
+
+class _WebviewFakeElement:
+    def __init__(self, text: str = ""):
+        self.text = text
+
+    def get_attribute(self, name: str):
+        return "attr-text" if name == "text" else ""
+
+
+class _WebviewFakeDriver:
+    capabilities = {"platformName": "Android"}
+    page_source = "hello"
+
+    def find_element(self, *_args, **_kwargs):
+        return _WebviewFakeElement("base-text")
+
+
+def _webview_cfg(enabled=True, mode="opt_in", ops=None):
+    return BubblegumConfig(
+        webview_switching=WebviewSwitchingConfig(
+            enable_webview_switching=enabled,
+            webview_switching_mode=mode,
+            webview_switch_allowed_operations=ops or ["verify", "extract"],
+        )
+    )
+
+
+def _webview_metadata():
+    return {
+        "webview_switch_eligibility": {"decision": "allowed", "safe_metadata_only": True},
+        "webview_context_selection": {
+            "decision": "selected",
+            "selected_context_type": "webview",
+            "selected_context": "WEBVIEW_secret",
+            "safe_metadata_only": True,
+        },
+    }
+
+
+def _build_fake_wiring_execution_metadata_for_extract():
+    ad = AppiumAdapter(_WebviewFakeDriver())
+    ad._config = _webview_cfg()
+    ref = {"by": "id", "value": "a", "metadata": _webview_metadata()}
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: None
+    out = asyncio.run(ad.extract_text(ref))
+    assert out == "base-text"
+    return ref["metadata"]
+
+
+def _build_fake_wiring_execution_metadata_for_validate():
+    ad = AppiumAdapter(_WebviewFakeDriver())
+    ad._config = _webview_cfg()
+    ad._webview_validate_metadata = _webview_metadata()
+    ad._run_assertion = lambda _plan: (True, "ok")
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: None
+    out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="x")))
+    assert out.passed is True
+    assert isinstance(ad._last_webview_switch_execution, dict)
+    return dict(ad._last_webview_switch_execution)
 
 
 class _Driver:
@@ -1502,3 +1565,35 @@ def test_json_report_accepts_adapter_skeleton_wiring_plan_validate_extract(tmp_p
     assert summary["operation_type_counts"] == {"validate": 1, "extract": 1}
     assert payload["results"][0]["target"]["metadata"]["webview_switch_wiring_plan"]["operation_type"] == "validate"
     assert payload["results"][1]["target"]["metadata"]["webview_switch_wiring_plan"]["operation_type"] == "extract"
+
+
+def test_json_report_fake_wiring_extract_metadata_roundtrip(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    metadata = _build_fake_wiring_execution_metadata_for_extract()
+    result = StepResult(status="passed", action="extract", confidence=1.0, target=ResolvedTarget(
+        ref="r", confidence=1.0, resolver_name="x", metadata=metadata))
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ws = payload["results"][0]["target"]["metadata"]["webview_switch_execution"]
+    assert ws["switch_attempted"] is True
+    assert ws["restore_attempted"] is True
+    assert ws["switch_status"] == "switched"
+    assert ws["restore_status"] == "restored"
+    assert "selected_context" not in ws
+    summary = payload["analytics"]["webview_switch_execution_summary"]
+    assert summary["switch_status_counts"] == {"switched": 1}
+    assert summary["restore_status_counts"] == {"restored": 1}
+
+
+def test_json_report_fake_wiring_validate_metadata_roundtrip(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    metadata = _build_fake_wiring_execution_metadata_for_validate()
+    result = StepResult(status="passed", action="validate", confidence=1.0, target=ResolvedTarget(
+        ref="r", confidence=1.0, resolver_name="x", metadata=metadata))
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ws = payload["results"][0]["target"]["metadata"]["webview_switch_execution"]
+    assert ws["switch_enabled"] is True
+    assert ws["switch_attempted"] is True
+    assert ws["restore_attempted"] is True
+    assert ws["safe_metadata_only"] is True

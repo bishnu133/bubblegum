@@ -836,6 +836,7 @@ def test_html_report_escapes_webview_eligibility_and_context_selection_values(tm
     assert "&lt;script&gt;" in text
     assert "&lt;b&gt;" in text
 
+
 def test_html_report_renders_webview_switch_execution_section_when_present(tmp_path):
     out = tmp_path / "report.html"
     result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(
