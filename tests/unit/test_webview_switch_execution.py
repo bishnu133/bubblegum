@@ -156,3 +156,29 @@ def test_selected_metadata_insufficient_blocks():
     )
     assert out["switch_status"] == "blocked"
     assert out["reason"] == "selected_context_metadata_insufficient"
+
+
+def test_get_current_context_failure_fails_closed_and_sanitized():
+    out = execute_webview_switch_guarded(
+        webview_switch_eligibility=_elig(),
+        webview_context_selection=_sel(),
+        explicit_opt_in=True,
+        get_current_context=lambda: (_ for _ in ()).throw(RuntimeError("NATIVE_APP secret")),
+        switch_context=lambda _selected: None,
+    )
+    assert out["switch_status"] == "failed"
+    assert out["reason"] == "execution_error"
+    assert "NATIVE_APP secret" not in str(out)
+
+
+def test_missing_restore_callable_is_unknown_restore_status():
+    out = execute_webview_switch_guarded(
+        webview_switch_eligibility=_elig(),
+        webview_context_selection=_sel(),
+        explicit_opt_in=True,
+        switch_context=lambda _selected: None,
+        restore_context=None,
+    )
+    assert out["switch_status"] == "switched"
+    assert out["restore_attempted"] is False
+    assert out["restore_status"] == "unknown"
