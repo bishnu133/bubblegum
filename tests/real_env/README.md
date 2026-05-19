@@ -1207,3 +1207,69 @@ The smoke asserts outward metadata safety for recursive forbidden keys and valid
 ### Stability note
 
 The target app must expose a stable Android WebView context and a known validate/extract target to exercise switch-attempt paths reliably.
+
+## iOS WebView Real-Env Smoke (Phase 21C)
+
+This smoke test validates strict opt-in WebView switching behavior for **iOS Appium real sessions** and remains skip-by-default.
+
+Test file:
+
+- `tests/real_env/ios/test_ios_webview_switch_smoke.py`
+
+Run command (opt-in):
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_IOS_WEBVIEW_SWITCH_SMOKE=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_IOS_DEVICE_NAME=<sim-or-device-name> \
+BUBBLEGUM_IOS_APP=<path-to-ios-app> \
+pytest tests/real_env/ios/test_ios_webview_switch_smoke.py -q
+```
+
+Installed app variant:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_IOS_WEBVIEW_SWITCH_SMOKE=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_IOS_DEVICE_NAME=<sim-or-device-name> \
+BUBBLEGUM_IOS_BUNDLE_ID=<bundle-id> \
+pytest tests/real_env/ios/test_ios_webview_switch_smoke.py -q
+```
+
+Required env vars:
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_IOS_WEBVIEW_SWITCH_SMOKE=1`
+- `BUBBLEGUM_APPIUM_SERVER_URL`
+- `BUBBLEGUM_IOS_DEVICE_NAME`
+- `BUBBLEGUM_IOS_APP` **or** `BUBBLEGUM_IOS_BUNDLE_ID`
+
+Optional env vars:
+
+- `BUBBLEGUM_IOS_PLATFORM_VERSION`
+- `BUBBLEGUM_IOS_AUTOMATION_NAME` (defaults to `XCUITest`)
+- `BUBBLEGUM_IOS_WEBVIEW_VALIDATE_TEXT` (run validate path)
+- `BUBBLEGUM_IOS_WEBVIEW_EXTRACT_REF` (run extract path)
+- `BUBBLEGUM_IOS_WEBVIEW_ALLOWED_OPERATION=validate|extract`
+- `BUBBLEGUM_IOS_WEBVIEW_EXPECT_STATUS` (assert expected switch status)
+- `BUBBLEGUM_IOS_WEBVIEW_REQUIRE_SWITCH=1` (strict mode; fail if no switch occurs when switch path is ready)
+
+Expected skip/default behavior:
+
+- Test skips when real-env gate is off.
+- Test skips when iOS WebView smoke gate is off.
+- Test skips when required Appium/iOS capability vars are missing.
+- Test **metadata-passes or skips** when no operation input (`VALIDATE_TEXT` / `EXTRACT_REF`) is provided.
+
+Safety/privacy expectations:
+
+- No raw context names are allowed in outward metadata.
+- No raw XML/DOM/page source/screenshot/provider payload/capabilities/credentials/secrets are allowed.
+- Recursive forbidden-key assertions enforce metadata redaction.
+
+Prerequisite app behavior:
+
+- The tested iOS app must expose a stable WebView context.
+- The provided validate text and/or extract reference should map to a known target in that WebView.
