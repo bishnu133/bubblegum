@@ -1597,3 +1597,35 @@ def test_json_report_fake_wiring_validate_metadata_roundtrip(tmp_path):
     assert ws["switch_attempted"] is True
     assert ws["restore_attempted"] is True
     assert ws["safe_metadata_only"] is True
+
+
+def test_json_report_fake_wiring_failure_analytics_and_redaction(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    metadata = {
+        "webview_switch_execution": {
+            "switch_enabled": True,
+            "switch_attempted": True,
+            "switch_status": "failed",
+            "restore_attempted": True,
+            "restore_status": "failed",
+            "reason": "execution_error",
+            "warnings": ["switch_failed", "restore_failed", "WEBVIEW_secret_should_not_survive"],
+            "raw_exception": "WEBVIEW_secret exploded",
+            "safe_metadata_only": True,
+        }
+    }
+    result = StepResult(
+        status="failed",
+        action="validate",
+        confidence=1.0,
+        target=ResolvedTarget(ref="r", confidence=1.0, resolver_name="x", metadata=metadata),
+    )
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ws = payload["results"][0]["target"]["metadata"]["webview_switch_execution"]
+    assert "raw_exception" not in ws
+    summary = payload["analytics"]["webview_switch_execution_summary"]
+    assert summary["switch_status_counts"]["failed"] == 1
+    assert summary["restore_status_counts"]["failed"] == 1
+    assert summary["warning_counts"]["switch_failed"] == 1
+    assert summary["warning_counts"]["restore_failed"] == 1

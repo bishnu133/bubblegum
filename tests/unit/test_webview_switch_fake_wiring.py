@@ -132,6 +132,81 @@ def test_operation_failure_after_switch_still_restores():
     assert calls == ["switch", "restore"]
 
 
+def test_validate_operation_false_after_switch_preserved():
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ad._webview_validate_metadata = _metadata()
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: None
+    ad._webview_validate_operation = lambda _plan: (False, "assertion_failed")
+    out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="x")))
+    assert out.passed is False
+    assert out.actual_value == "assertion_failed"
+
+
+def test_validate_restore_failure_overrides_operation_success():
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ad._webview_validate_metadata = _metadata()
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: (_ for _ in ()).throw(RuntimeError("restore failed"))
+    ad._webview_validate_operation = lambda _plan: (True, "ok")
+    out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="x")))
+    assert out.passed is False
+    assert out.actual_value == "webview_switch_safety_failed"
+
+
+def test_validate_get_current_context_exception_fails_closed():
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ad._webview_validate_metadata = _metadata()
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_get_current_context = lambda: (_ for _ in ()).throw(RuntimeError("NATIVE_APP secret"))
+    out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="x")))
+    assert out.passed is False
+    assert out.actual_value == "webview_switch_safety_failed"
+    assert "NATIVE_APP secret" not in str(ad._last_webview_switch_execution)
+
+
+def test_extract_operation_failure_after_switch_returns_safe_empty_and_has_metadata():
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ref = {"by": "id", "value": "a", "metadata": _metadata()}
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: None
+    ad._webview_extract_operation = lambda _ref: (_ for _ in ()).throw(RuntimeError("extract boom"))
+    out = asyncio.run(ad.extract_text(ref))
+    assert out == ""
+    ws = ref["metadata"]["webview_switch_execution"]
+    assert ws["switch_status"] == "failed"
+    assert ws["restore_status"] == "restored"
+
+
+def test_extract_invalid_result_types_fallback_safely():
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ref = {"by": "id", "value": "a", "metadata": _metadata()}
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: None
+    ad._webview_extract_operation = lambda _ref: None
+    assert asyncio.run(ad.extract_text(ref)) == ""
+    ad._webview_extract_operation = lambda _ref: {"not": "text"}
+    assert asyncio.run(ad.extract_text(ref)) == "{'not': 'text'}"
+
+
+def test_extract_restore_failure_returns_safe_empty_and_sanitized_metadata():
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ref = {"by": "id", "value": "a", "metadata": _metadata()}
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: (_ for _ in ()).throw(RuntimeError("restore WEBVIEW_secret fail"))
+    out = asyncio.run(ad.extract_text(ref))
+    assert out == ""
+    ws = ref["metadata"]["webview_switch_execution"]
+    assert ws["restore_status"] == "failed"
+    assert "WEBVIEW_secret" not in str(ws)
+
+
 def test_no_fake_callables_means_no_switch_attempt():
     ad = AppiumAdapter(_Driver())
     ad._config = _cfg()
