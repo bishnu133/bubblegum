@@ -1141,3 +1141,69 @@ Example summary payload (safe):
 ```
 
 Supported providers remain unchanged: **pCloudy, BrowserStack, Sauce Labs, LambdaTest, and generic Appium cloud**.
+
+## Android WebView Switching Real-Env Smoke (Phase 21B)
+
+This smoke covers strict opt-in Android real-driver WebView switching for **validate/extract only**.
+It is skip-by-default and requires explicit environment opt-in.
+
+### Command
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_ANDROID_WEBVIEW_SWITCH_SMOKE=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<device-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+pytest tests/real_env/android/test_android_webview_switch_smoke.py -q
+```
+
+Installed-app variant:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_ANDROID_WEBVIEW_SWITCH_SMOKE=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<device-name> \
+BUBBLEGUM_ANDROID_PACKAGE=<app-package> \
+BUBBLEGUM_ANDROID_ACTIVITY=<launcher-activity> \
+pytest tests/real_env/android/test_android_webview_switch_smoke.py -q
+```
+
+### Required env vars
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_ANDROID_WEBVIEW_SWITCH_SMOKE=1`
+- `BUBBLEGUM_APPIUM_SERVER_URL`
+- `BUBBLEGUM_ANDROID_DEVICE_NAME`
+- `BUBBLEGUM_ANDROID_APP` **or** (`BUBBLEGUM_ANDROID_PACKAGE` + `BUBBLEGUM_ANDROID_ACTIVITY`)
+
+### Optional env vars
+
+- `BUBBLEGUM_ANDROID_WEBVIEW_VALIDATE_TEXT`
+- `BUBBLEGUM_ANDROID_WEBVIEW_EXTRACT_REF`
+- `BUBBLEGUM_ANDROID_WEBVIEW_REQUIRE_SWITCH=1` (strict mode: fail if no switch occurs when switch path is attempted)
+- `BUBBLEGUM_ANDROID_WEBVIEW_EXPECT_STATUS`
+- `BUBBLEGUM_ANDROID_WEBVIEW_ALLOWED_OPERATION=validate|extract`
+
+### Expected skip behavior
+
+- Test skips when global real-env gate is off.
+- Test skips when Android/Appium required env vars are missing.
+- Test skips when WebView smoke opt-in gate is off.
+- Test skips operation-path checks when validate/extract target inputs are not provided.
+
+### Safety/privacy expectations
+
+The smoke asserts outward metadata safety for recursive forbidden keys and validates no leakage of:
+
+- raw context names
+- raw XML/DOM/page source
+- screenshots/screenshot bytes
+- provider payloads and capabilities
+- credentials/secrets
+- exception traces/messages
+
+### Stability note
+
+The target app must expose a stable Android WebView context and a known validate/extract target to exercise switch-attempt paths reliably.
