@@ -1629,3 +1629,99 @@ def test_json_report_fake_wiring_failure_analytics_and_redaction(tmp_path):
     assert summary["restore_status_counts"]["failed"] == 1
     assert summary["warning_counts"]["switch_failed"] == 1
     assert summary["warning_counts"]["restore_failed"] == 1
+
+
+def test_json_report_real_helper_metadata_sanitizes_context_names_and_exception_text(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    metadata = {
+        "webview_switch_execution": {
+            "switch_enabled": True,
+            "switch_attempted": True,
+            "switch_status": "failed",
+            "restore_attempted": True,
+            "restore_status": "failed",
+            "original_context_type": "native",
+            "selected_context_type": "webview",
+            "reason": "execution_error",
+            "warnings": ["switch_failed", "restore_failed"],
+            "evidence": ["real_driver_helper"],
+            "safe_metadata_only": True,
+            "raw_context_name": "WEBVIEW_secret",
+            "original_context_name": "NATIVE_APP secret",
+            "exception_message": "switch failed WEBVIEW_secret",
+            "raw_exception": "restore failed NATIVE_APP secret",
+        }
+    }
+    write_json_report(
+        [StepResult(status="failed", action="validate", confidence=1.0, target=ResolvedTarget(ref="r", confidence=1.0, resolver_name="x", metadata=metadata))],
+        path=report_path,
+    )
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ws = payload["results"][0]["target"]["metadata"]["webview_switch_execution"]
+    assert ws["switch_enabled"] is True
+    assert ws["switch_status"] == "failed"
+    assert ws["restore_status"] == "failed"
+    assert "raw_context_name" not in ws
+    assert "original_context_name" not in ws
+    assert "exception_message" not in ws
+    assert "raw_exception" not in ws
+    assert "WEBVIEW_secret" not in str(ws)
+    summary = payload["analytics"]["webview_switch_execution_summary"]
+    assert summary["switch_status_counts"]["failed"] == 1
+    assert summary["restore_status_counts"]["failed"] == 1
+
+
+def test_json_report_real_helper_blocked_metadata_is_reported_safely(tmp_path):
+    report_path = tmp_path / "bubblegum_report.json"
+    results = [
+        StepResult(
+            status="failed",
+            action="validate",
+            confidence=1.0,
+            target=ResolvedTarget(
+                ref="missing-ref",
+                confidence=1.0,
+                resolver_name="x",
+                metadata={"webview_switch_execution": {
+                    "switch_enabled": True,
+                    "switch_attempted": False,
+                    "switch_status": "blocked",
+                    "restore_attempted": False,
+                    "restore_status": "not_needed",
+                    "reason": "internal_context_ref_missing",
+                    "warnings": ["internal_context_ref_missing"],
+                    "safe_metadata_only": True,
+                    "raw_context_name": "WEBVIEW_should_not_leak",
+                }},
+            ),
+        ),
+        StepResult(
+            status="failed",
+            action="extract",
+            confidence=1.0,
+            target=ResolvedTarget(
+                ref="opt-in",
+                confidence=1.0,
+                resolver_name="x",
+                metadata={"webview_switch_execution": {
+                    "switch_enabled": False,
+                    "switch_attempted": False,
+                    "switch_status": "blocked",
+                    "restore_attempted": False,
+                    "restore_status": "not_needed",
+                    "reason": "opt_in_required",
+                    "warnings": ["opt_in_required"],
+                    "safe_metadata_only": True,
+                }},
+            ),
+        ),
+    ]
+    write_json_report(results, path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    combined = str(payload)
+    assert "WEBVIEW_should_not_leak" not in combined
+    summary = payload["analytics"]["webview_switch_execution_summary"]
+    assert summary["switch_status_counts"]["blocked"] == 2
+    assert summary["restore_status_counts"]["not_needed"] == 2
+    assert summary["reason_counts"]["internal_context_ref_missing"] == 1
+    assert summary["reason_counts"]["opt_in_required"] == 1
