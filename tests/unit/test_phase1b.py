@@ -869,6 +869,38 @@ def test_html_report_escapes_webview_switch_execution_values(tmp_path):
     assert "&lt;script&gt;" in text
     assert "&lt;warn&gt;" in text
 
+
+def test_html_report_real_helper_webview_switch_execution_sanitizes_unsafe_fields(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="failed", action="Validate", confidence=0.9, target=ResolvedTarget(
+        ref="r", confidence=0.9, resolver_name="x", metadata={
+            "webview_switch_execution": {
+                "switch_enabled": True,
+                "switch_attempted": True,
+                "switch_status": "failed",
+                "restore_attempted": True,
+                "restore_status": "failed",
+                "original_context_type": "native",
+                "selected_context_type": "webview",
+                "reason": "execution_error",
+                "warnings": ["switch_failed", "<warn>"],
+                "evidence": ["real_helper"],
+                "safe_metadata_only": True,
+                "raw_context_name": "WEBVIEW_secret",
+                "original_context_name": "NATIVE_APP secret",
+                "exception_message": "switch failed WEBVIEW_secret",
+                "raw_exception": "restore failed NATIVE_APP secret",
+            }
+        }))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Switch Execution" in text
+    assert "&lt;warn&gt;" in text
+    assert "WEBVIEW_secret" not in text
+    assert "NATIVE_APP secret" not in text
+    assert "exception_message" not in text
+    assert "raw_exception" not in text
+
 def test_html_report_renders_system_dialog_section_when_present(tmp_path):
     out = tmp_path / "report.html"
     result = StepResult(
