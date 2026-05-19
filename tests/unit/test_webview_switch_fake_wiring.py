@@ -4,7 +4,10 @@ import asyncio
 
 from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
 from bubblegum.core.config import BubblegumConfig, WebviewSwitchingConfig
-from bubblegum.core.schemas import ValidationPlan
+from bubblegum.core.schemas import ResolvedTarget, StepResult, ValidationPlan
+from bubblegum.reporting.html_report import write_html_report
+from bubblegum.reporting.json_report import write_json_report
+import json
 
 
 class _Element:
@@ -137,3 +140,44 @@ def test_no_fake_callables_means_no_switch_attempt():
     out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="x")))
     assert out.passed is True
     assert ad._last_webview_switch_execution is None
+
+
+def test_json_report_accepts_fake_wiring_extract_metadata(tmp_path):
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ref = {"by": "id", "value": "a", "metadata": _metadata()}
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: None
+    assert asyncio.run(ad.extract_text(ref)) == "base-text"
+
+    report_path = tmp_path / "report.json"
+    result = StepResult(status="passed", action="extract", confidence=1.0, target=ResolvedTarget(
+        ref="r", confidence=1.0, resolver_name="x", metadata=ref["metadata"]))
+    write_json_report([result], path=report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    ws = payload["results"][0]["target"]["metadata"]["webview_switch_execution"]
+    assert ws["switch_status"] == "switched"
+    assert ws["restore_status"] == "restored"
+    assert "selected_context" not in ws
+    summary = payload["analytics"]["webview_switch_execution_summary"]
+    assert summary["switch_status_counts"] == {"switched": 1}
+    assert summary["restore_status_counts"] == {"restored": 1}
+
+
+def test_html_report_renders_fake_wiring_webview_switch_execution_and_escapes(tmp_path):
+    ad = AppiumAdapter(_Driver())
+    ad._config = _cfg()
+    ref = {"by": "id", "value": "a", "metadata": _metadata()}
+    ad._webview_switch_context = lambda _sel: None
+    ad._webview_restore_context = lambda _orig: None
+    assert asyncio.run(ad.extract_text(ref)) == "base-text"
+    ref["metadata"]["webview_switch_execution"]["warnings"] = ["<warn>"]
+
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="extract", confidence=1.0, target=ResolvedTarget(
+        ref="r", confidence=1.0, resolver_name="x", metadata=ref["metadata"]))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Switch Execution" in text
+    assert "&lt;warn&gt;" in text
+    assert "WEBVIEW_secret" not in text
