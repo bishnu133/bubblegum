@@ -1313,3 +1313,85 @@ Notes:
   - `webview_switch_execution_summary`
 - HTML must include `WebView Switch Wiring Plan`, and includes `WebView Switch Execution` when execution metadata exists.
 - Privacy safety checks enforce that artifacts do not leak raw context names/IDs, raw DOM/XML/page source, screenshots/bytes, raw capabilities, provider payloads, credentials/secrets, or trace/exception internals.
+
+## Cloud WebView Switch Smoke (Phase 21E)
+
+Cloud real-device WebView switching smoke is opt-in and skip-by-default.
+
+### Required gates
+
+- `BUBBLEGUM_REAL_ENV=1`
+- `BUBBLEGUM_CLOUD_DEVICE=1`
+- `BUBBLEGUM_CLOUD_PROVIDER` in `pcloudy|browserstack|saucelabs|lambdatest|generic`
+- `BUBBLEGUM_CLOUD_USERNAME`
+- `BUBBLEGUM_CLOUD_ACCESS_KEY`
+- `BUBBLEGUM_CLOUD_PLATFORM=android|ios`
+- `BUBBLEGUM_CLOUD_DEVICE_NAME`
+- `BUBBLEGUM_CLOUD_APP` or `BUBBLEGUM_CLOUD_APP_ID`
+- `BUBBLEGUM_CLOUD_WEBVIEW_SWITCH_SMOKE=1`
+
+### WebView operation inputs
+
+At least one operation target is required (or the smoke test skips clearly):
+
+- `BUBBLEGUM_CLOUD_WEBVIEW_VALIDATE_TEXT` (validate path)
+- `BUBBLEGUM_CLOUD_WEBVIEW_EXTRACT_REF` (extract path)
+
+Optional controls:
+
+- `BUBBLEGUM_CLOUD_WEBVIEW_ALLOWED_OPERATION=validate|extract`
+- `BUBBLEGUM_CLOUD_WEBVIEW_REQUIRE_SWITCH=1` (strict mode)
+- `BUBBLEGUM_CLOUD_WEBVIEW_EXPECT_STATUS=<status>`
+
+### Command
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_CLOUD_DEVICE=1 \
+BUBBLEGUM_CLOUD_PROVIDER=pcloudy \
+BUBBLEGUM_CLOUD_USERNAME=<user> \
+BUBBLEGUM_CLOUD_ACCESS_KEY=<key> \
+BUBBLEGUM_CLOUD_PLATFORM=android \
+BUBBLEGUM_CLOUD_DEVICE_NAME=<device> \
+BUBBLEGUM_CLOUD_APP=<cloud-app-ref> \
+BUBBLEGUM_CLOUD_WEBVIEW_SWITCH_SMOKE=1 \
+BUBBLEGUM_CLOUD_WEBVIEW_VALIDATE_TEXT="Sign In" \
+pytest tests/real_env/cloud/test_cloud_webview_switch_smoke.py -q
+```
+
+### Provider examples
+
+BrowserStack:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=browserstack
+```
+
+Sauce Labs:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=saucelabs
+```
+
+LambdaTest:
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=lambdatest
+```
+
+Generic provider (requires explicit Appium URL):
+
+```bash
+BUBBLEGUM_CLOUD_PROVIDER=generic \
+BUBBLEGUM_CLOUD_APPIUM_URL=https://<grid-host>/wd/hub
+```
+
+### Artifact behavior and privacy expectations
+
+`test_cloud_webview_switch_reporting_artifacts_are_safe` writes JSON and HTML reports under pytest `tmp_path`, validates cloud/provider + WebView-switch analytics summaries, and enforces redaction/safety rules:
+
+- no raw WebView/native context names (`WEBVIEW_`, `NATIVE_APP` tokens);
+- no raw XML/DOM/source/screenshot/provider payload/capabilities leakage;
+- no credentials/secrets and no provider username/access-key values in artifacts.
+
+Note: cloud app/build under test must expose a stable WebView context and known validate/extract target to exercise switching paths reliably.
