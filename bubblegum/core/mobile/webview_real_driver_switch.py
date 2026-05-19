@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Callable
 
 
 _WEBVIEW_TYPES = {"webview", "webview/chromium"}
@@ -10,6 +11,97 @@ _WEBVIEW_TYPES = {"webview", "webview/chromium"}
 class RealWebViewContextRef:
     safe_metadata: dict
     _raw_context_name: str | None = field(default=None, repr=False)
+
+
+def _safe_context_type(value: str | None) -> str:
+    normalized = str(value or "").strip().upper()
+    if normalized == "NATIVE_APP":
+        return "native"
+    if normalized.startswith("WEBVIEW"):
+        return "webview"
+    if normalized == "CHROMIUM":
+        return "webview/chromium"
+    return "unknown"
+
+
+def _base_switch_metadata(*, explicit_opt_in: bool, selected_context_type: str = "unknown") -> dict:
+    return {
+        "switch_enabled": bool(explicit_opt_in),
+        "switch_attempted": False,
+        "switch_status": "not_attempted",
+        "restore_attempted": False,
+        "restore_status": "not_needed",
+        "original_context_type": "unknown",
+        "selected_context_type": selected_context_type,
+        "reason": "not_attempted",
+        "evidence": [],
+        "warnings": [],
+        "safe_metadata_only": True,
+    }
+
+
+def execute_real_driver_switch_with_ref(
+    *,
+    context_ref: RealWebViewContextRef,
+    get_current_context: Callable[[], str | None] | None,
+    switch_context: Callable[[str], None] | None,
+    restore_context: Callable[[str | None], None] | None,
+    operation_callable: Callable[[], object] | None = None,
+    explicit_opt_in: bool = False,
+) -> dict:
+    out = _base_switch_metadata(explicit_opt_in=explicit_opt_in, selected_context_type="webview")
+
+    if not explicit_opt_in:
+        out["switch_status"] = "blocked"
+        out["reason"] = "opt_in_required"
+        out["warnings"] = ["opt_in_required"]
+        return out
+
+    raw_name = context_ref._raw_context_name if isinstance(context_ref, RealWebViewContextRef) else None
+    if not raw_name:
+        out["switch_status"] = "blocked"
+        out["reason"] = "internal_context_ref_missing"
+        out["warnings"] = ["internal_context_ref_missing"]
+        return out
+
+    if not callable(switch_context):
+        out["switch_status"] = "blocked"
+        out["reason"] = "switch_callable_missing"
+        out["warnings"] = ["switch_callable_missing"]
+        return out
+
+    original_context_value = None
+    switched = False
+    try:
+        if callable(get_current_context):
+            original_context_value = get_current_context()
+            out["original_context_type"] = _safe_context_type(original_context_value)
+
+        out["switch_attempted"] = True
+        switch_context(raw_name)
+        switched = True
+        out["switch_status"] = "switched"
+        out["reason"] = "switch_succeeded"
+        if callable(operation_callable):
+            operation_callable()
+    except Exception:
+        out["switch_status"] = "failed"
+        out["reason"] = "execution_error"
+        out["warnings"] = ["switch_failed"]
+    finally:
+        if switched:
+            if callable(restore_context):
+                out["restore_attempted"] = True
+                try:
+                    restore_context(original_context_value)
+                    out["restore_status"] = "restored"
+                except Exception:
+                    out["restore_status"] = "failed"
+                    out["warnings"] = [*out.get("warnings", []), "restore_failed"]
+            else:
+                out["restore_status"] = "unknown"
+
+    return out
 
 
 
