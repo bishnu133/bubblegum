@@ -91,7 +91,7 @@ def test_config_enabled_validate_prepares_wiring_only_and_execute_not_wired(monk
         instruction="Login",
         target_metadata={
             "webview_switch_eligibility": {"decision": "allowed"},
-            "webview_context_selection": {"decision": "selected", "selected_context_type": "webview", "selected_context": "WEBVIEW_raw"},
+            "webview_context_selection": {"decision": "selected", "selected_context_type": "webview", "selected_context_index": 0},
         },
         config=adapter._config,
     )["webview_switch_wiring_plan"]

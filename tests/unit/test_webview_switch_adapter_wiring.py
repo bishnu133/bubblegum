@@ -31,7 +31,7 @@ def _selected() -> dict:
     return {
         "decision": "selected",
         "selected_context_type": "webview",
-        "selected_context": "WEBVIEW_com.example",  # should never leak
+        "selected_context_index": 0,  # should never leak
         "safe_metadata_only": True,
     }
 
