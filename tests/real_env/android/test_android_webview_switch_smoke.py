@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 
 import pytest
 
 from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
 from bubblegum.core.config import BubblegumConfig, WebviewSwitchingConfig
-from bubblegum.core.schemas import ContextRequest, ValidationPlan
+from bubblegum.core.schemas import ContextRequest, ResolvedTarget, StepResult, ValidationPlan
+from bubblegum.reporting.html_report import write_html_report
+from bubblegum.reporting.json_report import write_json_report
 from tests.real_env.conftest import require_real_env_enabled
 
 pytestmark = [
@@ -86,6 +89,13 @@ def _iter_keys_recursive(value):
 def _assert_metadata_safe(value) -> None:
     leaked = FORBIDDEN_METADATA_KEYS.intersection(set(_iter_keys_recursive(value)))
     assert not leaked, f"Forbidden metadata keys found: {sorted(leaked)}"
+
+
+def _assert_no_forbidden_tokens(value) -> None:
+    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+    for token in ("WEBVIEW_", "raw_context_name", "context_names", "provider_payload", "raw_capabilities", "secrets"):
+        assert token not in text
+    assert "NATIVE_APP" not in text
 
 
 def _build_ref(ref_text: str) -> dict[str, object]:
@@ -223,6 +233,82 @@ def test_android_webview_switch_smoke_validate_extract_real_env() -> None:
                 "BUBBLEGUM_ANDROID_WEBVIEW_REQUIRE_SWITCH=1 but no WebView switch occurred. "
                 "Ensure app exposes stable WebView context and matching target input."
             )
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+
+def test_android_webview_switch_reporting_artifacts_are_safe(tmp_path) -> None:
+    appium_webdriver = pytest.importorskip("appium.webdriver")
+    options_module = pytest.importorskip("appium.options.android")
+    appium_url, values, has_app = _required_android_webview_env()
+    validate_text = os.getenv("BUBBLEGUM_ANDROID_WEBVIEW_VALIDATE_TEXT", "").strip()
+    extract_ref = os.getenv("BUBBLEGUM_ANDROID_WEBVIEW_EXTRACT_REF", "").strip()
+    if not validate_text and not extract_ref:
+        pytest.skip("Artifact validation needs operation metadata; set BUBBLEGUM_ANDROID_WEBVIEW_VALIDATE_TEXT and/or BUBBLEGUM_ANDROID_WEBVIEW_EXTRACT_REF.")
+
+    options = options_module.UiAutomator2Options()
+    options.platform_name = "Android"
+    options.device_name = values["BUBBLEGUM_ANDROID_DEVICE_NAME"]
+    options.automation_name = "UiAutomator2"
+    if has_app:
+        options.app = values["BUBBLEGUM_ANDROID_APP"]
+    else:
+        options.app_package = values["BUBBLEGUM_ANDROID_PACKAGE"]
+        options.app_activity = values["BUBBLEGUM_ANDROID_ACTIVITY"]
+    try:
+        driver = appium_webdriver.Remote(appium_url, options=options)
+    except Exception as exc:  # pragma: no cover
+        pytest.skip(f"Unable to start Android WebView switch Appium session: {exc}")
+    try:
+        adapter = AppiumAdapter(driver)
+        adapter._config = BubblegumConfig(webview_switching=WebviewSwitchingConfig(enable_webview_switching=True, webview_switching_mode="opt_in", webview_switch_allowed_operations=["verify", "extract"], require_restore_context=True, fail_closed_on_restore_failure=True))
+        ctx = asyncio.run(adapter.collect_context(ContextRequest(include_screenshot=False, include_hierarchy=True)))
+        app_state = ctx.app_state if isinstance(ctx.app_state, dict) else {}
+        safe_md: dict[str, object] = {}
+        for key in ("context_inventory", "webview_switch_diagnostics", "webview_context_selection", "webview_switch_eligibility"):
+            if key in app_state:
+                safe_md[key] = app_state[key]
+
+        if validate_text:
+            adapter._webview_validate_metadata = {
+                "webview_context_selection": app_state.get("webview_context_selection"),
+                "webview_switch_eligibility": app_state.get("webview_switch_eligibility"),
+            }
+            _ = asyncio.run(adapter.validate(ValidationPlan(assertion_type="text_visible", expected_value=validate_text, timeout_ms=3000)))
+            safe_md.update(adapter._prepare_webview_switch_metadata_for_operation(operation_type="validate", instruction=validate_text, target_metadata=adapter._webview_validate_metadata, config=adapter._config))
+            if isinstance(adapter._last_webview_switch_execution, dict):
+                safe_md.update(adapter._last_webview_switch_execution)
+
+        if extract_ref:
+            ref = _build_ref(extract_ref)
+            ref["metadata"] = {
+                "webview_context_selection": app_state.get("webview_context_selection"),
+                "webview_switch_eligibility": app_state.get("webview_switch_eligibility"),
+            }
+            _ = asyncio.run(adapter.extract_text(ref))
+            safe_md.update(ref["metadata"])
+
+        step = StepResult(status="passed", action="Android WebView artifact smoke", confidence=1.0, target=ResolvedTarget(ref="android-webview://switch", confidence=1.0, resolver_name="android_webview_smoke", metadata=safe_md))
+        json_path = tmp_path / "android_webview_switch_report.json"
+        html_path = tmp_path / "android_webview_switch_report.html"
+        write_json_report([step], path=json_path, title="Android WebView Switch Smoke Report")
+        write_html_report([step], path=html_path, title="Android WebView Switch Smoke Report")
+        assert json_path.exists()
+        assert html_path.exists()
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        assert isinstance(payload, dict)
+        assert "webview_switch_wiring_plan_summary" in payload["analytics"]
+        assert "webview_switch_execution_summary" in payload["analytics"]
+        html_text = html_path.read_text(encoding="utf-8")
+        assert "WebView Switch Wiring Plan" in html_text
+        if "webview_switch_execution" in json.dumps(payload):
+            assert "WebView Switch Execution" in html_text
+        _assert_metadata_safe(payload)
+        _assert_no_forbidden_tokens(payload)
+        _assert_no_forbidden_tokens(html_text)
     finally:
         try:
             driver.quit()
