@@ -1273,3 +1273,43 @@ Prerequisite app behavior:
 
 - The tested iOS app must expose a stable WebView context.
 - The provided validate text and/or extract reference should map to a known target in that WebView.
+## Android/iOS WebView Reporting Artifact Validation (Phase 21D)
+
+These tests validate that WebView switch reporting metadata is present and safely redacted in JSON/HTML artifacts.
+They are opt-in and skip by default.
+
+Android:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_ANDROID_WEBVIEW_SWITCH_SMOKE=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_ANDROID_DEVICE_NAME=<emulator-or-device-name> \
+BUBBLEGUM_ANDROID_APP=<path-to-apk> \
+BUBBLEGUM_ANDROID_WEBVIEW_VALIDATE_TEXT=<visible-text> \
+pytest tests/real_env/android/test_android_webview_switch_smoke.py -k reporting_artifacts -q
+```
+
+iOS:
+
+```bash
+BUBBLEGUM_REAL_ENV=1 \
+BUBBLEGUM_IOS_WEBVIEW_SWITCH_SMOKE=1 \
+BUBBLEGUM_APPIUM_SERVER_URL=http://127.0.0.1:4723 \
+BUBBLEGUM_IOS_DEVICE_NAME=<simulator-or-device-name> \
+BUBBLEGUM_IOS_APP=<path-to-app> \
+BUBBLEGUM_IOS_WEBVIEW_VALIDATE_TEXT=<visible-text> \
+pytest tests/real_env/ios/test_ios_webview_switch_smoke.py -k reporting_artifacts -q
+```
+
+Notes:
+
+- At least one target input is required for artifact validation metadata:
+  - Android: `BUBBLEGUM_ANDROID_WEBVIEW_VALIDATE_TEXT` and/or `BUBBLEGUM_ANDROID_WEBVIEW_EXTRACT_REF`
+  - iOS: `BUBBLEGUM_IOS_WEBVIEW_VALIDATE_TEXT` and/or `BUBBLEGUM_IOS_WEBVIEW_EXTRACT_REF`
+- Artifacts are written under pytest `tmp_path` (ephemeral per test run).
+- JSON must parse and include analytics keys:
+  - `webview_switch_wiring_plan_summary`
+  - `webview_switch_execution_summary`
+- HTML must include `WebView Switch Wiring Plan`, and includes `WebView Switch Execution` when execution metadata exists.
+- Privacy safety checks enforce that artifacts do not leak raw context names/IDs, raw DOM/XML/page source, screenshots/bytes, raw capabilities, provider payloads, credentials/secrets, or trace/exception internals.
