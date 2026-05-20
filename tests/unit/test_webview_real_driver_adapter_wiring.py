@@ -44,6 +44,23 @@ def _cfg(enabled=True, mode="opt_in", ops=None):
         webview_switch_allowed_operations=ops or ["verify", "extract"],
     ))
 
+def _cfg_ready(**kwargs):
+    base = dict(
+        webview_readiness_wait_enabled=True,
+        webview_context_wait_timeout_ms=20,
+        webview_context_poll_interval_ms=100,
+        webview_target_wait_timeout_ms=0,
+        max_context_refresh_attempts=1,
+        fail_closed_on_readiness_timeout=True,
+    )
+    base.update(kwargs)
+    return BubblegumConfig(webview_switching=WebviewSwitchingConfig(
+        enable_webview_switching=True,
+        webview_switching_mode="opt_in",
+        webview_switch_allowed_operations=["verify", "extract"],
+        **base,
+    ))
+
 
 def _md(decision="allowed", selected=True, idx=0):
     return {
@@ -121,3 +138,39 @@ def test_operation_failure_after_switch_restores_and_metadata_attached():
     assert out.passed is False
     ws = ad._last_webview_switch_execution["webview_switch_execution"]
     assert ws["switch_status"] == "failed" and ws["restore_status"] == "restored"
+
+
+def test_validate_readiness_context_timeout_fails_closed():
+    d = _D()
+    d.contexts = ["NATIVE_APP"]
+    ad = AppiumAdapter(d)
+    ad._config = _cfg_ready()
+    ad._webview_validate_metadata = _md()
+    out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="hello")))
+    assert out.passed is False
+    assert out.actual_value == "webview_readiness_failed_closed"
+    diag = ad._last_webview_switch_execution["webview_readiness_diagnostics"]
+    assert diag["status"] == "failed_closed"
+    assert "WEBVIEW_secret" not in str(diag)
+
+
+def test_extract_readiness_context_timeout_returns_empty_and_metadata():
+    d = _D()
+    d.contexts = ["NATIVE_APP"]
+    ad = AppiumAdapter(d)
+    ad._config = _cfg_ready()
+    ref = {"by": "id", "value": "a", "metadata": _md()}
+    out = asyncio.run(ad.extract_text(ref))
+    assert out == ""
+    diag = ref["metadata"]["webview_readiness_diagnostics"]
+    assert diag["status"] == "failed_closed"
+
+
+def test_post_switch_target_wait_timeout_fail_closed_restore():
+    d = _D()
+    ad = AppiumAdapter(d)
+    ad._config = _cfg_ready(webview_target_wait_timeout_ms=1)
+    ad._webview_validate_metadata = _md()
+    out = asyncio.run(ad.validate(ValidationPlan(assertion_type="text_visible", expected_value="hello")))
+    assert out.passed is False
+    assert ("switch", "NATIVE_APP") in d.calls
