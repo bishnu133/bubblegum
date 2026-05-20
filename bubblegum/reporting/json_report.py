@@ -18,6 +18,7 @@ from bubblegum.reporting.html_report import (
     safe_webview_context_selection_metadata,
     safe_webview_switch_execution_metadata,
     safe_webview_switch_wiring_plan_metadata,
+    safe_webview_readiness_diagnostics_metadata,
     safe_system_dialog_detection_metadata,
     safe_system_dialog_guardrails_metadata,
     safe_system_dialog_action_metadata,
@@ -46,6 +47,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             webview_context_selection = safe_webview_context_selection_metadata(metadata)
             webview_switch_execution = safe_webview_switch_execution_metadata(metadata)
             webview_switch_wiring_plan = safe_webview_switch_wiring_plan_metadata(metadata)
+            webview_readiness_diagnostics = safe_webview_readiness_diagnostics_metadata(metadata)
             system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
             system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
             system_dialog_action = safe_system_dialog_action_metadata(metadata)
@@ -65,6 +67,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             metadata.pop("webview_context_selection", None)
             metadata.pop("webview_switch_execution", None)
             metadata.pop("webview_switch_wiring_plan", None)
+            metadata.pop("webview_readiness_diagnostics", None)
             metadata.pop("system_dialog_detection", None)
             metadata.pop("system_dialog_guardrails", None)
             metadata.pop("system_dialog_action", None)
@@ -90,6 +93,8 @@ def _safe_result_dump(result: StepResult) -> dict:
                 metadata["webview_switch_execution"] = webview_switch_execution
             if webview_switch_wiring_plan:
                 metadata["webview_switch_wiring_plan"] = webview_switch_wiring_plan
+            if webview_readiness_diagnostics:
+                metadata["webview_readiness_diagnostics"] = webview_readiness_diagnostics
             if system_dialog_detection:
                 metadata["system_dialog_detection"] = system_dialog_detection
             if system_dialog_guardrails:

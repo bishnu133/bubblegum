@@ -140,6 +140,19 @@ _SAFE_WEBVIEW_SWITCH_WIRING_PLAN_FIELDS = (
     "context_selection_decision", "switch_ready", "safe_metadata_only", "warnings",
 )
 
+_SAFE_WEBVIEW_READINESS_FIELDS = (
+    "enabled", "status", "reason", "operation_type", "context_refresh_attempts",
+    "target_wait_attempted", "timeout_ms", "poll_interval_ms", "max_context_refresh_attempts",
+    "evidence", "warnings", "safe_metadata_only",
+)
+_UNSAFE_WEBVIEW_READINESS_KEYS = {
+    "raw_context_name", "raw_context_names", "context_name", "context_names", "selected_context_name",
+    "original_context_name", "raw_xml", "hierarchy_xml", "raw_dom", "page_source", "screenshot",
+    "screenshot_bytes", "provider_payload", "raw_capabilities", "credentials", "secrets", "exception_trace",
+    "exception_message", "raw_exception",
+}
+
+
 
 _SAFE_SYSTEM_DIALOG_FIELDS = (
     "dialog_detected",
@@ -676,6 +689,31 @@ def safe_webview_switch_wiring_plan_metadata(metadata: dict) -> dict[str, Any]:
     return out
 
 
+def safe_webview_readiness_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("webview_readiness_diagnostics")
+    if not isinstance(raw, dict):
+        return {}
+    redacted = {k: v for k, v in raw.items() if k not in _UNSAFE_WEBVIEW_READINESS_KEYS}
+    out: dict[str, Any] = {}
+    for key in _SAFE_WEBVIEW_READINESS_FIELDS:
+        if key not in redacted:
+            continue
+        value = redacted[key]
+        if key in {"enabled", "target_wait_attempted", "safe_metadata_only"}:
+            out[key] = bool(value)
+        elif key in {"context_refresh_attempts", "timeout_ms", "poll_interval_ms", "max_context_refresh_attempts"}:
+            try:
+                out[key] = int(value)
+            except Exception:
+                continue
+        elif key in {"evidence", "warnings"}:
+            out[key] = [str(v) for v in value] if isinstance(value, (list, tuple)) else [str(value)]
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
 def safe_repeated_region_diagnostics_metadata(metadata: dict) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         return {}
@@ -984,6 +1022,7 @@ def _render_step(idx: int, result: StepResult) -> str:
     webview_context_selection = safe_webview_context_selection_metadata(target_metadata)
     webview_switch_execution = safe_webview_switch_execution_metadata(target_metadata)
     webview_switch_wiring_plan = safe_webview_switch_wiring_plan_metadata(target_metadata)
+    webview_readiness_diagnostics = safe_webview_readiness_diagnostics_metadata(target_metadata)
     if webview_diagnostics:
         evidence = webview_diagnostics.get("evidence", [])
         warnings = webview_diagnostics.get("warnings", [])
@@ -1043,6 +1082,17 @@ def _render_step(idx: int, result: StepResult) -> str:
         rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
         rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
         webview_switch_execution_html = ('<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">WebView Switch Execution</summary>' f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{rows}</ul></details>')
+
+    webview_readiness_html = ""
+    if webview_readiness_diagnostics:
+        evidence = webview_readiness_diagnostics.get("evidence", [])
+        warnings = webview_readiness_diagnostics.get("warnings", [])
+        warnings_display = ", ".join(str(w) for w in warnings) if warnings else "none"
+        labels = [("Status", "status"), ("Reason", "reason"), ("Operation type", "operation_type"), ("Context refresh attempts", "context_refresh_attempts"), ("Target wait attempted", "target_wait_attempted"), ("Timeout ms", "timeout_ms"), ("Poll interval ms", "poll_interval_ms"), ("Max context refresh attempts", "max_context_refresh_attempts")]
+        rows = "".join(f'<li><strong>{label}:</strong> {html.escape(str(webview_readiness_diagnostics[key]))}</li>' for label, key in labels if key in webview_readiness_diagnostics)
+        rows += f'<li><strong>Evidence count:</strong> {html.escape(str(len(evidence)))}</li>'
+        rows += f'<li><strong>Warnings:</strong> {html.escape(warnings_display)}</li>'
+        webview_readiness_html = ('<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.8rem;color:#64748b;">WebView Readiness Diagnostics</summary>' f'<ul style="margin:6px 0 0 18px;color:#334155;font-size:0.82rem;line-height:1.45;">{rows}</ul></details>')
 
     webview_switch_wiring_plan_html = ""
     if webview_switch_wiring_plan:
@@ -1389,6 +1439,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       {webview_context_selection_html}
       {webview_switch_execution_html}
       {webview_switch_wiring_plan_html}
+      {webview_readiness_html}
       {system_dialog_html}
       {system_dialog_guardrails_html}
       {system_dialog_action_html}
@@ -1714,6 +1765,17 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     webview_switch_wiring_plan_eligibility_decision_counts: Counter[str] = Counter()
     webview_switch_wiring_plan_context_selection_decision_counts: Counter[str] = Counter()
     webview_switch_wiring_plan_warning_counts: Counter[str] = Counter()
+    webview_readiness_total = 0
+    webview_readiness_enabled_count = 0
+    webview_readiness_target_wait_attempted_count = 0
+    webview_readiness_status_counts: Counter[str] = Counter()
+    webview_readiness_reason_counts: Counter[str] = Counter()
+    webview_readiness_operation_type_counts: Counter[str] = Counter()
+    webview_readiness_warning_counts: Counter[str] = Counter()
+    webview_readiness_timeout_ms_buckets: Counter[str] = Counter()
+    webview_readiness_poll_interval_ms_buckets: Counter[str] = Counter()
+    webview_readiness_context_refresh_attempts_buckets: Counter[str] = Counter()
+    webview_readiness_max_context_refresh_attempts_buckets: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
@@ -1742,6 +1804,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         webview_context_selection = safe_webview_context_selection_metadata(metadata)
         webview_switch_execution = safe_webview_switch_execution_metadata(metadata)
         webview_switch_wiring_plan = safe_webview_switch_wiring_plan_metadata(metadata)
+        webview_readiness = safe_webview_readiness_diagnostics_metadata(metadata)
         system_dialog_detection = safe_system_dialog_detection_metadata(metadata)
         system_dialog_guardrails = safe_system_dialog_guardrails_metadata(metadata)
         system_dialog_action = safe_system_dialog_action_metadata(metadata)
@@ -1846,6 +1909,60 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             if isinstance(warnings, list):
                 for warning in warnings:
                     _count_categorical_field(webview_switch_execution_warning_counts, warning)
+        if webview_readiness:
+            webview_readiness_total += 1
+            if webview_readiness.get("enabled") is True:
+                webview_readiness_enabled_count += 1
+            if webview_readiness.get("target_wait_attempted") is True:
+                webview_readiness_target_wait_attempted_count += 1
+            _count_categorical_field(webview_readiness_status_counts, webview_readiness.get("status"))
+            _count_categorical_field(webview_readiness_reason_counts, webview_readiness.get("reason"))
+            _count_categorical_field(webview_readiness_operation_type_counts, webview_readiness.get("operation_type"))
+            warnings = webview_readiness.get("warnings")
+            if isinstance(warnings, list):
+                for warning in warnings:
+                    _count_categorical_field(webview_readiness_warning_counts, warning)
+            timeout_ms = webview_readiness.get("timeout_ms")
+            if isinstance(timeout_ms, int):
+                if timeout_ms <= 0:
+                    webview_readiness_timeout_ms_buckets["0"] += 1
+                elif timeout_ms <= 1000:
+                    webview_readiness_timeout_ms_buckets["1-1000"] += 1
+                elif timeout_ms <= 3000:
+                    webview_readiness_timeout_ms_buckets["1001-3000"] += 1
+                else:
+                    webview_readiness_timeout_ms_buckets["3001+"] += 1
+            poll_interval_ms = webview_readiness.get("poll_interval_ms")
+            if isinstance(poll_interval_ms, int):
+                if poll_interval_ms <= 0:
+                    webview_readiness_poll_interval_ms_buckets["0"] += 1
+                elif poll_interval_ms <= 250:
+                    webview_readiness_poll_interval_ms_buckets["1-250"] += 1
+                elif poll_interval_ms <= 500:
+                    webview_readiness_poll_interval_ms_buckets["251-500"] += 1
+                else:
+                    webview_readiness_poll_interval_ms_buckets["501+"] += 1
+            context_refresh_attempts = webview_readiness.get("context_refresh_attempts")
+            if isinstance(context_refresh_attempts, int):
+                if context_refresh_attempts <= 0:
+                    webview_readiness_context_refresh_attempts_buckets["0"] += 1
+                elif context_refresh_attempts == 1:
+                    webview_readiness_context_refresh_attempts_buckets["1"] += 1
+                elif context_refresh_attempts <= 3:
+                    webview_readiness_context_refresh_attempts_buckets["2-3"] += 1
+                else:
+                    webview_readiness_context_refresh_attempts_buckets["4+"] += 1
+            max_context_refresh_attempts = webview_readiness.get("max_context_refresh_attempts")
+            if isinstance(max_context_refresh_attempts, int):
+                if max_context_refresh_attempts <= 0:
+                    webview_readiness_max_context_refresh_attempts_buckets["0"] += 1
+                elif max_context_refresh_attempts == 1:
+                    webview_readiness_max_context_refresh_attempts_buckets["1"] += 1
+                elif max_context_refresh_attempts <= 3:
+                    webview_readiness_max_context_refresh_attempts_buckets["2-3"] += 1
+                else:
+                    webview_readiness_max_context_refresh_attempts_buckets["4+"] += 1
+
         if webview_switch_wiring_plan:
             webview_switch_wiring_plan_total += 1
             if webview_switch_wiring_plan.get("enabled") is True:
@@ -2150,6 +2267,20 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "warning_counts": dict(webview_switch_execution_warning_counts),
     }
 
+    webview_readiness_summary = {
+        "total_with_readiness": webview_readiness_total,
+        "enabled_count": webview_readiness_enabled_count,
+        "target_wait_attempted_count": webview_readiness_target_wait_attempted_count,
+        "status_counts": dict(webview_readiness_status_counts),
+        "reason_counts": dict(webview_readiness_reason_counts),
+        "operation_type_counts": dict(webview_readiness_operation_type_counts),
+        "warning_counts": dict(webview_readiness_warning_counts),
+        "timeout_ms_buckets": dict(webview_readiness_timeout_ms_buckets),
+        "poll_interval_ms_buckets": dict(webview_readiness_poll_interval_ms_buckets),
+        "context_refresh_attempts_buckets": dict(webview_readiness_context_refresh_attempts_buckets),
+        "max_context_refresh_attempts_buckets": dict(webview_readiness_max_context_refresh_attempts_buckets),
+    }
+
     webview_switch_wiring_plan_summary = {
         "total_with_wiring_plan": webview_switch_wiring_plan_total,
         "enabled_count": webview_switch_wiring_plan_enabled_count,
@@ -2284,6 +2415,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "webview_context_selection_summary": webview_context_selection_summary,
         "webview_switch_execution_summary": webview_switch_execution_summary,
         "webview_switch_wiring_plan_summary": webview_switch_wiring_plan_summary,
+        "webview_readiness_summary": webview_readiness_summary,
         "system_dialog_summary": system_dialog_summary,
         "system_dialog_guardrails_summary": system_dialog_guardrails_summary,
         "system_dialog_action_summary": system_dialog_action_summary,
