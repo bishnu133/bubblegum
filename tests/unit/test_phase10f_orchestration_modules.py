@@ -8,6 +8,7 @@ from bubblegum.core.schemas import ValidationResult
 def test_parser_infer_action_type_parity():
     assert infer_action_type("Click Login", {}) == "click"
     assert infer_action_type("Type email", {}) == "type"
+    assert infer_action_type('Enter "tomsmith" into Username', {}) == "type"
     assert infer_action_type("Verify dashboard visible", {}) == "verify"
     assert infer_action_type("Read account id", {}) == "extract"
 

@@ -100,3 +100,17 @@ def test_retry_behavior_still_works_with_wait():
     assert result.success is True
     assert locator.calls == 2
     assert target.metadata["retry_attempts"] == 1
+
+
+def test_unsupported_action_type_does_not_succeed_silently():
+    locator = _FakeLocator()
+    adapter = PlaywrightAdapter(_FakePage(locator))
+    plan = ActionPlan(
+        action_type="verify",
+        target_hint="x",
+        options=ExecutionOptions(timeout_ms=1234),
+    )
+    target = ResolvedTarget(ref="#login", confidence=1.0, resolver_name="test")
+    result = asyncio.run(adapter.execute(plan, target))
+    assert result.success is False
+    assert "Unsupported action_type for Playwright execute" in (result.error or "")

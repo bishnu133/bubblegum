@@ -208,7 +208,7 @@ async def act(
     plan = ActionPlan(
         action_type=intent.action_type,
         target_hint=instruction,
-        input_value=kwargs.get("input_value"),
+        input_value=kwargs.get("input_value", kwargs.get("value")),
         options=options,
     )
     exec_result = await adapter.execute(plan, target)

@@ -130,11 +130,12 @@ async def run(config: dict) -> None:
                 print("page_closed_after_open:", page.is_closed())
 
                 step_user = await act(
-                    'Type "tomsmith" into Username',
+                    'Enter "tomsmith" into Username',
                     page=page,
                     channel="web",
+                    action_type="type",
                     selector='input[name="username"]',
-                    value="tomsmith",
+                    input_value="tomsmith",
                 )
                 print("username:", step_user.status)
                 username_value = await page.locator('input[name="username"]').input_value()
@@ -143,11 +144,12 @@ async def run(config: dict) -> None:
                 print("page_closed_after_username:", page.is_closed())
 
                 step_pass = await act(
-                    f'Type "{password}" into Password',
+                    f'Enter "{password}" into Password',
                     page=page,
                     channel="web",
+                    action_type="type",
                     selector='input[name="password"]',
-                    value=password,
+                    input_value=password,
                 )
                 print("password:", step_pass.status)
                 password_value = await page.locator('input[name="password"]').input_value()
