@@ -83,7 +83,7 @@ Project validation commands:
 - `git diff --check`
 
 Execution status in this phase update:
-- **Prepared, not executed** (Android device/Appium/sample app values not provided in this change).
+- **Blocked/prepared** (Phase 21T dry-run executed on 2026-05-20 UTC; required Android real-env variables/device/app were not present, so real trial execution was not run).
 
 ## 7. Expected success criteria
 
@@ -98,50 +98,64 @@ Execution status in this phase update:
 - No raw context/source/capability/credential leakage.
 - Execute remains unwired.
 
-## 8. Actual result template
+## 8. Actual result (Phase 21T)
 
-Populate only after real trial execution:
+- Execution timestamp (UTC): `2026-05-20`
+- Operator: `Codex agent`
+- Device/emulator: `Not available in environment`
+- Appium endpoint: `Not configured`
+- Sample app/screen: `Sanitized: not configured in environment`
 
-- Execution timestamp (UTC): `<placeholder>`
-- Operator: `<placeholder>`
-- Device/emulator: `<placeholder>`
-- Appium endpoint: `<placeholder>`
-- Sample app/screen: `<placeholder>`
+Commands run:
+- `scripts/run_webview_readiness_real_trials.sh android --dry-run`
+- `scripts/run_webview_readiness_real_trials.sh android` **not run** (blocked by missing prerequisites)
+
+Dry-run environment check outcome:
+- `BUBBLEGUM_REAL_ENV`: missing
+- `BUBBLEGUM_APPIUM_SERVER_URL`: missing
+- `BUBBLEGUM_ANDROID_DEVICE_NAME`: missing
+- `BUBBLEGUM_ANDROID_APP`: missing
+- `BUBBLEGUM_ANDROID_PACKAGE`: missing
+- `BUBBLEGUM_ANDROID_ACTIVITY`: missing
+- `BUBBLEGUM_ANDROID_WEBVIEW_SWITCH_SMOKE`: missing
+- `BUBBLEGUM_ANDROID_WEBVIEW_VALIDATE_TEXT`: missing
+- `BUBBLEGUM_ANDROID_WEBVIEW_EXTRACT_REF`: missing
+- `BUBBLEGUM_ANDROID_WEBVIEW_REQUIRE_SWITCH`: missing
 
 Test outcomes:
-- `test_android_webview_switch_smoke_validate_extract_real_env`: `<pass|fail|skip>`
-- `test_android_webview_switch_reporting_artifacts_are_safe`: `<pass|fail|skip>`
+- `test_android_webview_switch_smoke_validate_extract_real_env`: `not executed` (prerequisites missing)
+- `test_android_webview_switch_reporting_artifacts_are_safe`: `not executed` (prerequisites missing)
 
 Observed readiness diagnostics:
-- Context discovery notes: `<placeholder>`
-- Readiness status observed: `<placeholder>`
-- Target wait notes: `<placeholder>`
-- Restore notes: `<placeholder>`
+- Context discovery notes: `Not observed in this environment (real run blocked)`
+- Readiness status observed: `Not observed in this environment (real run blocked)`
+- Target wait notes: `Not observed in this environment (real run blocked)`
+- Restore notes: `Not observed in this environment (real run blocked)`
 
 Artifact checks:
-- JSON includes `webview_readiness_summary`: `<yes|no>`
-- HTML includes readiness summary section: `<yes|no>`
-- Sensitive data leakage observed: `<yes|no>`
+- JSON includes `webview_readiness_summary`: `not assessed` (no real run artifacts generated)
+- HTML includes readiness summary section: `not assessed` (no real run artifacts generated)
+- Sensitive data leakage observed: `no` (no real-run sensitive artifacts generated/committed in this phase)
 
 Overall trial status:
-- `<pass|fail|blocked|prepared, not executed>`
+- `blocked/prepared`
 
 ## 9. Readiness diagnostics checklist
 
 Mark complete after trial:
-- [ ] Readiness enabled explicitly for trial run.
-- [ ] Context wait diagnostics present.
-- [ ] Target wait diagnostics present when target is delayed.
-- [ ] Final readiness status recorded (`context_available`, `waiting_for_target`, or `target_ready` as emitted).
-- [ ] Strict switch attempt logged when required switch is enabled.
-- [ ] Restore attempt + restore result logged.
-- [ ] Validate/extract execution confirmed after readiness step.
+- [ ] Readiness enabled explicitly for trial run. (Blocked: real env unavailable in this phase)
+- [ ] Context wait diagnostics present. (Blocked: real env unavailable in this phase)
+- [ ] Target wait diagnostics present when target is delayed. (Blocked: real env unavailable in this phase)
+- [ ] Final readiness status recorded (`context_available`, `waiting_for_target`, or `target_ready` as emitted). (Blocked: real env unavailable in this phase)
+- [ ] Strict switch attempt logged when required switch is enabled. (Blocked: real env unavailable in this phase)
+- [ ] Restore attempt + restore result logged. (Blocked: real env unavailable in this phase)
+- [ ] Validate/extract execution confirmed after readiness step. (Blocked: real env unavailable in this phase)
 
 ## 10. Artifact safety checklist
 
 Mark complete after trial:
-- [ ] JSON artifact includes `webview_readiness_summary`.
-- [ ] HTML artifact includes readiness summary content.
+- [ ] JSON artifact includes `webview_readiness_summary`. (Blocked: no real-run artifacts)
+- [ ] HTML artifact includes readiness summary content. (Blocked: no real-run artifacts)
 - [ ] No raw WebView context dumps with sensitive values.
 - [ ] No raw page source dumps containing secrets/credentials.
 - [ ] No capability blobs exposing sensitive infra data.
@@ -162,13 +176,13 @@ If trial fails or skips unexpectedly:
 
 ## 12. GO/NO-GO decision
 
-Current decision for this phase update:
-- **Execution sign-off:** **NO-GO** (trial not executed in this update).
-- **Trial readiness:** **GO** (commands, placeholders, readiness config, diagnostics checklist, and artifact checklist are prepared).
+Current decision for this phase update (Phase 21T):
+- **Execution sign-off:** **NO-GO** (Android real trial blocked due to missing required env/device/app prerequisites).
+- **Trial readiness:** **GO** (operator script dry-run and documentation are prepared for immediate execution once prerequisites are provided).
 
 ## 13. Next action recommendation
 
 - Run the two Android trial commands once device/Appium/sample app are available.
 - Record actual outcomes in Section 8 without inventing results.
 - If criteria in Section 7 are met with clean artifact safety checks, mark GO for Android sample readiness trial.
-- Next phase recommendation: **Phase 21P — iOS Sample Trial with Readiness**.
+- Next phase recommendation: **Phase 21U — iOS Real Trial Execution with Readiness**.
