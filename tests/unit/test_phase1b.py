@@ -1453,3 +1453,27 @@ def test_html_report_escapes_webview_switch_wiring_plan_values(tmp_path):
     text = out.read_text(encoding="utf-8")
     assert '<script>alert("x")</script>' not in text
     assert "&lt;script&gt;" in text
+
+def test_html_report_renders_webview_readiness_diagnostics_when_present(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(ref='id="x"', confidence=0.9, resolver_name="x", metadata={"webview_readiness_diagnostics": {"status": "waiting_for_target", "reason": "switch_ready_target_pending", "operation_type": "validate", "context_refresh_attempts": 1, "target_wait_attempted": False, "timeout_ms": 3000, "poll_interval_ms": 250, "max_context_refresh_attempts": 2, "evidence": ["a"], "warnings": ["w"]}}))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "WebView Readiness Diagnostics" in text
+    assert "waiting_for_target" in text
+
+
+def test_html_report_hides_webview_readiness_diagnostics_when_absent(tmp_path):
+    out = tmp_path / "report.html"
+    write_html_report([StepResult(status="passed", action="Tap", confidence=0.9)], path=out)
+    assert "WebView Readiness Diagnostics" not in out.read_text(encoding="utf-8")
+
+
+def test_html_report_escapes_and_redacts_webview_readiness_values(tmp_path):
+    out = tmp_path / "report.html"
+    result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(ref='id="x"', confidence=0.9, resolver_name="x", metadata={"webview_readiness_diagnostics": {"status": '<b>wait</b>', "reason": '<script>x</script>', "operation_type": "validate", "warnings": ["<x>"], "raw_context_name": "SECRET_CTX"}}))
+    write_html_report([result], path=out)
+    text = out.read_text(encoding="utf-8")
+    assert "&lt;b&gt;wait&lt;/b&gt;" in text
+    assert "&lt;script&gt;x&lt;/script&gt;" in text
+    assert "SECRET_CTX" not in text

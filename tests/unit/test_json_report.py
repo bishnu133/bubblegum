@@ -1737,3 +1737,47 @@ def test_json_report_real_helper_blocked_metadata_is_reported_safely(tmp_path):
     assert summary["restore_status_counts"]["not_needed"] == 2
     assert summary["reason_counts"]["internal_context_ref_missing"] == 1
     assert summary["reason_counts"]["opt_in_required"] == 1
+
+def test_json_report_preserves_and_redacts_webview_readiness_diagnostics(tmp_path):
+    out = tmp_path / "report.json"
+    result = StepResult(status="passed", action="Tap", confidence=0.9, target=ResolvedTarget(ref='id="x"', confidence=0.9, resolver_name="x", metadata={
+        "webview_readiness_diagnostics": {
+            "enabled": True,
+            "status": "waiting_for_target",
+            "reason": "switch_ready_target_pending",
+            "operation_type": "validate",
+            "context_refresh_attempts": 1,
+            "target_wait_attempted": False,
+            "timeout_ms": 3000,
+            "poll_interval_ms": 250,
+            "max_context_refresh_attempts": 2,
+            "evidence": ["x"],
+            "warnings": ["w"],
+            "safe_metadata_only": True,
+            "raw_context_name": "SECRET",
+            "exception_message": "SECRET_ERR",
+        }
+    }))
+    write_json_report([result], path=out)
+    md = json.loads(out.read_text(encoding="utf-8"))["results"][0]["target"]["metadata"]["webview_readiness_diagnostics"]
+    assert md["status"] == "waiting_for_target"
+    assert md["timeout_ms"] == 3000
+    assert "raw_context_name" not in md
+    assert "exception_message" not in md
+
+
+def test_json_report_includes_webview_readiness_summary_and_ignores_unsafe_keys(tmp_path):
+    out = tmp_path / "report.json"
+    results = [
+        StepResult(status="passed", action="A", confidence=0.9, target=ResolvedTarget(ref="a", confidence=0.9, resolver_name="x", metadata={"webview_readiness_diagnostics": {"enabled": True, "status": "context_available", "reason": "selected_context_available", "operation_type": "extract", "target_wait_attempted": True, "timeout_ms": 500, "poll_interval_ms": 200, "context_refresh_attempts": 0, "max_context_refresh_attempts": 1, "warnings": ["w1"], "raw_exception": "leak"}})),
+        StepResult(status="failed", action="B", confidence=0.4, target=ResolvedTarget(ref="b", confidence=0.4, resolver_name="x", metadata={"webview_readiness_diagnostics": {"enabled": False, "status": "not_checked", "reason": "disabled", "operation_type": "validate", "target_wait_attempted": False, "timeout_ms": 3500, "poll_interval_ms": 600, "context_refresh_attempts": 2, "max_context_refresh_attempts": 3}})),
+    ]
+    write_json_report(results, path=out)
+    summary = json.loads(out.read_text(encoding="utf-8"))["analytics"]["webview_readiness_summary"]
+    assert summary["total_with_readiness"] == 2
+    assert summary["enabled_count"] == 1
+    assert summary["target_wait_attempted_count"] == 1
+    assert summary["status_counts"]["context_available"] == 1
+    assert summary["reason_counts"]["selected_context_available"] == 1
+    assert summary["operation_type_counts"]["extract"] == 1
+    assert summary["warning_counts"]["w1"] == 1
