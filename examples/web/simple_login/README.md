@@ -1,23 +1,26 @@
 # Simple Login Example (Web)
 
-This folder is a **sample structure** for local Bubblegum web validation.
+This example is configured for a **real public demo app** so testers can validate local Bubblegum web behavior without private credentials.
 
-Use it as a starting point, then replace placeholders with your real application values:
-- Base URL
-- Selectors/step mappings
-- Username/password test data
-- Expected success text (dashboard/welcome)
+## App
+- Name: The Internet (Herokuapp demo)
+- URL: https://the-internet.herokuapp.com/login
+- Public demo credentials:
+  - Username: `tomsmith`
+  - Password: `SuperSecretPassword!`
 
 ## Files
-- `bubblegum.yaml`: Sample web config
-- `test_login.feature`: Sample BDD-style login scenario
+- `bubblegum.yaml`: Web runtime configuration for this demo app.
+- `test_login.feature`: Happy-path and negative-path login scenarios.
 
-## How to run (after local install)
-From the Bubblegum repo root:
+## Local setup (editable install)
+From repo root:
 
 ```bash
-pip install -e .
-pytest -q examples/web/simple_login
+python -m pip install -e .
 ```
 
-If needed, copy this folder to your own test workspace and edit it there.
+No PyPI install is required for local validation.
+
+## Validation notes
+At Phase 22B, this folder contains runnable-like scenario assets, but there is no dedicated feature runner wired to execute this `.feature` file directly via Bubblegum CLI in this repo state. If your environment has a custom runner, point it to this folder and capture reports under `reports/web-simple-login`.

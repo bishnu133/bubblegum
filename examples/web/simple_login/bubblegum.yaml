@@ -1,6 +1,6 @@
 app_type: web
-base_url: "https://example.com"
+base_url: "https://the-internet.herokuapp.com"
 browser: "chromium"
 headless: true
-timeout: 30
-report_path: "reports/web/simple_login"
+timeout: 10000
+report_path: "reports/web-simple-login"
