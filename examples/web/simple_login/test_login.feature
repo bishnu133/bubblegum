@@ -1,11 +1,18 @@
-Feature: Web login validation
+Feature: Real web login validation
   As a tester
-  I want to validate login
-  So that I can confirm basic access works
+  I want to validate Bubblegum on a public demo login app
+  So that I can confirm real local web behavior before mobile/cloud trials
 
-  Scenario: Successful login shows dashboard message
-    Given I open the login page
-    When I enter username "test.user@example.com"
-    And I enter password "replace-with-secure-test-password"
-    And I click the login button
-    Then I should see "Welcome" on the dashboard
+  Scenario: Valid login succeeds
+    Given I open "/login"
+    When I enter "tomsmith" into "Username"
+    And I enter "SuperSecretPassword!" into "Password"
+    And I click "Login"
+    Then I should see "You logged into a secure area!"
+
+  Scenario: Invalid login shows error
+    Given I open "/login"
+    When I enter "invalid-user" into "Username"
+    And I enter "invalid-pass" into "Password"
+    And I click "Login"
+    Then I should see "Your username is invalid!"
