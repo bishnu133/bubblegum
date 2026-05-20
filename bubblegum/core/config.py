@@ -66,6 +66,12 @@ class WebviewSwitchingConfig(BaseModel):
     fail_closed_on_restore_failure: bool = True
     webview_context_selection_policy: str = "single_webview_only"  # single_webview_only | first_available | hint_match
     max_webview_switch_attempts: int = 1
+    webview_readiness_wait_enabled: bool = False
+    webview_context_wait_timeout_ms: int = 0
+    webview_context_poll_interval_ms: int = 250
+    webview_target_wait_timeout_ms: int = 0
+    max_context_refresh_attempts: int = 1
+    fail_closed_on_readiness_timeout: bool = True
 
     @field_validator("webview_switching_mode")
     @classmethod

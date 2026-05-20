@@ -49,6 +49,7 @@ from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagn
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
 from bubblegum.core.mobile.webview_switch_eligibility import evaluate_webview_switch_eligibility
 from bubblegum.core.mobile.webview_context_selection import select_webview_context
+from bubblegum.core.mobile.webview_readiness import build_webview_readiness_plan
 from bubblegum.core.mobile.webview_switch_config import is_webview_switching_enabled_for_operation
 from bubblegum.core.mobile.webview_real_driver_switch import (
     build_real_webview_context_map,
@@ -147,6 +148,14 @@ def _safe_wiring_reason(value: object) -> str:
         "switch_ready",
     }
     return normalized if normalized in allowed else "unknown"
+
+
+def _safe_ms(value: object, *, default: int = 0) -> int:
+    try:
+        out = int(value)
+    except Exception:
+        return default
+    return max(0, out)
 
 _ARTIFACTS_DIR = Path("artifacts")
 
@@ -547,13 +556,24 @@ class AppiumAdapter(BaseAdapter):
         execution_args = self._build_real_switch_execution_args("validate", wiring_plan)
         if execution_args is None:
             return self._run_assertion(plan)
+        readiness = self._evaluate_webview_readiness_before_switch(operation_type="validate", execution_args=execution_args, wiring_plan=wiring_plan)
+        if readiness.get("status") == "failed_closed":
+            self._last_webview_switch_execution = {"webview_readiness_diagnostics": readiness}
+            return False, "webview_readiness_failed_closed"
         outcome: dict[str, object] = {"value": (False, "validation failed")}
 
         def _op():
             outcome["value"] = self._webview_validate_operation(plan) if callable(self._webview_validate_operation) else self._run_assertion(plan)
 
         execution = execute_real_driver_switch_with_ref(operation_callable=_op, **execution_args)
+        if execution.get("switch_status") == "switched":
+            readiness = self._apply_post_switch_readiness_wait(readiness)
+            if readiness.get("status") == "failed_closed":
+                execution["switch_status"] = "failed"
+                execution["reason"] = "readiness_timeout_after_switch"
+                execution["warnings"] = sorted(set(list(execution.get("warnings") or []) + ["readiness_timeout_after_switch"]))
         self._last_webview_switch_execution = {"webview_switch_execution": execution}
+        self._last_webview_switch_execution["webview_readiness_diagnostics"] = readiness
         if execution.get("switch_status") == "failed" or execution.get("restore_status") == "failed":
             return False, "webview_switch_safety_failed"
         result = outcome.get("value")
@@ -563,18 +583,95 @@ class AppiumAdapter(BaseAdapter):
         execution_args = self._build_real_switch_execution_args("extract", wiring_plan)
         if execution_args is None:
             return self._extract_text_base(ref)
+        readiness = self._evaluate_webview_readiness_before_switch(operation_type="extract", execution_args=execution_args, wiring_plan=wiring_plan)
+        if isinstance(ref, dict) and isinstance(ref.get("metadata"), dict):
+            ref["metadata"]["webview_readiness_diagnostics"] = readiness
+        if readiness.get("status") == "failed_closed":
+            self._last_webview_switch_execution = {"webview_readiness_diagnostics": readiness}
+            return ""
         outcome: dict[str, object] = {"value": ""}
 
         def _op():
             outcome["value"] = self._webview_extract_operation(ref) if callable(self._webview_extract_operation) else self._extract_text_base(ref)
 
         execution = execute_real_driver_switch_with_ref(operation_callable=_op, **execution_args)
+        if execution.get("switch_status") == "switched":
+            readiness = self._apply_post_switch_readiness_wait(readiness)
+            if readiness.get("status") == "failed_closed":
+                execution["switch_status"] = "failed"
+                execution["reason"] = "readiness_timeout_after_switch"
+                execution["warnings"] = sorted(set(list(execution.get("warnings") or []) + ["readiness_timeout_after_switch"]))
         self._last_webview_switch_execution = {"webview_switch_execution": execution}
         if isinstance(ref, dict) and isinstance(ref.get("metadata"), dict):
             ref["metadata"]["webview_switch_execution"] = execution
+            ref["metadata"]["webview_readiness_diagnostics"] = readiness
         if execution.get("switch_status") == "failed" or execution.get("restore_status") == "failed":
             return ""
         return str(outcome.get("value") or "")
+
+    def _get_webview_readiness_config(self) -> dict[str, object]:
+        cfg = getattr(getattr(self, "_config", None), "webview_switching", None)
+        enabled = bool(getattr(cfg, "webview_readiness_wait_enabled", False))
+        return {
+            "enabled": enabled,
+            "context_timeout_ms": _safe_ms(getattr(cfg, "webview_context_wait_timeout_ms", 0)),
+            "poll_interval_ms": max(100, _safe_ms(getattr(cfg, "webview_context_poll_interval_ms", 250), default=250)),
+            "target_wait_timeout_ms": _safe_ms(getattr(cfg, "webview_target_wait_timeout_ms", 0)),
+            "max_context_refresh_attempts": max(0, min(_safe_ms(getattr(cfg, "max_context_refresh_attempts", 1), default=1), 3)),
+            "fail_closed_on_readiness_timeout": bool(getattr(cfg, "fail_closed_on_readiness_timeout", True)),
+        }
+
+    def _evaluate_webview_readiness_before_switch(self, *, operation_type: str, execution_args: dict[str, object], wiring_plan: dict[str, object]) -> dict[str, object]:
+        ready_cfg = self._get_webview_readiness_config()
+        if not ready_cfg["enabled"]:
+            return build_webview_readiness_plan(enabled=False, operation_type=operation_type)
+        context_timeout_ms = int(ready_cfg["context_timeout_ms"])
+        poll_ms = int(ready_cfg["poll_interval_ms"])
+        attempts = int(ready_cfg["max_context_refresh_attempts"])
+        start = time.monotonic()
+        refresh_attempts = 0
+        context_ref = execution_args.get("context_ref")
+        context_ok = bool(getattr(context_ref, "safe_metadata", {}).get("internal_context_ref_available"))
+        while (not context_ok) and refresh_attempts < attempts and ((time.monotonic() - start) * 1000) < context_timeout_ms:
+            refresh_attempts += 1
+            context_inventory = self._collect_real_context_inventory_for_switch()
+            plan = wiring_plan.get("webview_switch_wiring_plan") if isinstance(wiring_plan, dict) else {}
+            context_ref = resolve_real_webview_context_ref(
+                context_inventory=context_inventory,
+                selected_context_index=plan.get("selected_context_index") if isinstance(plan, dict) and isinstance(plan.get("selected_context_index"), int) else None,
+                selected_context_type=str(plan.get("selected_context_type") if isinstance(plan, dict) else ""),
+            )
+            context_ok = bool(getattr(context_ref, "safe_metadata", {}).get("internal_context_ref_available"))
+            if context_ok:
+                execution_args["context_ref"] = context_ref
+                break
+            time.sleep(poll_ms / 1000.0)
+        plan = build_webview_readiness_plan(
+            enabled=True,
+            operation_type=operation_type,
+            timeout_ms=context_timeout_ms,
+            poll_interval_ms=poll_ms,
+            max_context_refresh_attempts=attempts,
+        )
+        plan["context_refresh_attempts"] = refresh_attempts
+        if not context_ok and bool(ready_cfg["fail_closed_on_readiness_timeout"]):
+            plan["status"] = "failed_closed"
+            plan["reason"] = "readiness_timeout_before_switch"
+            plan["warnings"] = sorted(set(list(plan.get("warnings") or []) + ["safe_failed_closed"]))
+        return plan
+
+    def _apply_post_switch_readiness_wait(self, readiness: dict[str, object]) -> dict[str, object]:
+        cfg = self._get_webview_readiness_config()
+        timeout_ms = int(cfg["target_wait_timeout_ms"])
+        if timeout_ms <= 0:
+            return readiness
+        readiness["target_wait_attempted"] = True
+        time.sleep(timeout_ms / 1000.0)
+        if bool(cfg["fail_closed_on_readiness_timeout"]):
+            readiness["status"] = "failed_closed"
+            readiness["reason"] = "readiness_timeout_after_switch"
+            readiness["warnings"] = sorted(set(list(readiness.get("warnings") or []) + ["safe_failed_closed"]))
+        return readiness
 
     def _build_real_switch_execution_args(self, operation_type: str, wiring_plan: dict[str, object]) -> dict[str, object] | None:
         if operation_type not in {"validate", "extract"}:
@@ -586,7 +683,8 @@ class AppiumAdapter(BaseAdapter):
             return None
         context_inventory = self._collect_real_context_inventory_for_switch()
         context_map = build_real_webview_context_map(context_inventory=context_inventory)
-        if not bool(context_map.get("context_map_available")):
+        readiness_cfg = self._get_webview_readiness_config()
+        if not bool(context_map.get("context_map_available")) and not bool(readiness_cfg.get("enabled")):
             return None
         selected_context_index = plan.get("selected_context_index")
         selected_context_type = plan.get("selected_context_type")
@@ -595,7 +693,7 @@ class AppiumAdapter(BaseAdapter):
             selected_context_index=selected_context_index if isinstance(selected_context_index, int) else None,
             selected_context_type=str(selected_context_type or ""),
         )
-        if not bool(context_ref.safe_metadata.get("internal_context_ref_available")):
+        if not bool(context_ref.safe_metadata.get("internal_context_ref_available")) and not bool(readiness_cfg.get("enabled")):
             return None
         return {
             "context_ref": context_ref,

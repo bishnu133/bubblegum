@@ -76,8 +76,8 @@ def test_output_is_json_safe():
     json.dumps(out)
 
 
-def test_helper_not_wired_into_appium_adapter_yet():
+def test_helper_is_wired_into_appium_adapter_for_validate_extract():
     adapter_text = (pathlib.Path(__file__).resolve().parents[2] / "bubblegum/adapters/mobile/appium/adapter.py").read_text(
         encoding="utf-8"
     )
-    assert "build_webview_readiness_plan" not in adapter_text
+    assert "build_webview_readiness_plan" in adapter_text
