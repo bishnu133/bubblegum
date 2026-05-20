@@ -252,10 +252,7 @@ class PlaywrightAdapter(BaseAdapter):
             await locator.scroll_into_view_if_needed(timeout=timeout)
 
         else:
-            logger.warning(
-                "PlaywrightAdapter.execute: unsupported action_type=%s — no-op",
-                plan.action_type,
-            )
+            raise ValueError(f"Unsupported action_type for Playwright execute: {plan.action_type}")
 
     async def validate(self, plan: ValidationPlan) -> ValidationResult:
         """
