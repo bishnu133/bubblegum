@@ -1,0 +1,6 @@
+app_type: web
+base_url: "https://example.com"
+browser: "chromium"
+headless: true
+timeout: 30
+report_path: "reports/web/simple_login"
