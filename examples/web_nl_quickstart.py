@@ -29,6 +29,7 @@ async def run() -> None:
             """
             <main>
               <h1>Checkout</h1>
+              <label>Coupon <input id='coupon' aria-label='Coupon code'></label>
               <button id='buy-btn'>Buy now</button>
               <p id='status'>idle</p>
               <script>
@@ -40,14 +41,20 @@ async def run() -> None:
             """
         )
 
-        step1 = await act("Click the Buy now button", page=page)
+        # Plain English only — no selector, no action_type, no input_value.
+        # Bubblegum parses the value ("SAVE10") and the target field ("Coupon code")
+        # straight from the sentence and grounds the element itself.
+        step1 = await act('Enter "SAVE10" into Coupon code', page=page)
         results.append(step1)
 
-        step2 = await verify("Status shows order placed", page=page, selector="text=order placed")
+        step2 = await act("Click the Buy now button", page=page)
         results.append(step2)
 
-        step3 = await extract("Read the page heading text", page=page, selector="h1")
+        step3 = await verify("Status shows order placed", page=page)
         results.append(step3)
+
+        step4 = await extract("Read the page heading text", page=page)
+        results.append(step4)
 
         await browser.close()
 

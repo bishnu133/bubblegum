@@ -1,7 +1,89 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass
+class ParsedIntent:
+    """Structured decomposition of a natural-language step.
+
+    Attributes:
+        action_type:   click | tap | type | select | scroll | verify | extract
+        target_phrase: the element description to find (e.g. "Username"), or None
+        input_value:   the value to type/select (e.g. "tomsmith"), or None
+        confident:     True when the rule-based grammar matched cleanly. When
+                       False, the SDK may escalate to an LLM parser.
+    """
+
+    action_type: str
+    target_phrase: str | None
+    input_value: str | None
+    confident: bool
+
+
+# Verbs we strip from the front of an instruction to isolate the target phrase.
+_LEADING_VERBS = (
+    "click", "tap", "press", "select", "choose", "pick", "type", "enter",
+    "fill", "input", "verify", "check", "assert", "confirm", "ensure", "see",
+    "extract", "get", "read", "fetch", "scroll", "to", "on", "the",
+)
+
+# "Enter <value> into <target>" grammar for type/select actions.
+_VALUE_INTO_TARGET_RE = re.compile(
+    r'^\s*(?:enter|type|fill|input|select|choose|pick|set)\s+'
+    r'(?:"([^"]+)"|\'([^\']+)\'|(.+?))\s+'
+    r'(?:into|in|on|to|from|=)\s+(?:the\s+)?(.+?)\s*$',
+    re.IGNORECASE,
+)
+
+_LEADING_VERB_RE = re.compile(
+    r"^\s*(?:" + "|".join(_LEADING_VERBS) + r")\b\s*"
+    r"(?:(?:the|a|an)\b\s*)?",
+    re.IGNORECASE,
+)
+
+
+def _clean(value: str | None) -> str | None:
+    if value is None:
+        return None
+    out = value.strip(" .,:;!?\t\n\r\"'")
+    out = re.sub(r"\s+", " ", out).strip()
+    return out or None
+
+
+def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
+    """Split a natural-language instruction into (action, target, value).
+
+    Pure rule-based; never calls a model. Returns confident=False when the
+    grammar is ambiguous so the SDK can optionally escalate to an LLM parser.
+    """
+    kwargs = kwargs or {}
+    action = infer_action_type(instruction, kwargs)
+    text = instruction.strip()
+
+    explicit_value = kwargs.get("input_value", kwargs.get("value"))
+
+    if action in {"type", "select"}:
+        m = _VALUE_INTO_TARGET_RE.match(text)
+        if m:
+            value = m.group(1) or m.group(2) or m.group(3)
+            target = m.group(4)
+            return ParsedIntent(action, _clean(target), _clean(value), confident=True)
+
+        # "Type tomsmith" with the target supplied separately, or value via kwargs.
+        stripped = _LEADING_VERB_RE.sub("", text, count=1)
+        if explicit_value is not None:
+            # Caller supplied the value; remaining text is the target.
+            return ParsedIntent(action, _clean(stripped) or _clean(text), explicit_value, confident=bool(_clean(stripped)))
+        # No target separator and no explicit value — ambiguous; let the LLM decide.
+        return ParsedIntent(action, None, None, confident=False)
+
+    # click / tap / verify / extract / scroll: target is the text after the verb.
+    target = _LEADING_VERB_RE.sub("", text, count=1)
+    target = _clean(target)
+    return ParsedIntent(action, target, explicit_value, confident=bool(target))
 
 
 def infer_action_type(instruction: str, kwargs: dict) -> str:
@@ -19,6 +101,8 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
         return "verify"
     if any(w in lowered for w in ("extract", "get", "read", "fetch")):
         return "extract"
+    if any(w in lowered for w in ("tap", "touch")):
+        return "tap"
     return "click"
 
 

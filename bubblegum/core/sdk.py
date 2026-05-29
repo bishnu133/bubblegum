@@ -47,7 +47,7 @@ from bubblegum.core.grounding.errors import BubblegumError
 from bubblegum.core.grounding.hydrator import VisualRefHydrator, is_visual_ref
 from bubblegum.core.grounding.registry import ResolverRegistry
 from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
-from bubblegum.core.parser import extract_expected, infer_action_type
+from bubblegum.core.parser import decompose, extract_expected, infer_action_type, llm_decompose
 from bubblegum.core.planner import build_options, build_validation_plan, context_request, make_intent
 from bubblegum.core.recovery import remove_explicit_selector, used_explicit_selector
 from bubblegum.core.mobile.memory_signature import build_mobile_memory_signature
@@ -168,12 +168,15 @@ async def act(
 
     # 1. Build StepIntent
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     intent  = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
-        action_type=infer_action_type(instruction, kwargs),
+        action_type=action_type,
         selector=kwargs.get("selector"),
+        target_phrase=target_phrase,
+        input_value=input_value,
         options=options,
     )
 
@@ -207,8 +210,8 @@ async def act(
     # 4. Build ActionPlan and execute
     plan = ActionPlan(
         action_type=intent.action_type,
-        target_hint=instruction,
-        input_value=kwargs.get("input_value", kwargs.get("value")),
+        target_hint=intent.target_phrase or instruction,
+        input_value=intent.input_value,
         options=options,
     )
     exec_result = await adapter.execute(plan, target)
@@ -274,12 +277,14 @@ async def verify(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
         action_type="verify",
         selector=kwargs.get("selector"),
+        target_phrase=target_phrase,
         options=options,
     )
 
@@ -340,12 +345,14 @@ async def extract(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="extract")
     intent  = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
         action_type="extract",
         selector=kwargs.get("selector"),
+        target_phrase=target_phrase,
         options=options,
     )
 
@@ -458,12 +465,15 @@ async def recover(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     step_intent = make_intent(
         instruction=instruction,
         channel=channel,
         platform=kwargs.get("platform", "web" if channel == "web" else "android"),
-        action_type=infer_action_type(instruction, kwargs),
+        action_type=action_type,
         selector=failed_selector,
+        target_phrase=target_phrase,
+        input_value=input_value,
         options=options,
     )
 
@@ -483,8 +493,8 @@ async def recover(
     # Execute
     plan = ActionPlan(
         action_type=step_intent.action_type,
-        target_hint=instruction,
-        input_value=kwargs.get("input_value"),
+        target_hint=step_intent.target_phrase or instruction,
+        input_value=step_intent.input_value,
         options=options,
     )
 
@@ -569,6 +579,55 @@ def _build_options(kwargs: dict):
 
 def _infer_action_type(instruction: str, kwargs: dict) -> str:
     return infer_action_type(instruction, kwargs)
+
+
+def _llm_parse_allowed() -> bool:
+    """Whether the LLM parse fallback may run (fallback-first + cost gate)."""
+    if not _config.ai_enabled:
+        return False
+    return str(_config.grounding.max_cost_level).lower() != "low"
+
+
+def _get_parse_provider():
+    """Return a configured ModelProvider, or None if AI parsing is unavailable."""
+    try:
+        from bubblegum.core.models.factory import get_provider
+        return get_provider(_config)
+    except Exception as exc:  # noqa: BLE001 - parsing must degrade gracefully
+        logger.warning("LLM parse provider unavailable; using deterministic parse: %s", exc)
+        return None
+
+
+async def _decompose_for(
+    instruction: str,
+    kwargs: dict,
+    *,
+    force_action: str | None = None,
+) -> tuple[str, str | None, str | None]:
+    """Decompose an instruction into (action_type, target_phrase, input_value).
+
+    Deterministic grammar first. If that is not confident and AI parsing is
+    enabled (and the cost policy allows it), escalate to the LLM parser. Caller
+    kwargs always win — backward-compatible with explicit selector/value usage.
+    """
+    parsed = decompose(instruction, kwargs)
+
+    action_type = force_action or kwargs.get("action_type") or parsed.action_type
+    target_phrase = kwargs.get("target_phrase") or parsed.target_phrase
+    explicit_value = kwargs.get("input_value", kwargs.get("value"))
+    input_value = explicit_value if explicit_value is not None else parsed.input_value
+
+    if not parsed.confident and _llm_parse_allowed():
+        llm = await llm_decompose(instruction, _get_parse_provider())
+        if llm is not None:
+            if force_action is None and not kwargs.get("action_type") and llm.action_type:
+                action_type = llm.action_type
+            if target_phrase is None:
+                target_phrase = llm.target_phrase
+            if input_value is None:
+                input_value = llm.input_value
+
+    return action_type, target_phrase, input_value
 
 
 def _extract_expected(instruction: str) -> str:

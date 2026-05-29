@@ -132,8 +132,8 @@ class AccessibilityTreeResolver(Resolver):
         if not snapshot:
             return []
 
-        keywords = _extract_keywords(intent.instruction)
-        phrases = _extract_phrases(intent.instruction)
+        keywords = _extract_keywords(intent.match_phrase)
+        phrases = _extract_phrases(intent.match_phrase)
         candidates: list[ResolvedTarget] = []
         signal_rows: list[tuple[str, float, float, float]] = []
 

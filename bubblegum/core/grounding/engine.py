@@ -152,9 +152,22 @@ class GroundingEngine:
                 self._check_ambiguity(tier_candidates, intent)
                 return best, all_traces
 
-        # All tiers exhausted
+        # All tiers exhausted.
+        # A perfect deterministic match (exact role + name + uniqueness) tops out
+        # in the review band [review_threshold, accept_threshold) because
+        # visibility/proximity/memory signals are legitimately unknown on a first
+        # run. Per the documented semantics (review_threshold = "proceed with
+        # warning"), return the best review-band candidate instead of failing —
+        # this is what lets plain-English steps resolve without a manual selector.
         if all_candidates:
             best = self.ranker.best(all_candidates)
+            if best.confidence >= self.review_threshold:
+                logger.debug(
+                    "Resolved '%s' from review-band fallback — confidence %.2f",
+                    intent.instruction, best.confidence,
+                )
+                self._check_ambiguity(all_candidates, intent)
+                return best, all_traces
             raise LowConfidenceError(
                 step=intent.instruction,
                 candidates=all_candidates,

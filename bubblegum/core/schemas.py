@@ -57,8 +57,20 @@ class StepIntent(BaseModel):
     channel:      str                       # "web" | "mobile"
     platform:     str = "web"              # "web" | "android" | "ios"
     action_type:  str                       # "click" | "type" | "select" | "scroll" | "tap" | ...
+    target_phrase: str | None = None        # decomposed element description, e.g. "Username"
+    input_value:  str | None = None          # decomposed value to type/select, e.g. "tomsmith"
     context:      dict[str, Any] = Field(default_factory=dict)
     options:      ExecutionOptions = Field(default_factory=ExecutionOptions)
+
+    @property
+    def match_phrase(self) -> str:
+        """Text resolvers should match an element against.
+
+        Prefers the decomposed target_phrase ("Username") so the value being
+        typed ("tomsmith") is never mistaken for the element label. Falls back
+        to the full instruction when no decomposition is available.
+        """
+        return self.target_phrase or self.instruction
 
 
 # ---------------------------------------------------------------------------

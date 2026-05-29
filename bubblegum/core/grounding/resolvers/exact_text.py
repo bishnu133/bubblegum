@@ -58,7 +58,7 @@ class ExactTextResolver(Resolver):
 
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         snapshot: str = intent.context["a11y_snapshot"]
-        targets   = _extract_targets(intent.instruction)
+        targets   = _extract_targets(intent.match_phrase)
         candidates: list[ResolvedTarget] = []
         seen: set[str] = set()
         raw_matches: list[tuple[str, float]] = []
