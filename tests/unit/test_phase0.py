@@ -620,13 +620,15 @@ class TestGroundingEngineSkeleton:
         # The test confirms engine runs without crashing — traces are internal
 
     @pytest.mark.asyncio
-    async def test_ground_tier1_review_range_raises_low_confidence(self):
+    async def test_ground_tier1_review_range_returns_via_fallback(self):
         """
-        Current semantics: Tier 1 candidates in [review, accept) do not auto-return.
-        If no later tier returns, engine raises LowConfidenceError.
+        Semantics: a Tier 1 candidate in [review, accept) does not auto-return
+        within Tier 1 (lower tiers may still improve on it). But once all tiers
+        are exhausted with nothing better, the engine returns the best
+        review-band candidate (proceed-with-warning) rather than failing. This
+        is what lets plain-English steps resolve without a manual selector.
         """
         from bubblegum.core.grounding.engine import GroundingEngine
-        from bubblegum.core.grounding.errors import LowConfidenceError
         from bubblegum.core.grounding.registry import ResolverRegistry
         from bubblegum.core.grounding.resolver import Resolver
         from bubblegum.core.schemas import ExecutionOptions, ResolvedTarget, StepIntent
@@ -650,13 +652,10 @@ class TestGroundingEngineSkeleton:
             action_type="click",
             options=ExecutionOptions(max_cost_level="high"),
         )
-        with pytest.raises(LowConfidenceError) as exc_info:
-            await engine.ground(intent)
+        target, traces = await engine.ground(intent)
 
-        err = exc_info.value
-        assert err.best_confidence == 0.72
-        assert len(err.candidates) >= 1
-        assert "0.72" in err.message
+        assert target.ref == "btn"
+        assert target.confidence == 0.72
 
     @pytest.mark.asyncio
     async def test_ground_tier2_review_range_returns_successfully(self):
