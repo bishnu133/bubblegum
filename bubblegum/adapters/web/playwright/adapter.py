@@ -333,7 +333,7 @@ class PlaywrightAdapter(BaseAdapter):
             role = _NAME_RE.sub("", role_part).strip()
             if name_match:
                 name = name_match.group(1)
-                return self._page.get_by_role(role, name=name, exact=True)
+                return self._page.get_by_role(role, name=name)
             return self._page.get_by_role(role)
 
         # Exact text locator: text="Login"
