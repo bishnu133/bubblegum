@@ -30,7 +30,7 @@ import logging
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
-from bubblegum.core.grounding.signals import make_signals, role_fit_score
+from bubblegum.core.grounding.signals import make_signals, role_fit_score, strip_icon_chars
 from bubblegum.core.elements.graph import ElementGraph
 from bubblegum.core.elements.query import build_graph_query_diagnostics
 from bubblegum.core.elements.graph_signals import GraphSignalInput, compute_graph_signals
@@ -144,7 +144,7 @@ class AccessibilityTreeResolver(Resolver):
                 continue
 
             raw_role = m.group("role").lower()
-            elname   = (m.group("elname") or "").strip()
+            elname   = strip_icon_chars((m.group("elname") or "").strip())
             role     = _ROLE_ALIASES.get(raw_role)
 
             if not role:

@@ -31,7 +31,7 @@ from typing import NamedTuple
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
-from bubblegum.core.grounding.signals import make_signals, role_fit_score
+from bubblegum.core.grounding.signals import make_signals, role_fit_score, strip_icon_chars
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ class FuzzyTextResolver(Resolver):
                 continue
 
             raw_role = m.group("role").lower()
-            elname   = (m.group("elname") or "").strip()
+            elname   = strip_icon_chars((m.group("elname") or "").strip())
 
             if not elname:
                 continue  # fuzzy matching requires an accessible name

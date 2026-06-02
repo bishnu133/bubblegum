@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import unicodedata
+
 SIGNAL_TEXT_MATCH = "text_match"
 SIGNAL_ROLE_MATCH = "role_match"
 SIGNAL_VISIBILITY = "visibility"
@@ -7,6 +9,17 @@ SIGNAL_UNIQUENESS = "uniqueness"
 SIGNAL_PROXIMITY = "proximity"
 SIGNAL_MEMORY = "memory"
 SIGNAL_MEMORY_HISTORY = "memory_history"
+
+
+def strip_icon_chars(text: str) -> str:
+    """Strip Unicode Private Use Area characters (e.g. FontAwesome icon glyphs).
+
+    Icon fonts like FontAwesome render glyphs via PUA codepoints (U+E000–U+F8FF).
+    These appear in Playwright's aria_snapshot output but are NOT part of the
+    element's ARIA accessible name (the <i> element is aria-hidden). Including
+    them in a get_by_role(name=) locator prevents the element from being found.
+    """
+    return "".join(c for c in text if unicodedata.category(c) != "Co").strip()
 
 
 def clamp_signal(value: float) -> float:
