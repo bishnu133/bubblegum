@@ -107,13 +107,25 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
 
 
 def extract_expected(instruction: str) -> str:
-    """Pull key noun phrase from a verify instruction."""
-    return re.sub(
+    """Pull the expected text or state from a verify instruction.
+
+    Strips leading verify verbs and trailing state phrases so that
+    'Verify Hello World is visible' → 'Hello World'.
+    """
+    text = re.sub(
         r"^(verify|check|assert|confirm|ensure|see|that)\s+",
         "",
         instruction,
         flags=re.IGNORECASE,
     ).strip()
+    # Strip common trailing state words that describe the assertion, not the content.
+    text = re.sub(
+        r"\s+(is\s+)?(visible|present|shown|displayed|enabled|checked|selected|active)\s*$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+    return text
 
 
 def _base_relational_payload() -> dict[str, Any]:

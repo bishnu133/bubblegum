@@ -138,7 +138,13 @@ class FuzzyTextResolver(Resolver):
 
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         snapshot: str = intent.context["a11y_snapshot"]
-        targets = _extract_targets(intent.instruction)
+        # Use match_phrase so typed values are never confused for the target.
+        targets = _extract_targets(intent.match_phrase)
+        # Prepend the full phrase when multi-word so synonym expansion works on
+        # the complete phrase ("Sign in" → synonym "login") not just tokens
+        # ("Sign" alone has no synonym and misses the match entirely).
+        if intent.target_phrase and len(intent.target_phrase.split()) > 1:
+            targets = [intent.target_phrase] + targets
 
         candidates: list[ResolvedTarget] = []
         seen: set[str] = set()

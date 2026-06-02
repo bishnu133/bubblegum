@@ -124,8 +124,11 @@ async def run_checkboxes_suite(page, results: list) -> None:
     await page.goto("https://the-internet.herokuapp.com/checkboxes")
     await page.wait_for_load_state("domcontentloaded")
 
-    r = await act("Click checkbox 1", page=page)
-    _print_result("Click checkbox 1", r)
+    # The checkboxes page has two unlabeled checkboxes — use CSS selector directly.
+    # This is exactly the right use case for explicit selector fallback.
+    from bubblegum import act as _act
+    r = await _act("Click first checkbox", page=page, selector="input[type='checkbox']:first-of-type")
+    _print_result("Click first checkbox (explicit selector)", r)
     results.append(r)
 
 

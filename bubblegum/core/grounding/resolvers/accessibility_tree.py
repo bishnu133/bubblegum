@@ -156,7 +156,7 @@ class AccessibilityTreeResolver(Resolver):
 
             ref = _build_ref(role, elname)
             ref_rows.append((ref, role, elname))
-            signal_rows.append((ref, confidence, 1.0 if _role_fits_action(role, intent.action_type) else 0.0, 0.5))
+            signal_rows.append((ref, confidence, _role_fits_action(role, intent.action_type), 0.5))
             candidates.append(
                 ResolvedTarget(
                     ref=ref,
@@ -399,20 +399,30 @@ def _score(
     return (0.0, "")
 
 
-def _role_fits_action(role: str, action_type: str) -> bool:
-    click_roles  = {"button", "link", "tab", "menuitem", "checkbox", "radio", "switch"}
-    type_roles   = {"textbox", "searchbox", "combobox", "spinbutton"}
-    select_roles = {"combobox", "listbox", "option"}
-    mapping: dict[str, set[str] | None] = {
-        "click":   click_roles,
-        "tap":     click_roles,
-        "type":    type_roles,
-        "select":  select_roles,
-        "verify":  None,
-        "extract": None,
-    }
-    allowed = mapping.get(action_type)
-    return allowed is None or role in allowed
+def _role_fits_action(role: str, action_type: str) -> float:
+    """Return a role-match score in [0, 1] reflecting how well the element
+    role fits the requested action. Returning a float (not bool) lets the
+    ranker resolve ties: e.g. button beats link for click actions."""
+    if action_type in ("click", "tap"):
+        if role in {"button", "switch"}:
+            return 1.0   # primary submit/action elements
+        if role in {"tab", "menuitem", "checkbox", "radio"}:
+            return 0.8   # interactive but not submission-first
+        if role == "link":
+            return 0.7   # links are clickable but buttons win for click intent
+        return 0.0
+    if action_type == "type":
+        if role in {"textbox", "searchbox", "spinbutton"}:
+            return 1.0
+        if role == "combobox":
+            return 0.7
+        return 0.0
+    if action_type == "select":
+        if role in {"combobox", "listbox", "option"}:
+            return 1.0
+        return 0.0
+    # verify / extract — any visible element is valid; role doesn't restrict
+    return 0.5
 
 
 def _build_ref(role: str, elname: str) -> str:

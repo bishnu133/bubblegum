@@ -345,8 +345,14 @@ class PlaywrightAdapter(BaseAdapter):
                 await locator.wait_for(state="visible", timeout=timeout)
                 return (True, expected)
             except Exception:
-                content = await self._page.content()
-                return (expected.lower() in content.lower(), content[:200])
+                # Check raw page text (not HTML) so the caller gets a useful message.
+                try:
+                    page_text = await self._page.inner_text("body")
+                except Exception:
+                    page_text = ""
+                found = expected.lower() in page_text.lower()
+                actual = expected if found else f"text not found on page (url={self._page.url})"
+                return (found, actual)
 
         elif plan.assertion_type == "element_state":
             locator = self._page.locator(expected)
