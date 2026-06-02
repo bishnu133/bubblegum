@@ -253,9 +253,10 @@ class TestOpenAIProvider:
 
 class TestStubProviders:
     @pytest.mark.asyncio
-    async def test_anthropic_stub_raises(self):
+    async def test_anthropic_raises_without_api_key(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         p = AnthropicProvider(model="claude-sonnet-latest")
-        with pytest.raises(NotImplementedError, match="Phase 2 stub"):
+        with pytest.raises(Exception, match="ANTHROPIC_API_KEY"):
             await p.complete("hello")
 
     @pytest.mark.asyncio

@@ -108,7 +108,7 @@ class AppiumHierarchyResolver(Resolver):
             logger.debug("AppiumHierarchyResolver: no hierarchy_xml in context")
             return []
 
-        instruction_lower = intent.instruction.lower().strip()
+        instruction_lower = intent.match_phrase.lower().strip()
 
         try:
             root = ET.fromstring(hierarchy_xml)

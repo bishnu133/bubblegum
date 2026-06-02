@@ -38,7 +38,7 @@ from pathlib import Path
 _HERE = Path(__file__).parent.parent  # repo root
 sys.path.insert(0, str(_HERE))
 
-from bubblegum import act, extract, verify
+from bubblegum import act, extract, verify, BubblegumSession
 from bubblegum.core.config import BubblegumConfig
 from bubblegum.core import sdk
 from bubblegum.reporting.html_report import write_html_report
@@ -129,6 +129,44 @@ async def run_checkboxes_suite(page, results: list) -> None:
     results.append(r)
 
 
+async def run_session_demo(page) -> list:
+    """Same login flow using BubblegumSession — no page= on every call."""
+    print("── Session API Demo ─────────────────────────────────────────────")
+    await page.goto("https://the-internet.herokuapp.com/login")
+    await page.wait_for_load_state("domcontentloaded")
+
+    results = []
+    async with BubblegumSession.web(page) as s:
+        await s.act('Enter "tomsmith" into Username')
+        await s.act('Enter "SuperSecretPassword!" into Password')
+        await s.act("Click Login")
+        await s.verify("You logged into a secure area")
+        await s.extract("Get flash message")
+        await s.act("Click Logout")
+
+        for r in s.results():
+            _print_result(r.action, r)
+            results.append(r)
+
+        summ = s.summary()
+        print(f"  Session summary: {summ}\n")
+
+    return results
+
+
+async def run_dry_run_demo(page) -> None:
+    """Show dry_run=True — resolves elements without clicking anything."""
+    print("── Dry-Run Demo (resolve only, no execution) ───────────────────")
+    await page.goto("https://the-internet.herokuapp.com/login")
+    await page.wait_for_load_state("domcontentloaded")
+
+    async with BubblegumSession.web(page, dry_run=True) as s:
+        await s.act('Enter "tomsmith" into Username')
+        await s.act('Enter "SuperSecretPassword!" into Password')
+        await s.act("Click Login")
+        s.print_plan()   # shows what would be clicked — no browser changes
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -161,6 +199,9 @@ async def main(headed: bool, enable_llm: bool) -> int:
             await run_secure_page_suite(page, results)
             await run_fuzzy_match_suite(page, results)
             await run_checkboxes_suite(page, results)
+            session_results = await run_session_demo(page)
+            results.extend(session_results)
+            await run_dry_run_demo(page)   # dry_run results not counted in pass/fail
         finally:
             await browser.close()
 

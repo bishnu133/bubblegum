@@ -207,7 +207,19 @@ async def act(
             error=hydration_error,
         )
 
-    # 4. Build ActionPlan and execute
+    # 4. Dry-run short-circuit — resolve only, do not execute
+    if options.dry_run:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            status="dry_run",
+            action=instruction,
+            target=target,
+            confidence=target.confidence,
+            duration_ms=duration_ms,
+            traces=traces,
+        )
+
+    # 5. Build ActionPlan and execute
     plan = ActionPlan(
         action_type=intent.action_type,
         target_hint=intent.target_phrase or instruction,

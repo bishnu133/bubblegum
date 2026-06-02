@@ -245,6 +245,171 @@ class MemoryLayer:
         )
 
     # ------------------------------------------------------------------
+    # CI cache export / import
+    # ------------------------------------------------------------------
+
+    def export(self, path: Path | str) -> int:
+        """Export all cache entries to a portable JSON file.
+
+        Returns the number of entries exported.
+        The JSON file is human-readable, diffable, and safe to commit as a
+        CI artifact or store in an S3/GCS bucket between runs.
+
+        Format:
+            {
+              "version": 1,
+              "exported_at": "<ISO-8601>",
+              "entries": [...]
+            }
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT screen_sig, step_hash, ref, confidence, resolver_name,
+                   metadata_json, last_success, success_count, failure_count
+            FROM bubblegum_memory
+            ORDER BY last_success DESC
+            """
+        )
+        rows = cursor.fetchall()
+
+        entries = []
+        for row in rows:
+            (screen_sig, step_hash, ref, confidence, resolver_name,
+             metadata_json, last_success, success_count, failure_count) = row
+            try:
+                metadata = json.loads(metadata_json)
+            except Exception:
+                metadata = {}
+            entries.append({
+                "screen_signature": screen_sig,
+                "step_hash": step_hash,
+                "ref": ref,
+                "confidence": confidence,
+                "resolver_name": resolver_name,
+                "metadata": metadata,
+                "last_success": last_success,
+                "success_count": success_count,
+                "failure_count": failure_count,
+            })
+
+        payload = {
+            "version": 1,
+            "exported_at": datetime.now(tz=timezone.utc).isoformat(),
+            "entries": entries,
+        }
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        logger.info("MemoryLayer: exported %d entries to %s", len(entries), path)
+        return len(entries)
+
+    def import_from(self, path: Path | str, *, merge: bool = True) -> int:
+        """Import cache entries from a JSON file previously produced by export().
+
+        Args:
+            path:  Path to the JSON cache file.
+            merge: When True (default), existing entries are kept if they have
+                   a higher success_count than the incoming entry. When False,
+                   incoming entries always overwrite existing ones.
+
+        Returns:
+            Number of entries imported (new or updated).
+        """
+        path = Path(path)
+        if not path.exists():
+            logger.warning("MemoryLayer.import_from: file not found: %s", path)
+            return 0
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.error("MemoryLayer.import_from: failed to parse %s: %s", path, exc)
+            return 0
+
+        if payload.get("version") != 1:
+            logger.warning(
+                "MemoryLayer.import_from: unknown version %r in %s", payload.get("version"), path
+            )
+            return 0
+
+        entries = payload.get("entries", [])
+        conn = self._get_conn()
+        imported = 0
+
+        for entry in entries:
+            try:
+                screen_sig    = entry["screen_signature"]
+                step_hash     = entry["step_hash"]
+                ref           = entry["ref"]
+                confidence    = float(entry["confidence"])
+                resolver_name = entry["resolver_name"]
+                metadata_json = json.dumps(entry.get("metadata") or {})
+                last_success  = entry.get("last_success", datetime.now(tz=timezone.utc).isoformat())
+                success_count = int(entry.get("success_count", 1))
+                failure_count = int(entry.get("failure_count", 0))
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning("MemoryLayer.import_from: skipping malformed entry: %s", exc)
+                continue
+
+            if merge:
+                # Keep existing entry if it has a higher success_count.
+                conn.execute(
+                    """
+                    INSERT INTO bubblegum_memory
+                        (screen_sig, step_hash, ref, confidence, resolver_name,
+                         metadata_json, last_success, success_count, failure_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(screen_sig, step_hash) DO UPDATE SET
+                        ref           = CASE WHEN excluded.success_count > bubblegum_memory.success_count
+                                             THEN excluded.ref           ELSE bubblegum_memory.ref END,
+                        confidence    = CASE WHEN excluded.success_count > bubblegum_memory.success_count
+                                             THEN excluded.confidence    ELSE bubblegum_memory.confidence END,
+                        resolver_name = CASE WHEN excluded.success_count > bubblegum_memory.success_count
+                                             THEN excluded.resolver_name ELSE bubblegum_memory.resolver_name END,
+                        metadata_json = CASE WHEN excluded.success_count > bubblegum_memory.success_count
+                                             THEN excluded.metadata_json ELSE bubblegum_memory.metadata_json END,
+                        last_success  = CASE WHEN excluded.success_count > bubblegum_memory.success_count
+                                             THEN excluded.last_success  ELSE bubblegum_memory.last_success END,
+                        success_count = MAX(excluded.success_count, bubblegum_memory.success_count),
+                        failure_count = MIN(excluded.failure_count, bubblegum_memory.failure_count)
+                    """,
+                    (screen_sig, step_hash, ref, confidence, resolver_name,
+                     metadata_json, last_success, success_count, failure_count),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO bubblegum_memory
+                        (screen_sig, step_hash, ref, confidence, resolver_name,
+                         metadata_json, last_success, success_count, failure_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (screen_sig, step_hash, ref, confidence, resolver_name,
+                     metadata_json, last_success, success_count, failure_count),
+                )
+            imported += 1
+
+        conn.commit()
+        logger.info("MemoryLayer: imported %d entries from %s", imported, path)
+        return imported
+
+    def stats(self) -> dict:
+        """Return summary statistics about the current cache contents."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*), SUM(success_count), SUM(failure_count) FROM bubblegum_memory"
+        ).fetchone()
+        total, successes, failures = row if row else (0, 0, 0)
+        return {
+            "total_entries": total or 0,
+            "total_successes": successes or 0,
+            "total_failures": failures or 0,
+            "db_path": str(self._db_path),
+        }
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 

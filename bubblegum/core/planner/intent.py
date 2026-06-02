@@ -15,6 +15,7 @@ def build_options(kwargs: dict, *, ai_enabled: bool, max_cost_level: str, memory
         "max_cost_level",
         "memory_ttl_days",
         "memory_max_failures",
+        "dry_run",
     }
     opts = {k: v for k, v in kwargs.items() if k in known}
     opts.setdefault("use_ai", ai_enabled)
