@@ -238,21 +238,21 @@ class PlaywrightAdapter(BaseAdapter):
 
     async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:
         if plan.action_type in ("click", "tap"):
-            # Use expect_navigation to catch any navigation triggered by the click
-            # (e.g. form submit). The context manager must be entered BEFORE the
-            # click so the response event is not missed. If no navigation happens
-            # within 5 s (SPA click, checkbox, etc.) the timeout is swallowed.
-            _click_done = False
+            # Record URL before click so we can detect navigation afterwards.
+            url_before = self._page.url
+            await locator.click(timeout=timeout)
+            # If the click triggered a page navigation (form submit, link, etc.)
+            # wait_for_url detects the URL change reliably for both same-origin and
+            # cross-origin navigations. If no URL change happens within 5 s
+            # (SPA button, checkbox, modal toggle) the timeout is swallowed.
             try:
-                async with self._page.expect_navigation(
-                    wait_until="domcontentloaded", timeout=5000
-                ):
-                    await locator.click(timeout=timeout)
-                    _click_done = True
-            except Exception as _nav_exc:
-                if not _click_done:
-                    raise  # click itself failed — propagate
-                # Navigation timeout / no navigation — fine for in-page actions
+                await self._page.wait_for_url(
+                    lambda url: url != url_before,
+                    wait_until="domcontentloaded",
+                    timeout=5000,
+                )
+            except Exception:
+                pass  # No navigation — in-page click, nothing to wait for
 
         elif plan.action_type == "type":
             value = plan.input_value or ""
