@@ -31,7 +31,7 @@ from typing import NamedTuple
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
-from bubblegum.core.grounding.signals import make_signals
+from bubblegum.core.grounding.signals import make_signals, role_fit_score
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ class FuzzyTextResolver(Resolver):
                 continue
             seen.add(ref)
 
-            role_match = 1.0 if role else 0.0
+            role_match = role_fit_score(role or "", intent.action_type) if role else 0.0
             rows.append((ref, ratio, role_match))
             candidates.append(
                 ResolvedTarget(
@@ -204,7 +204,7 @@ class FuzzyTextResolver(Resolver):
                 enriched.append(t); continue
             _, ratio, rmatch = row
             uniq = 1.0 if counts.get(t.ref,0)==1 else 0.6
-            meta=dict(t.metadata); meta["signals"] = make_signals(text_match=ratio, role_match=rmatch, visibility=0.5, uniqueness=uniq, memory=0.0)
+            meta=dict(t.metadata); meta["signals"] = make_signals(text_match=ratio, role_match=rmatch, visibility=0.8, uniqueness=uniq, memory=0.0)
             enriched.append(t.model_copy(update={"metadata": meta}))
         return enriched
 

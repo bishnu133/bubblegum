@@ -30,7 +30,7 @@ import logging
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
-from bubblegum.core.grounding.signals import make_signals
+from bubblegum.core.grounding.signals import make_signals, role_fit_score
 from bubblegum.core.elements.graph import ElementGraph
 from bubblegum.core.elements.query import build_graph_query_diagnostics
 from bubblegum.core.elements.graph_signals import GraphSignalInput, compute_graph_signals
@@ -156,7 +156,7 @@ class AccessibilityTreeResolver(Resolver):
 
             ref = _build_ref(role, elname)
             ref_rows.append((ref, role, elname))
-            signal_rows.append((ref, confidence, _role_fits_action(role, intent.action_type), 0.5))
+            signal_rows.append((ref, confidence, role_fit_score(role, intent.action_type), 0.8))
             candidates.append(
                 ResolvedTarget(
                     ref=ref,
@@ -218,19 +218,8 @@ class AccessibilityTreeResolver(Resolver):
                 elname=str(target.metadata.get("name", "")),
                 boosted_tmatch=boosted_tmatch,
             )
-            strong_click_match = (
-                intent.action_type in {"click", "tap"}
-                and boosted_tmatch >= 1.0
-                and str(target.metadata.get("role", "")) == "link"
-                and _role_fits_action(str(target.metadata.get("role", "")), intent.action_type)
-            )
-            strong_match = strong_verify_extract or strong_click_match
-            boosted_vis = 1.0 if strong_match else vis
-            boosted_prox = (
-                1.0
-                if strong_match
-                else 0.0
-            )
+            boosted_vis = 1.0 if strong_verify_extract else vis
+            boosted_prox = 1.0 if strong_verify_extract else 0.0
             meta = dict(target.metadata)
             meta["graph_signals"] = compute_graph_signals(
                 GraphSignalInput(
@@ -382,7 +371,7 @@ def _score(
       0.60 -- role fits action but element has no accessible name
     """
     name_lower = elname.lower()
-    role_ok = _role_fits_action(role, action_type)
+    role_ok = role_fit_score(role, action_type)
 
     if name_lower and any(phrase == name_lower for phrase in phrases):
         return (0.96, elname)
@@ -398,31 +387,6 @@ def _score(
 
     return (0.0, "")
 
-
-def _role_fits_action(role: str, action_type: str) -> float:
-    """Return a role-match score in [0, 1] reflecting how well the element
-    role fits the requested action. Returning a float (not bool) lets the
-    ranker resolve ties: e.g. button beats link for click actions."""
-    if action_type in ("click", "tap"):
-        if role in {"button", "switch"}:
-            return 1.0   # primary submit/action elements
-        if role in {"tab", "menuitem", "checkbox", "radio"}:
-            return 0.8   # interactive but not submission-first
-        if role == "link":
-            return 0.7   # links are clickable but buttons win for click intent
-        return 0.0
-    if action_type == "type":
-        if role in {"textbox", "searchbox", "spinbutton"}:
-            return 1.0
-        if role == "combobox":
-            return 0.7
-        return 0.0
-    if action_type == "select":
-        if role in {"combobox", "listbox", "option"}:
-            return 1.0
-        return 0.0
-    # verify / extract — any visible element is valid; role doesn't restrict
-    return 0.5
 
 
 def _build_ref(role: str, elname: str) -> str:

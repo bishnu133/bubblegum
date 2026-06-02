@@ -14,6 +14,37 @@ def clamp_signal(value: float) -> float:
     return min(max(float(value), 0.0), 1.0)
 
 
+def role_fit_score(role: str, action_type: str) -> float:
+    """Return a [0,1] role-fit score for (role, action_type).
+
+    Differentiates element types that are all valid targets for an action so
+    the ranker can pick the most intent-appropriate one (e.g. button > link
+    for click, textbox > link for type).
+    """
+    if action_type in ("click", "tap"):
+        if role in {"button", "switch"}:
+            return 1.0
+        if role in {"tab", "menuitem", "checkbox", "radio"}:
+            return 0.8
+        if role == "link":
+            return 0.7
+        if role:
+            return 0.5
+        return 0.0
+    if action_type == "type":
+        if role in {"textbox", "searchbox", "spinbutton"}:
+            return 1.0
+        if role == "combobox":
+            return 0.7
+        return 0.0
+    if action_type == "select":
+        if role in {"combobox", "listbox", "option"}:
+            return 1.0
+        return 0.0
+    # verify / extract / scroll — any element can be read; role is not a filter
+    return 1.0 if role else 0.0
+
+
 def make_signals(
     text_match: float = 0.0,
     role_match: float = 0.0,

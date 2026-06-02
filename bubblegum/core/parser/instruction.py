@@ -97,7 +97,7 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
         return "select"
     if any(w in lowered for w in ("scroll",)):
         return "scroll"
-    if any(w in lowered for w in ("verify", "check", "assert", "visible", "present")):
+    if any(w in lowered for w in ("verify", "assert", "visible", "present")) or re.search(r'\bcheck\b', lowered):
         return "verify"
     if any(w in lowered for w in ("extract", "get", "read", "fetch")):
         return "extract"

@@ -160,13 +160,22 @@ class GroundingEngine:
         # warning"), return the best review-band candidate instead of failing —
         # this is what lets plain-English steps resolve without a manual selector.
         if all_candidates:
-            best = self.ranker.best(all_candidates)
+            # Deduplicate by ref — keep highest-confidence entry per ref so that
+            # the same element found by multiple resolvers is not treated as
+            # two distinct ambiguous candidates.
+            deduped: dict[str, ResolvedTarget] = {}
+            for c in all_candidates:
+                if c.ref not in deduped or c.confidence > deduped[c.ref].confidence:
+                    deduped[c.ref] = c
+            unique_candidates = list(deduped.values())
+
+            best = self.ranker.best(unique_candidates)
             if best.confidence >= self.review_threshold:
                 logger.debug(
                     "Resolved '%s' from review-band fallback — confidence %.2f",
                     intent.instruction, best.confidence,
                 )
-                self._check_ambiguity(all_candidates, intent)
+                self._check_ambiguity(unique_candidates, intent)
                 return best, all_traces
             raise LowConfidenceError(
                 step=intent.instruction,
