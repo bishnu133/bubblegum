@@ -239,6 +239,14 @@ class PlaywrightAdapter(BaseAdapter):
     async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:
         if plan.action_type in ("click", "tap"):
             await locator.click(timeout=timeout)
+            # If the click triggered a navigation (e.g. form submit), wait for the
+            # new page to reach DOMContentLoaded before returning.
+            # wait_for_load_state returns immediately when already loaded, so this
+            # adds no overhead for in-page clicks (SPA buttons, checkboxes, etc.).
+            try:
+                await self._page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
 
         elif plan.action_type == "type":
             value = plan.input_value or ""
