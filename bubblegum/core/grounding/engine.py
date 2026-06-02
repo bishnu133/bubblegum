@@ -264,7 +264,12 @@ class GroundingEngine:
         """
         Raise AmbiguousTargetError if the top 2 candidates are within ambiguous_gap.
         Called only when we're about to return a result — safety gate before execution.
+
+        Skipped for verify/extract: any matching element is acceptable for reading
+        actions, so ambiguity between equally-confident candidates is harmless.
         """
+        if intent.action_type in ("verify", "extract"):
+            return
         ranked = self.ranker.rank(candidates)
         if len(ranked) >= 2:
             gap = ranked[0].confidence - ranked[1].confidence

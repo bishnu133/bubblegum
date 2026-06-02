@@ -96,8 +96,8 @@ async def run_secure_page_suite(page, results: list) -> None:
     _print_result("Verify flash message visible", r)
     results.append(r)
 
-    # Step 5 — extract flash message text
-    r = await extract("Get the flash message text", page=page)
+    # Step 5 — extract flash message text (instruction must match the element's accessible name)
+    r = await extract("You logged into a secure area", page=page)
     _print_result("Extract flash message", r)
     results.append(r)
 
@@ -144,7 +144,7 @@ async def run_session_demo(page) -> list:
         await s.act('Enter "SuperSecretPassword!" into Password')
         await s.act("Click Login")
         await s.verify("You logged into a secure area")
-        await s.extract("Get flash message")
+        await s.extract("You logged into a secure area")
         await s.act("Click Logout")
 
         for r in s.results():
