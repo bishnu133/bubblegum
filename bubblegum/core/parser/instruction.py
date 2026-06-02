@@ -48,7 +48,7 @@ _LEADING_VERB_RE = re.compile(
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
-    out = value.strip(" .,:;!?\t\n\r\"'")
+    out = value.strip(" .,:;\t\n\r\"'")
     out = re.sub(r"\s+", " ", out).strip()
     return out or None
 
