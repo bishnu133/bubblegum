@@ -27,7 +27,7 @@ class ParsedIntent:
 _LEADING_VERBS = (
     "click", "tap", "press", "select", "choose", "pick", "type", "enter",
     "fill", "input", "verify", "check", "uncheck", "tick", "untick", "toggle",
-    "upload", "attach", "assert", "confirm", "ensure", "see",
+    "upload", "attach", "open", "follow", "assert", "confirm", "ensure", "see",
     "extract", "get", "read", "fetch", "scroll", "to", "on", "the",
 )
 
@@ -45,6 +45,17 @@ _LEADING_VERB_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Trailing widget-kind words to strip from a target phrase so that
+# "Click the Sign in link" yields target="Sign in" (not "Sign in link")
+# and "Choose Blue radio button" yields target="Blue". Matches one suffix
+# at the end of the phrase; the control_kind_hint already carries the
+# widget identity separately on the relational intent.
+_TRAILING_WIDGET_SUFFIX_RE = re.compile(
+    r"\s+(?:link|button|checkbox|radio(?:\s+button)?|switch|toggle|dropdown|tab)"
+    r"\s*[\.!?]?\s*$",
+    re.IGNORECASE,
+)
+
 
 def _clean(value: str | None) -> str | None:
     if value is None:
@@ -52,6 +63,14 @@ def _clean(value: str | None) -> str | None:
     out = value.strip(" .,:;\t\n\r\"'")
     out = re.sub(r"\s+", " ", out).strip()
     return out or None
+
+
+def _strip_widget_suffix(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = _TRAILING_WIDGET_SUFFIX_RE.sub("", value)
+    cleaned = _clean(stripped)
+    return cleaned if cleaned else _clean(value)
 
 
 def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
@@ -71,19 +90,27 @@ def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
         if m:
             value = m.group(1) or m.group(2) or m.group(3)
             target = m.group(4)
-            return ParsedIntent(action, _clean(target), _clean(value), confident=True)
+            return ParsedIntent(action, _strip_widget_suffix(target), _clean(value), confident=True)
 
         # "Type tomsmith" with the target supplied separately, or value via kwargs.
         stripped = _LEADING_VERB_RE.sub("", text, count=1)
         if explicit_value is not None:
             # Caller supplied the value; remaining text is the target.
-            return ParsedIntent(action, _clean(stripped) or _clean(text), explicit_value, confident=bool(_clean(stripped)))
+            target = _strip_widget_suffix(stripped) or _strip_widget_suffix(text)
+            return ParsedIntent(action, target, explicit_value, confident=bool(_clean(stripped)))
+        # Widget-suffix fallback for "Choose Blue radio button" style: the
+        # only target-identifying signal is the trailing widget word, so use
+        # it to confidently isolate the label.
+        if action == "select" and _TRAILING_WIDGET_SUFFIX_RE.search(stripped):
+            target = _strip_widget_suffix(stripped)
+            if target:
+                return ParsedIntent(action, target, None, confident=True)
         # No target separator and no explicit value — ambiguous; let the LLM decide.
         return ParsedIntent(action, None, None, confident=False)
 
     # click / tap / verify / extract / scroll: target is the text after the verb.
     target = _LEADING_VERB_RE.sub("", text, count=1)
-    target = _clean(target)
+    target = _strip_widget_suffix(target)
     return ParsedIntent(action, target, explicit_value, confident=bool(target))
 
 

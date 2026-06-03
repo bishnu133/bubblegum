@@ -41,6 +41,7 @@
       "instruction": "Click the Sign in link",
       "expected": {
         "action_type": "click",
+        "target_phrase": "Sign in",
         "control_kind_hint": "link",
         "primary_target_text": "Sign in",
         "relation_type": "label_for"
@@ -51,6 +52,7 @@
       "instruction": "Open the Forgot password link",
       "expected": {
         "action_type": "click",
+        "target_phrase": "Forgot password",
         "control_kind_hint": "link",
         "primary_target_text": "Forgot password",
         "relation_type": "label_for"
@@ -61,6 +63,7 @@
       "instruction": "Click Red radio",
       "expected": {
         "action_type": "click",
+        "target_phrase": "Red",
         "control_kind_hint": "radio",
         "primary_target_text": "Red",
         "relation_type": "label_for"
@@ -71,6 +74,7 @@
       "instruction": "Choose Blue radio button",
       "expected": {
         "action_type": "select",
+        "target_phrase": "Blue",
         "control_kind_hint": "radio",
         "primary_target_text": "Blue",
         "relation_type": "label_for"
