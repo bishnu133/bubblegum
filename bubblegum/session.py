@@ -37,6 +37,7 @@ from typing import Any
 
 from bubblegum.core import sdk
 from bubblegum.core.schemas import StepResult
+from bubblegum.core.scope import ScopeStack, SessionScope, close_dialog_web
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class BubblegumSession:
         self._dry_run = dry_run
         self._defaults = defaults          # forwarded to every SDK call
         self._results: list[StepResult] = []
+        self._scope_stack = ScopeStack()
 
     # ------------------------------------------------------------------
     # Factory class methods
@@ -147,6 +149,55 @@ class BubblegumSession:
         self._results.append(result)
         self._log(intent, result)
         return result
+
+    # ------------------------------------------------------------------
+    # Scope (Phase 22D-6)
+    # ------------------------------------------------------------------
+
+    @property
+    def current_scope(self) -> SessionScope:
+        """The scope frame at the top of the stack (page by default)."""
+        return self._scope_stack.current()
+
+    def scope_snapshot(self) -> list[dict]:
+        """JSON-safe view of the scope stack for trace artifacts."""
+        return self._scope_stack.snapshot()
+
+    def push_scope(
+        self,
+        type: str,
+        *,
+        label: str | None = None,
+        root_locator=None,
+    ) -> SessionScope:
+        """Push a new scope frame. Use `close_dialog()` to pop a dialog scope."""
+        scope = SessionScope(
+            type=type,  # type: ignore[arg-type]
+            label=label,
+            root_locator=root_locator,
+            opened_by=len(self._results),
+        )
+        return self._scope_stack.push(scope)
+
+    def pop_scope(self) -> SessionScope | None:
+        """Pop the top scope frame. No-op when only the base page scope remains."""
+        return self._scope_stack.pop()
+
+    async def close_dialog(self) -> dict:
+        """Close the active dialog and pop its scope frame.
+
+        Web channel only in 22D-6. Resolution: click an internal close
+        affordance (button named close/cancel/dismiss/×/x), otherwise press
+        Escape as a fallback. Returns a small report describing how the
+        dialog was closed and the resulting scope state.
+        """
+        if self._channel != "web":
+            raise NotImplementedError(
+                "close_dialog is only implemented for the web channel in 22D-6"
+            )
+        report = await close_dialog_web(self._page, self._scope_stack)
+        logger.debug("close_dialog: %s", report)
+        return report
 
     # ------------------------------------------------------------------
     # Results & reporting
