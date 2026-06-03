@@ -23,6 +23,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from bubblegum.core.grounding.dom_helpers import find_open_dialog
+
 ScopeType = Literal["page", "dialog", "tab_panel", "iframe"]
 
 
@@ -76,14 +78,6 @@ class ScopeStack:
 # "×" that some component libraries render as the close icon.
 _CLOSE_BUTTON_RE = re.compile(r"^\s*(close|cancel|dismiss|×|x)\s*$", re.IGNORECASE)
 
-# Selectors used to locate an open dialog when the scope stack does not
-# already have one pinned. Ordered by specificity.
-_DIALOG_SELECTORS = (
-    "[role='dialog'][aria-modal='true']",
-    "[role='alertdialog']",
-    "[role='dialog']",
-)
-
 
 async def close_dialog_web(page: Any, stack: ScopeStack) -> dict[str, Any]:
     """Close the currently-open dialog on a Playwright page.
@@ -91,8 +85,8 @@ async def close_dialog_web(page: Any, stack: ScopeStack) -> dict[str, Any]:
     Resolution order:
       1. If the current scope is a dialog with a `root_locator`, use that
          as the dialog root.
-      2. Otherwise scan _DIALOG_SELECTORS on the page and take the first
-         that has any matches.
+      2. Otherwise call find_open_dialog(page) which scans a fixed set of
+         dialog-shaped selectors and returns the first match.
       3. If a dialog root is found, look for a button whose accessible
          name matches _CLOSE_BUTTON_RE inside it. If found, click it.
       4. If no close button is found (or no dialog at all), press Escape
@@ -107,12 +101,7 @@ async def close_dialog_web(page: Any, stack: ScopeStack) -> dict[str, Any]:
     detected_via: str | None = None
 
     if dialog_root is None:
-        for selector in _DIALOG_SELECTORS:
-            locator = page.locator(selector)
-            if await locator.count() > 0:
-                dialog_root = locator.first
-                detected_via = selector
-                break
+        dialog_root, detected_via = await find_open_dialog(page)
 
     closed_by = "escape"  # default fallback
     if dialog_root is not None:
