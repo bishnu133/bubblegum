@@ -26,15 +26,16 @@ class ParsedIntent:
 # Verbs we strip from the front of an instruction to isolate the target phrase.
 _LEADING_VERBS = (
     "click", "tap", "press", "select", "choose", "pick", "type", "enter",
-    "fill", "input", "verify", "check", "assert", "confirm", "ensure", "see",
+    "fill", "input", "verify", "check", "uncheck", "tick", "untick", "toggle",
+    "upload", "attach", "assert", "confirm", "ensure", "see",
     "extract", "get", "read", "fetch", "scroll", "to", "on", "the",
 )
 
-# "Enter <value> into <target>" grammar for type/select actions.
+# "Enter <value> into <target>" grammar for type/select/upload actions.
 _VALUE_INTO_TARGET_RE = re.compile(
-    r'^\s*(?:enter|type|fill|input|select|choose|pick|set)\s+'
+    r'^\s*(?:enter|type|fill|input|select|choose|pick|set|upload|attach)\s+'
     r'(?:"([^"]+)"|\'([^\']+)\'|(.+?))\s+'
-    r'(?:into|in|on|to|from|=)\s+(?:the\s+)?(.+?)\s*$',
+    r'(?:into|in|on|to|from|as|=)\s+(?:the\s+)?(.+?)\s*$',
     re.IGNORECASE,
 )
 
@@ -65,7 +66,7 @@ def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
 
     explicit_value = kwargs.get("input_value", kwargs.get("value"))
 
-    if action in {"type", "select"}:
+    if action in {"type", "select", "upload"}:
         m = _VALUE_INTO_TARGET_RE.match(text)
         if m:
             value = m.group(1) or m.group(2) or m.group(3)
@@ -91,14 +92,24 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
     if "action_type" in kwargs:
         return kwargs["action_type"]
     lowered = instruction.lower()
+    # Explicit verify cues come first so they shadow ambiguous overlap with
+    # "check" as a verb (e.g. "Check that login is visible" → verify).
+    if any(w in lowered for w in ("verify", "assert", "visible", "present", "displayed", "shown")):
+        return "verify"
+    if re.search(r'\bcheck\s+(?:that|if)\b', lowered):
+        return "verify"
+    if re.search(r'\b(upload|attach)\b', lowered):
+        return "upload"
+    if re.search(r'\b(uncheck|untick)\b', lowered):
+        return "uncheck"
+    if re.search(r'\b(tick|toggle)\b', lowered) or re.search(r'\bcheck\b', lowered):
+        return "check"
     if any(w in lowered for w in ("type", "enter", "fill", "input")):
         return "type"
     if any(w in lowered for w in ("select", "choose", "pick")):
         return "select"
-    if any(w in lowered for w in ("scroll",)):
+    if "scroll" in lowered:
         return "scroll"
-    if any(w in lowered for w in ("verify", "assert", "visible", "present")) or re.search(r'\bcheck\b', lowered):
-        return "verify"
     if any(w in lowered for w in ("extract", "get", "read", "fetch")):
         return "extract"
     if any(w in lowered for w in ("tap", "touch")):
@@ -199,9 +210,21 @@ def parse_relational_intent(instruction: str, action_type: str | None = None) ->
             payload["control_kind_hint"] = "dropdown"
             return payload
 
-    # 4) "check <label>" / "checkbox <label>" => label_for + checkbox
-    if action_type == "check" or lowered.startswith("check ") or lowered.startswith("checkbox "):
-        m_checkbox = re.match(r"^(?:check|checkbox)\s+(.+?)\s*[\.!?]?\s*$", text, flags=re.IGNORECASE)
+    # 4) "check/uncheck/tick/untick <label>" / "checkbox <label>" => label_for + checkbox
+    # Guard: "Check that/if/whether ..." is a verify-style instruction, not a
+    # checkbox action — skip this rule in that case.
+    checkbox_verbs = ("check", "uncheck", "tick", "untick", "checkbox")
+    is_verify_check = bool(re.match(r"^check\s+(?:that|if|whether)\b", text, flags=re.IGNORECASE))
+    if (
+        action_type != "verify"
+        and not is_verify_check
+        and (action_type in {"check", "uncheck"} or any(lowered.startswith(v + " ") for v in checkbox_verbs))
+    ):
+        m_checkbox = re.match(
+            r"^(?:check|uncheck|tick|untick|checkbox)\s+(?:the\s+)?(.+?)\s*[\.!?]?\s*$",
+            text,
+            flags=re.IGNORECASE,
+        )
         if m_checkbox:
             label = _clean_fragment(m_checkbox.group(1))
             if label:
@@ -211,5 +234,73 @@ def parse_relational_intent(instruction: str, action_type: str | None = None) ->
                 payload["primary_target_text"] = label
                 payload["scope_type"] = "label"
                 return payload
+
+    # 5) "toggle <label>" => label_for + switch (Phase 22D-2)
+    if lowered.startswith("toggle "):
+        m_toggle = re.match(
+            r"^toggle\s+(?:the\s+)?(.+?)\s*[\.!?]?\s*$",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if m_toggle:
+            label = _clean_fragment(m_toggle.group(1))
+            if label:
+                payload = _base_relational_payload()
+                payload["relation_type"] = "label_for"
+                payload["control_kind_hint"] = "switch"
+                payload["primary_target_text"] = label
+                payload["scope_type"] = "label"
+                return payload
+
+    # 6) "<verb> <label> link" => label_for + link (Phase 22D-2)
+    m_link = re.match(
+        r"^\s*(?:click|tap|press|open|follow)\s+(?:the\s+)?(.+?)\s+link\s*[\.!?]?\s*$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m_link:
+        label = _clean_fragment(m_link.group(1))
+        if label:
+            payload = _base_relational_payload()
+            payload["relation_type"] = "label_for"
+            payload["control_kind_hint"] = "link"
+            payload["primary_target_text"] = label
+            payload["scope_type"] = "label"
+            return payload
+
+    # 7) "<verb> <label> radio [button]" => label_for + radio (Phase 22D-2)
+    m_radio = re.match(
+        r"^\s*(?:click|tap|press|select|choose|pick)\s+(?:the\s+)?(.+?)\s+radio(?:\s+button)?\s*[\.!?]?\s*$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m_radio:
+        label = _clean_fragment(m_radio.group(1))
+        if label:
+            payload = _base_relational_payload()
+            payload["relation_type"] = "label_for"
+            payload["control_kind_hint"] = "radio"
+            payload["primary_target_text"] = label
+            payload["scope_type"] = "label"
+            return payload
+
+    # 8) "select/choose/pick <value> from <label>" without "dropdown" suffix
+    # => label_for + dropdown hint (Phase 22D-2)
+    m_select_from = re.match(
+        r"^\s*(?:select|choose|pick)\s+"
+        r"(?:\"[^\"]+\"|\'[^\']+\'|.+?)\s+"
+        r"from\s+(?:the\s+)?(.+?)\s*[\.!?]?\s*$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m_select_from:
+        label = _clean_fragment(m_select_from.group(1))
+        if label:
+            payload = _base_relational_payload()
+            payload["relation_type"] = "label_for"
+            payload["control_kind_hint"] = "dropdown"
+            payload["primary_target_text"] = label
+            payload["scope_type"] = "label"
+            return payload
 
     return None
