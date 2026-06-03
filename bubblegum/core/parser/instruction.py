@@ -48,7 +48,7 @@ _LEADING_VERB_RE = re.compile(
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
-    out = value.strip(" .,:;!?\t\n\r\"'")
+    out = value.strip(" .,:;\t\n\r\"'")
     out = re.sub(r"\s+", " ", out).strip()
     return out or None
 
@@ -97,7 +97,7 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
         return "select"
     if any(w in lowered for w in ("scroll",)):
         return "scroll"
-    if any(w in lowered for w in ("verify", "check", "assert", "visible", "present")):
+    if any(w in lowered for w in ("verify", "assert", "visible", "present")) or re.search(r'\bcheck\b', lowered):
         return "verify"
     if any(w in lowered for w in ("extract", "get", "read", "fetch")):
         return "extract"
@@ -107,13 +107,25 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
 
 
 def extract_expected(instruction: str) -> str:
-    """Pull key noun phrase from a verify instruction."""
-    return re.sub(
+    """Pull the expected text or state from a verify instruction.
+
+    Strips leading verify verbs and trailing state phrases so that
+    'Verify Hello World is visible' → 'Hello World'.
+    """
+    text = re.sub(
         r"^(verify|check|assert|confirm|ensure|see|that)\s+",
         "",
         instruction,
         flags=re.IGNORECASE,
     ).strip()
+    # Strip common trailing state words that describe the assertion, not the content.
+    text = re.sub(
+        r"\s+(is\s+)?(visible|present|shown|displayed|enabled|checked|selected|active)\s*$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+    return text
 
 
 def _base_relational_payload() -> dict[str, Any]:

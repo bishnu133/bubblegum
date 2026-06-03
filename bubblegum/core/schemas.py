@@ -43,6 +43,7 @@ class ExecutionOptions(BaseModel):
     max_cost_level: str       = "medium"  # "low" | "medium" | "high"
     memory_ttl_days: int      = 7
     memory_max_failures: int  = 3
+    dry_run:        bool      = False     # resolve only — do not execute the action
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +222,7 @@ class StepResult(BaseModel):
       - "skipped"   — step skipped per options
     """
 
-    status:     Literal["passed", "failed", "recovered", "skipped"]
+    status:     Literal["passed", "failed", "recovered", "skipped", "dry_run"]
     action:     str
     target:     ResolvedTarget | None = None
     confidence: float = 0.0

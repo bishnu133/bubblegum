@@ -238,7 +238,21 @@ class PlaywrightAdapter(BaseAdapter):
 
     async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:
         if plan.action_type in ("click", "tap"):
+            # Record URL before click so we can detect navigation afterwards.
+            url_before = self._page.url
             await locator.click(timeout=timeout)
+            # If the click triggered a page navigation (form submit, link, etc.)
+            # wait_for_url detects the URL change reliably for both same-origin and
+            # cross-origin navigations. If no URL change happens within 5 s
+            # (SPA button, checkbox, modal toggle) the timeout is swallowed.
+            try:
+                await self._page.wait_for_url(
+                    lambda url: url != url_before,
+                    wait_until="domcontentloaded",
+                    timeout=5000,
+                )
+            except Exception:
+                pass  # No navigation — in-page click, nothing to wait for
 
         elif plan.action_type == "type":
             value = plan.input_value or ""
@@ -345,8 +359,14 @@ class PlaywrightAdapter(BaseAdapter):
                 await locator.wait_for(state="visible", timeout=timeout)
                 return (True, expected)
             except Exception:
-                content = await self._page.content()
-                return (expected.lower() in content.lower(), content[:200])
+                # Check raw page text (not HTML) so the caller gets a useful message.
+                try:
+                    page_text = await self._page.inner_text("body")
+                except Exception:
+                    page_text = ""
+                found = expected.lower() in page_text.lower()
+                actual = expected if found else f"text not found on page (url={self._page.url})"
+                return (found, actual)
 
         elif plan.assertion_type == "element_state":
             locator = self._page.locator(expected)

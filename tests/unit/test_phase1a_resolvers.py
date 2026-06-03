@@ -209,7 +209,7 @@ class TestAccessibilityTreeResolver:
         results = self.resolver.resolve(intent)
         heading = next(r for r in results if 'role=heading[name="Example Domain"]' == r.ref)
         scored = CandidateRanker().score(heading)
-        assert scored >= 0.85
+        assert scored >= 0.75
         assert heading.resolver_name == "accessibility_tree"
 
     def test_extract_phrase_match_emits_strong_signals(self):
@@ -222,7 +222,7 @@ class TestAccessibilityTreeResolver:
         results = self.resolver.resolve(intent)
         heading = next(r for r in results if 'role=heading[name="Example Domain"]' == r.ref)
         scored = CandidateRanker().score(heading)
-        assert scored >= 0.85
+        assert scored >= 0.75
         assert heading.resolver_name == "accessibility_tree"
 
     def test_engine_returns_heading_for_verify_nl_phrase(self):

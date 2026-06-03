@@ -31,7 +31,7 @@ from typing import NamedTuple
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
-from bubblegum.core.grounding.signals import make_signals
+from bubblegum.core.grounding.signals import make_signals, role_fit_score, strip_icon_chars
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,13 @@ class FuzzyTextResolver(Resolver):
 
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         snapshot: str = intent.context["a11y_snapshot"]
-        targets = _extract_targets(intent.instruction)
+        # Use match_phrase so typed values are never confused for the target.
+        targets = _extract_targets(intent.match_phrase)
+        # Prepend the full phrase when multi-word so synonym expansion works on
+        # the complete phrase ("Sign in" → synonym "login") not just tokens
+        # ("Sign" alone has no synonym and misses the match entirely).
+        if intent.target_phrase and len(intent.target_phrase.split()) > 1:
+            targets = [intent.target_phrase] + targets
 
         candidates: list[ResolvedTarget] = []
         seen: set[str] = set()
@@ -150,7 +156,7 @@ class FuzzyTextResolver(Resolver):
                 continue
 
             raw_role = m.group("role").lower()
-            elname   = (m.group("elname") or "").strip()
+            elname   = strip_icon_chars((m.group("elname") or "").strip())
 
             if not elname:
                 continue  # fuzzy matching requires an accessible name
@@ -169,7 +175,7 @@ class FuzzyTextResolver(Resolver):
                 continue
             seen.add(ref)
 
-            role_match = 1.0 if role else 0.0
+            role_match = role_fit_score(role or "", intent.action_type) if role else 0.0
             rows.append((ref, ratio, role_match))
             candidates.append(
                 ResolvedTarget(
@@ -198,7 +204,7 @@ class FuzzyTextResolver(Resolver):
                 enriched.append(t); continue
             _, ratio, rmatch = row
             uniq = 1.0 if counts.get(t.ref,0)==1 else 0.6
-            meta=dict(t.metadata); meta["signals"] = make_signals(text_match=ratio, role_match=rmatch, visibility=0.5, uniqueness=uniq, memory=0.0)
+            meta=dict(t.metadata); meta["signals"] = make_signals(text_match=ratio, role_match=rmatch, visibility=0.8, uniqueness=uniq, memory=0.0)
             enriched.append(t.model_copy(update={"metadata": meta}))
         return enriched
 

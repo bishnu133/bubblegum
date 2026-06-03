@@ -207,7 +207,19 @@ async def act(
             error=hydration_error,
         )
 
-    # 4. Build ActionPlan and execute
+    # 4. Dry-run short-circuit — resolve only, do not execute
+    if options.dry_run:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            status="dry_run",
+            action=instruction,
+            target=target,
+            confidence=target.confidence,
+            duration_ms=duration_ms,
+            traces=traces,
+        )
+
+    # 5. Build ActionPlan and execute
     plan = ActionPlan(
         action_type=intent.action_type,
         target_hint=intent.target_phrase or instruction,
@@ -766,7 +778,11 @@ async def _extract_inner_text(page, ref: str, timeout_ms: int) -> str:
     else:
         locator = page.locator(ref)
 
-    return await locator.inner_text(timeout=timeout_ms)
+    # Use .first to avoid strict-mode violations when multiple elements share a
+    # name (e.g. heading "Secure Area" matches both <h2> and a subheading that
+    # contains "Secure Area"). The resolved ref is already the best candidate
+    # from the grounding engine, so taking the first DOM match is correct.
+    return await locator.first.inner_text(timeout=timeout_ms)
 
 
 async def _capture_screenshot(adapter, label: str) -> list[ArtifactRef]:

@@ -32,8 +32,9 @@ Issues = "https://github.com/bubblegum-ai/bubblegum/issues"
 test = ["pytest-asyncio"]
 web = ["playwright"]
 mobile = ["Appium-Python-Client"]
-dev = ["pytest-asyncio"]
-all = ["playwright", "Appium-Python-Client", "pytest-asyncio"]
+anthropic = ["anthropic>=0.20"]
+dev = ["pytest-asyncio", "anthropic>=0.20"]
+all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio"]
 
 [project.entry-points.pytest11]
 bubblegum = "bubblegum.pytest_plugin"

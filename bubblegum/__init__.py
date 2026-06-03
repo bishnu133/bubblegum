@@ -17,6 +17,7 @@ from bubblegum.core.sdk import (
     recover,
     verify,
 )
+from bubblegum.session import BubblegumSession
 
 __all__ = [
     "act",
@@ -26,6 +27,7 @@ __all__ = [
     "configure_runtime",
     "configure_vision_provider",
     "clear_vision_provider",
+    "BubblegumSession",
     "__version__",
 ]
 

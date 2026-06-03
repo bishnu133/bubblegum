@@ -30,7 +30,7 @@ import logging
 
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
-from bubblegum.core.grounding.signals import make_signals
+from bubblegum.core.grounding.signals import make_signals, role_fit_score, strip_icon_chars
 from bubblegum.core.elements.graph import ElementGraph
 from bubblegum.core.elements.query import build_graph_query_diagnostics
 from bubblegum.core.elements.graph_signals import GraphSignalInput, compute_graph_signals
@@ -144,7 +144,7 @@ class AccessibilityTreeResolver(Resolver):
                 continue
 
             raw_role = m.group("role").lower()
-            elname   = (m.group("elname") or "").strip()
+            elname   = strip_icon_chars((m.group("elname") or "").strip())
             role     = _ROLE_ALIASES.get(raw_role)
 
             if not role:
@@ -156,7 +156,7 @@ class AccessibilityTreeResolver(Resolver):
 
             ref = _build_ref(role, elname)
             ref_rows.append((ref, role, elname))
-            signal_rows.append((ref, confidence, 1.0 if _role_fits_action(role, intent.action_type) else 0.0, 0.5))
+            signal_rows.append((ref, confidence, role_fit_score(role, intent.action_type), 0.8))
             candidates.append(
                 ResolvedTarget(
                     ref=ref,
@@ -218,19 +218,8 @@ class AccessibilityTreeResolver(Resolver):
                 elname=str(target.metadata.get("name", "")),
                 boosted_tmatch=boosted_tmatch,
             )
-            strong_click_match = (
-                intent.action_type in {"click", "tap"}
-                and boosted_tmatch >= 1.0
-                and str(target.metadata.get("role", "")) == "link"
-                and _role_fits_action(str(target.metadata.get("role", "")), intent.action_type)
-            )
-            strong_match = strong_verify_extract or strong_click_match
-            boosted_vis = 1.0 if strong_match else vis
-            boosted_prox = (
-                1.0
-                if strong_match
-                else 0.0
-            )
+            boosted_vis = 1.0 if strong_verify_extract else vis
+            boosted_prox = 1.0 if strong_verify_extract else 0.0
             meta = dict(target.metadata)
             meta["graph_signals"] = compute_graph_signals(
                 GraphSignalInput(
@@ -382,7 +371,7 @@ def _score(
       0.60 -- role fits action but element has no accessible name
     """
     name_lower = elname.lower()
-    role_ok = _role_fits_action(role, action_type)
+    role_ok = role_fit_score(role, action_type)
 
     if name_lower and any(phrase == name_lower for phrase in phrases):
         return (0.96, elname)
@@ -398,21 +387,6 @@ def _score(
 
     return (0.0, "")
 
-
-def _role_fits_action(role: str, action_type: str) -> bool:
-    click_roles  = {"button", "link", "tab", "menuitem", "checkbox", "radio", "switch"}
-    type_roles   = {"textbox", "searchbox", "combobox", "spinbutton"}
-    select_roles = {"combobox", "listbox", "option"}
-    mapping: dict[str, set[str] | None] = {
-        "click":   click_roles,
-        "tap":     click_roles,
-        "type":    type_roles,
-        "select":  select_roles,
-        "verify":  None,
-        "extract": None,
-    }
-    allowed = mapping.get(action_type)
-    return allowed is None or role in allowed
 
 
 def _build_ref(role: str, elname: str) -> str:
