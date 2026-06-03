@@ -177,6 +177,39 @@ def test_close_dialog_clicks_internal_close_button():
     assert report["scope_after"] == "page"
 
 
+def test_close_dialog_prefers_close_button_over_cancel():
+    # Regression for 22D-8: a dialog with both Cancel and Close should
+    # close via Close (preserves changes), not Cancel (discards them).
+    # DOM order is Cancel first; priority handling must override that.
+    dialog = _FakeLocator(count=1, buttons=["Cancel", "Close"])
+    page = _FakePage({"[role='dialog'][aria-modal='true']": dialog})
+    stack = ScopeStack()
+
+    report = _run(close_dialog_web(page, stack))
+
+    assert report["closed_by"] == "close_button"
+    assert dialog.clicks == ["Close"]
+
+
+def test_close_dialog_prefers_close_then_x_then_dismiss_over_cancel():
+    # Pin the priority order so future reordering is explicit.
+    cases = [
+        (["Cancel", "X"], "X"),
+        (["Cancel", "Dismiss"], "Dismiss"),
+        (["Cancel", "Close", "X"], "Close"),
+        (["Dismiss", "Cancel"], "Dismiss"),
+    ]
+    for buttons, expected_winner in cases:
+        dialog = _FakeLocator(count=1, buttons=buttons)
+        page = _FakePage({"[role='dialog'][aria-modal='true']": dialog})
+        report = _run(close_dialog_web(page, ScopeStack()))
+        assert report["closed_by"] == "close_button"
+        assert dialog.clicks == [expected_winner], (
+            f"buttons={buttons}: expected {expected_winner!r} won, "
+            f"got {dialog.clicks!r}"
+        )
+
+
 def test_close_dialog_falls_back_to_escape_when_no_close_affordance():
     dialog = _FakeLocator(count=1, buttons=["Save", "Submit"])
     page = _FakePage({"[role='dialog'][aria-modal='true']": dialog})

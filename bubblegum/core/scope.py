@@ -78,6 +78,18 @@ class ScopeStack:
 # "×" that some component libraries render as the close icon.
 _CLOSE_BUTTON_RE = re.compile(r"^\s*(close|cancel|dismiss|×|x)\s*$", re.IGNORECASE)
 
+# When a dialog has multiple close-style affordances (a common pattern:
+# Cancel + Close side by side, where Cancel discards and Close saves), pick
+# the one that closes WITHOUT discarding first. Order = most preferred to
+# least preferred. close_dialog_web iterates this list and stops on the
+# first probe that finds at least one button.
+_CLOSE_BUTTON_PRIORITY = (
+    re.compile(r"^\s*close\s*$", re.IGNORECASE),
+    re.compile(r"^\s*(×|x)\s*$", re.IGNORECASE),
+    re.compile(r"^\s*dismiss\s*$", re.IGNORECASE),
+    re.compile(r"^\s*cancel\s*$", re.IGNORECASE),
+)
+
 
 async def close_dialog_web(page: Any, stack: ScopeStack) -> dict[str, Any]:
     """Close the currently-open dialog on a Playwright page.
@@ -105,10 +117,12 @@ async def close_dialog_web(page: Any, stack: ScopeStack) -> dict[str, Any]:
 
     closed_by = "escape"  # default fallback
     if dialog_root is not None:
-        close_btn = dialog_root.get_by_role("button", name=_CLOSE_BUTTON_RE)
-        if await close_btn.count() > 0:
-            await close_btn.first.click()
-            closed_by = "close_button"
+        for name_re in _CLOSE_BUTTON_PRIORITY:
+            close_btn = dialog_root.get_by_role("button", name=name_re)
+            if await close_btn.count() > 0:
+                await close_btn.first.click()
+                closed_by = "close_button"
+                break
 
     if closed_by == "escape":
         await page.keyboard.press("Escape")
