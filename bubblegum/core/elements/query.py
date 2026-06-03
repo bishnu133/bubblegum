@@ -18,6 +18,46 @@ _SUPPORTED_RELATIONS = {
 }
 
 
+class ControlKind:
+    """Phase 22D-1: closed vocabulary of `control_kind_hint` values.
+
+    String-valued so existing dict-based payloads continue to work without
+    migration. `SELECT` is an alias of `DROPDOWN` accepted on input; matchers
+    normalize it to `DROPDOWN`. `COMBOBOX` is intentionally narrower than
+    `DROPDOWN` — it matches only `role=combobox`, while `DROPDOWN` also
+    matches native `<select>` and widget-type spinners.
+    """
+
+    NONE = "none"
+    BUTTON = "button"
+    INPUT = "input"
+    DROPDOWN = "dropdown"
+    SELECT = "select"
+    COMBOBOX = "combobox"
+    CHECKBOX = "checkbox"
+    RADIO = "radio"
+    LINK = "link"
+    DIALOG = "dialog"
+    TAB = "tab"
+    SWITCH = "switch"
+
+
+KNOWN_CONTROL_KINDS = frozenset({
+    ControlKind.NONE,
+    ControlKind.BUTTON,
+    ControlKind.INPUT,
+    ControlKind.DROPDOWN,
+    ControlKind.SELECT,
+    ControlKind.COMBOBOX,
+    ControlKind.CHECKBOX,
+    ControlKind.RADIO,
+    ControlKind.LINK,
+    ControlKind.DIALOG,
+    ControlKind.TAB,
+    ControlKind.SWITCH,
+})
+
+
 def _empty_payload(*, status: str = "no_relation", relation_type: str = "none", reasons: list[str] | None = None) -> dict[str, Any]:
     return {
         "status": status,
@@ -59,6 +99,8 @@ def _iter_descendants(graph: ElementGraph, root_id: str) -> list[str]:
 
 def _match_control_kind(elements: list[NormalizedElement], hint: str, action_type: str | None) -> tuple[list[str], list[str]]:
     kind = _norm(hint)
+    if kind == ControlKind.SELECT:
+        kind = ControlKind.DROPDOWN
     action = _norm(action_type)
     if kind == "none" and action in {"type", "select", "check"}:
         kind = {"type": "input", "select": "dropdown", "check": "checkbox"}.get(action, "none")
@@ -67,6 +109,8 @@ def _match_control_kind(elements: list[NormalizedElement], hint: str, action_typ
         role = _norm(e.role)
         tag = _norm(e.tag)
         widget = _norm(e.widget_type)
+        attr_type = _norm(e.attributes.get("type"))
+        attr_role = _norm(e.attributes.get("role"))
         if kind == "none":
             return True
         if kind == "button":
@@ -75,10 +119,20 @@ def _match_control_kind(elements: list[NormalizedElement], hint: str, action_typ
             return role in {"textbox", "input", "searchbox", "textarea", "combobox", "spinbutton"} or tag in {"input", "textarea"} or "edittext" in widget
         if kind == "dropdown":
             return role in {"combobox"} or tag == "select" or any(t in widget for t in {"spinner", "dropdown", "select"})
+        if kind == "combobox":
+            return role == "combobox" or attr_role == "combobox"
         if kind == "checkbox":
-            return role == "checkbox" or tag == "input" and (e.attributes.get("type") == "checkbox") or "checkbox" in widget
+            return role == "checkbox" or (tag == "input" and attr_type == "checkbox") or "checkbox" in widget
         if kind == "radio":
-            return role == "radio" or "radio" in widget
+            return role == "radio" or attr_role == "radio" or (tag == "input" and attr_type == "radio") or "radio" in widget
+        if kind == "link":
+            return role == "link" or tag == "a" or attr_role == "link"
+        if kind == "dialog":
+            return role in {"dialog", "alertdialog"} or attr_role in {"dialog", "alertdialog"} or any(t in widget for t in {"dialog", "modal"})
+        if kind == "tab":
+            return role == "tab" or attr_role == "tab"
+        if kind == "switch":
+            return role == "switch" or attr_role == "switch" or "switch" in widget
         return True
 
     matched = sorted({e.id for e in elements if ok(e)})
