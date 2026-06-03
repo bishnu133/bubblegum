@@ -1,8 +1,21 @@
-"""Phase 22D-4: widget lab — native <select> and file upload examples.
+"""Phase 22D-4..5: widget lab — native widget E2E scenarios.
 
 Spins up a tiny static HTTP server serving pages/ and drives Bubblegum NL
 instructions through Playwright against it. Each scenario verifies widget
-*state* (selected value, uploaded file count) in addition to result text.
+*state* (selected value, is_checked, URL transition, etc.) in addition to
+any result text — text-only verification is intentionally insufficient.
+
+Scenarios:
+  22D-4
+    native-select   Select India from Country  (state: input_value == "IN")
+    file-upload     Upload <tmp> to Resume      (state: input.files non-empty)
+  22D-5
+    checkbox-group  Check / uncheck across three checkboxes
+                    (state: is_checked() per box)
+    radio-group     Click Red radio
+                    (state: red is_checked, others unchecked)
+    link-vs-button  Disambiguate same-label "Sign in" <a> vs <button>
+                    (state: link navigates, button does not + result text)
 
 Run:
     python examples/web/widgets/widget_lab/run_example.py            # headless
@@ -130,6 +143,161 @@ async def run_upload_scenario(page, base_url: str) -> dict:
     )
 
 
+async def run_checkbox_scenario(page, base_url: str) -> dict:
+    from bubblegum import act
+
+    await page.goto(f"{base_url}/checkboxes.html")
+    await page.wait_for_load_state("domcontentloaded")
+
+    # 1) Check Newsletter (starts unchecked) -> should be checked
+    step_check = await act(
+        "Check Newsletter",
+        page=page,
+        channel="web",
+        action_type="check",
+        selector="#cb_newsletter",
+    )
+    newsletter_checked = await page.locator("#cb_newsletter").is_checked()
+
+    # 2) Uncheck Marketing emails (starts checked) -> should be unchecked
+    step_uncheck = await act(
+        "Uncheck Marketing emails",
+        page=page,
+        channel="web",
+        action_type="uncheck",
+        selector="#cb_marketing",
+    )
+    marketing_unchecked = not await page.locator("#cb_marketing").is_checked()
+
+    # 3) Terms left untouched -> should stay unchecked
+    terms_untouched = not await page.locator("#cb_terms").is_checked()
+
+    passed = (
+        step_check.status == "passed"
+        and step_uncheck.status == "passed"
+        and newsletter_checked
+        and marketing_unchecked
+        and terms_untouched
+    )
+    return _result(
+        "checkbox-group",
+        passed,
+        check_status=step_check.status,
+        uncheck_status=step_uncheck.status,
+        newsletter_checked=newsletter_checked,
+        marketing_unchecked=marketing_unchecked,
+        terms_untouched=terms_untouched,
+    )
+
+
+async def run_radio_scenario(page, base_url: str) -> dict:
+    from bubblegum import act
+
+    await page.goto(f"{base_url}/radios.html")
+    await page.wait_for_load_state("domcontentloaded")
+
+    # NL "Click Red radio" -> Red selected, Blue/Green unselected.
+    step = await act(
+        "Click Red radio",
+        page=page,
+        channel="web",
+        action_type="check",
+        selector="#r_red",
+    )
+
+    red_checked = await page.locator("#r_red").is_checked()
+    blue_checked = await page.locator("#r_blue").is_checked()
+    green_checked = await page.locator("#r_green").is_checked()
+    result_text = await page.locator("#result").inner_text()
+    text_ok = "red" in result_text.lower()
+
+    passed = (
+        step.status == "passed"
+        and red_checked
+        and not blue_checked
+        and not green_checked
+        and text_ok
+    )
+    return _result(
+        "radio-group",
+        passed,
+        action_status=step.status,
+        red_checked=red_checked,
+        blue_checked=blue_checked,
+        green_checked=green_checked,
+        result_text=result_text,
+        text_ok=text_ok,
+    )
+
+
+async def run_link_vs_button_scenario(page, base_url: str) -> dict:
+    """Disambiguation: NL "Click the Sign in link" picks the <a>, not the <button>.
+
+    Verifies the link branch by URL transition AND the button branch by result
+    text on a separate visit so both code paths run.
+    """
+    from bubblegum import act
+
+    # --- Link branch ---
+    await page.goto(f"{base_url}/link_vs_button.html")
+    await page.wait_for_load_state("domcontentloaded")
+    url_before = page.url
+
+    step_link = await act(
+        "Click the Sign in link",
+        page=page,
+        channel="web",
+        action_type="click",
+        selector="#lnk_signin",
+    )
+    await page.wait_for_load_state("domcontentloaded")
+    heading_text = await page.locator("#heading").inner_text()
+    url_after = page.url
+    link_navigated = url_after != url_before and url_after.endswith("/link-clicked.html")
+    link_heading_ok = heading_text.strip() == "Link clicked!"
+
+    # --- Button branch (fresh load) ---
+    await page.goto(f"{base_url}/link_vs_button.html")
+    await page.wait_for_load_state("domcontentloaded")
+    url_before_btn = page.url
+
+    step_btn = await act(
+        "Click the Sign in button",
+        page=page,
+        channel="web",
+        action_type="click",
+        selector="#btn_signin",
+    )
+    # The button does not navigate; wait briefly for the onclick handler.
+    await page.wait_for_function(
+        "() => document.getElementById('result') && "
+        "document.getElementById('result').textContent.length > 0",
+        timeout=3000,
+    )
+    button_result_text = await page.locator("#result").inner_text()
+    button_did_not_navigate = page.url == url_before_btn
+    button_text_ok = "Button clicked!" in button_result_text
+
+    passed = (
+        step_link.status == "passed"
+        and step_btn.status == "passed"
+        and link_navigated
+        and link_heading_ok
+        and button_did_not_navigate
+        and button_text_ok
+    )
+    return _result(
+        "link-vs-button",
+        passed,
+        link_status=step_link.status,
+        button_status=step_btn.status,
+        link_navigated=link_navigated,
+        link_heading=heading_text,
+        button_did_not_navigate=button_did_not_navigate,
+        button_result_text=button_result_text,
+    )
+
+
 async def run(headless: bool) -> int:
     from playwright.async_api import async_playwright
 
@@ -147,6 +315,9 @@ async def run(headless: bool) -> int:
 
                 results.append(await run_select_scenario(page, base_url))
                 results.append(await run_upload_scenario(page, base_url))
+                results.append(await run_checkbox_scenario(page, base_url))
+                results.append(await run_radio_scenario(page, base_url))
+                results.append(await run_link_vs_button_scenario(page, base_url))
             finally:
                 await browser.close()
     finally:

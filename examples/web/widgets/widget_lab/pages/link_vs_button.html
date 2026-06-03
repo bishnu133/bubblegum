@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Link vs Button</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  .row { margin: 1em 0; }
+  button, a { font-size: 1em; }
+  #result { margin-top: 1em; color: #205020; }
+</style>
+</head>
+<body>
+<h1>Link vs Button — same label</h1>
+<p>Both controls have the accessible name "Sign in". The expected disambiguation:</p>
+<ul>
+  <li>"Click the Sign in <strong>link</strong>" &rarr; navigates to <code>/link-clicked.html</code></li>
+  <li>"Click the Sign in <strong>button</strong>" / "Click Sign in" &rarr; stays on this page; sets result text</li>
+</ul>
+
+<div class="row">
+  <button id="btn_signin" type="button" onclick="document.getElementById('result').textContent='Button clicked!';">Sign in</button>
+</div>
+
+<div class="row">
+  <a id="lnk_signin" href="/link-clicked.html">Sign in</a>
+</div>
+
+<p id="result"></p>
+</body>
+</html>
