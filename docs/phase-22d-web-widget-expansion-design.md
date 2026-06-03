@@ -85,7 +85,7 @@ when every column is green.
 |---|---|---|---|---|---|---|---|
 | Native select | New    | `dropdown`/`select`  | Existing (a11y tree)      | `select` (new)     | New       | `/dropdown` + lab | 22D-A    |
 | Checkbox     | Extend  | `checkbox`           | Existing                  | `check`/`uncheck` (new) | New   | `/checkboxes` + lab | 22D-A    |
-| Radio        | New     | `radio` (new)        | Existing                  | `click` (reuse)    | New       | lab fixture       | 22D-A    |
+| Radio        | New     | `radio` (new)        | Existing                  | `check()` native, `click()` ARIA | New | lab fixture       | 22D-A    |
 | Link         | New     | `link` (new)         | Existing                  | `click` (reuse)    | New       | lab fixture       | 22D-A    |
 | File upload  | New     | `file`/`upload`      | Existing                  | `upload` (new)     | New       | `/upload` + lab   | 22D-A    |
 | Modal        | Extend  | `dialog`/`modal`     | + `find_open_dialog`      | scope + SDK helper | New       | lab fixture       | 22D-B    |
@@ -103,8 +103,8 @@ Add intent recognition so NL phrasings map to a `control_kind_hint` and the
 right `action_type`. Concrete additions:
 
 - "Select `<value>` from `<label>`" → `control_kind_hint=dropdown` even when
-  the word "dropdown" is absent. Today the hint is only set when "dropdown"
-  appears (line 199).
+  the word "dropdown" is absent. Today the hint is only set in the existing
+  dropdown-specific parser branch.
 - "Choose `<label>` radio" / "Pick `<label>` from `<group>`" →
   `control_kind_hint=radio`, `relation_type=label_for` or
   `within_region+radio`.
@@ -143,9 +143,13 @@ dialog, tab, switch`.
 Refactor to a dispatch table keyed on `action_type`. New entries:
 - `select` — `<select>`: `locator.select_option(...)`; combobox: open via
   click, locate listbox through `follow_aria_controls`, click the option.
+  Native multi-select is **deferred** from 22D-A unless required by a real
+  validation case.
 - `upload` — `locator.set_input_files(input_value)`. Fails loudly if the
   resolved element is not a file input.
-- `check` / `uncheck` — `locator.check()` / `locator.uncheck()`.
+- `check` / `uncheck` — `locator.check()` / `locator.uncheck()`. Same path
+  is used for native `input[type=radio]`; ARIA `role=radio` falls back to
+  `locator.click()`.
 
 `close_dialog` is **not** added as an action (see §close_dialog).
 
@@ -174,6 +178,11 @@ Behavior:
 - All resolvers accept an optional `scope_root` and search there first; if no
   match, fall back to the full page only when the relational intent does not
   pin to scope.
+- **Scope-fallback warning rule.** When the active scope is `dialog` and a
+  resolver falls back to the page root, the trace must record a `warning`
+  entry (`scope_fallback: dialog → page`). If the NL instruction explicitly
+  says "in the dialog" (or any `within_modal` relational intent is set),
+  fallback outside the dialog is **forbidden** — the step fails instead.
 - Scope is recorded in every trace entry so failures are diagnosable.
 
 This is introduced in 22D-B (PR 22D-6) and reused by Tier 2 tabs/accordions
@@ -231,6 +240,40 @@ text. Concrete checks per widget:
 
 This aligns with the PRD's validation requirement (text, visibility,
 transition, state).
+
+## Trace requirements
+
+Because this phase changes parser, resolver, adapter dispatch, and scope, the
+trace artifact for every Tier 1 step must record:
+
+```
+action_type
+control_kind_hint
+scope_before          # type + label
+scope_after           # type + label (may differ if dialog opened/closed)
+chosen_resolver       # accessibility_tree, fuzzy_text, explicit_selector, ...
+candidate_count
+ambiguity_candidates  # populated only when the step failed as ambiguous
+adapter_method        # click | type | select | upload | check | uncheck
+state_verification    # passed/failed + actual vs expected for the state check
+scope_warnings        # e.g. "scope_fallback: dialog → page"
+```
+
+These fields are additive to the existing trace schema; absent fields default
+to null for backward compatibility with older traces.
+
+## Regression command
+
+The existing real-web suite from commit `100db01` (14 tests) must continue to
+pass. Reserve the regression command for the 22D runner:
+
+```
+# Placeholder — exact path/script finalized in 22D-9.
+python scripts/run_real_web_regression.py --suite 100db01
+```
+
+22D-9 wires this into the Tier 1 regression runner and updates the command if
+the script path changes.
 
 ## Validation harness
 
@@ -333,8 +376,9 @@ GO when all of the following hold:
   cases.
 - 22D-B widget set (custom combobox, modal) works against the local widget
   lab using `aria-controls` and the active scope model.
-- A single NL instruction drives each Tier 1 widget against the lab and the
-  public-site smoke pages.
+- A single NL instruction drives each Tier 1 widget against the local widget
+  lab, and the supported subset (select, checkbox, upload, plus the login
+  regression) also passes against the public-site smoke pages.
 - Every Tier 1 E2E example verifies widget *state*, not just text.
 - Golden parser dataset covers every new NL pattern; all entries pass.
 - The Tier 1 regression runner (22D-9) passes for two consecutive runs.
