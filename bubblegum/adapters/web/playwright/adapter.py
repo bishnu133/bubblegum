@@ -93,6 +93,22 @@ def _sanitize_retry_reason(exc: Exception) -> str:
 _ARTIFACTS_DIR = Path("artifacts")
 
 
+# Phase 22D-3: action dispatch table. Each handler is bound on the adapter
+# instance and receives (plan, locator, timeout). Keep this table flat and
+# closed — new action types are added explicitly so unsupported plans surface
+# as a clear error rather than a silent no-op.
+_ACTION_DISPATCH = {
+    "click":   lambda self, plan, locator, timeout: self._do_click(plan, locator, timeout),
+    "tap":     lambda self, plan, locator, timeout: self._do_click(plan, locator, timeout),
+    "type":    lambda self, plan, locator, timeout: self._do_type(plan, locator, timeout),
+    "select":  lambda self, plan, locator, timeout: self._do_select(plan, locator, timeout),
+    "upload":  lambda self, plan, locator, timeout: self._do_upload(plan, locator, timeout),
+    "check":   lambda self, plan, locator, timeout: self._do_check(plan, locator, timeout),
+    "uncheck": lambda self, plan, locator, timeout: self._do_uncheck(plan, locator, timeout),
+    "scroll":  lambda self, plan, locator, timeout: self._do_scroll(plan, locator, timeout),
+}
+
+
 class PlaywrightAdapter(BaseAdapter):
     """
     Playwright-based adapter for the web channel.
@@ -237,36 +253,53 @@ class PlaywrightAdapter(BaseAdapter):
         raise ValueError(f"Unsupported wait_for mode for Playwright: {wait_for}")
 
     async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:
-        if plan.action_type in ("click", "tap"):
-            # Record URL before click so we can detect navigation afterwards.
-            url_before = self._page.url
-            await locator.click(timeout=timeout)
-            # If the click triggered a page navigation (form submit, link, etc.)
-            # wait_for_url detects the URL change reliably for both same-origin and
-            # cross-origin navigations. If no URL change happens within 5 s
-            # (SPA button, checkbox, modal toggle) the timeout is swallowed.
-            try:
-                await self._page.wait_for_url(
-                    lambda url: url != url_before,
-                    wait_until="domcontentloaded",
-                    timeout=5000,
-                )
-            except Exception:
-                pass  # No navigation — in-page click, nothing to wait for
-
-        elif plan.action_type == "type":
-            value = plan.input_value or ""
-            await locator.fill(value, timeout=timeout)
-
-        elif plan.action_type == "select":
-            value = plan.input_value or ""
-            await locator.select_option(value, timeout=timeout)
-
-        elif plan.action_type == "scroll":
-            await locator.scroll_into_view_if_needed(timeout=timeout)
-
-        else:
+        handler = _ACTION_DISPATCH.get(plan.action_type)
+        if handler is None:
             raise ValueError(f"Unsupported action_type for Playwright execute: {plan.action_type}")
+        await handler(self, plan, locator, timeout)
+
+    async def _do_click(self, plan: ActionPlan, locator, timeout: int) -> None:
+        # Record URL before click so we can detect navigation afterwards.
+        url_before = self._page.url
+        await locator.click(timeout=timeout)
+        # If the click triggered a page navigation (form submit, link, etc.)
+        # wait_for_url detects the URL change reliably for both same-origin and
+        # cross-origin navigations. If no URL change happens within 5 s
+        # (SPA button, checkbox, modal toggle) the timeout is swallowed.
+        try:
+            await self._page.wait_for_url(
+                lambda url: url != url_before,
+                wait_until="domcontentloaded",
+                timeout=5000,
+            )
+        except Exception:
+            pass  # No navigation — in-page click, nothing to wait for
+
+    async def _do_type(self, plan: ActionPlan, locator, timeout: int) -> None:
+        value = plan.input_value or ""
+        await locator.fill(value, timeout=timeout)
+
+    async def _do_select(self, plan: ActionPlan, locator, timeout: int) -> None:
+        value = plan.input_value or ""
+        await locator.select_option(value, timeout=timeout)
+
+    async def _do_upload(self, plan: ActionPlan, locator, timeout: int) -> None:
+        value = plan.input_value
+        if not value:
+            raise ValueError(
+                "upload action requires input_value to be a file path "
+                "(e.g. '/tmp/resume.pdf' or a list of paths)"
+            )
+        await locator.set_input_files(value, timeout=timeout)
+
+    async def _do_check(self, plan: ActionPlan, locator, timeout: int) -> None:
+        await locator.check(timeout=timeout)
+
+    async def _do_uncheck(self, plan: ActionPlan, locator, timeout: int) -> None:
+        await locator.uncheck(timeout=timeout)
+
+    async def _do_scroll(self, plan: ActionPlan, locator, timeout: int) -> None:
+        await locator.scroll_into_view_if_needed(timeout=timeout)
 
     async def validate(self, plan: ValidationPlan) -> ValidationResult:
         """
