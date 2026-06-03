@@ -16,6 +16,11 @@ Scenarios:
                     (state: red is_checked, others unchecked)
     link-vs-button  Disambiguate same-label "Sign in" <a> vs <button>
                     (state: link navigates, button does not + result text)
+  22D-8
+    combobox-select ARIA combobox + portal-rendered listbox
+                    (state: trigger text/data-value, aria-expanded=false)
+    modal-flow      Open dialog, type into Name, session.close_dialog()
+                    (state: aria-modal cleared, scope popped, result text)
 
 Run:
     python examples/web/widgets/widget_lab/run_example.py            # headless
@@ -230,6 +235,134 @@ async def run_radio_scenario(page, base_url: str) -> dict:
     )
 
 
+async def run_combobox_scenario(page, base_url: str) -> dict:
+    """ARIA combobox with a portal-rendered listbox.
+
+    Step 1 clicks the combobox trigger so the listbox is appended to
+    document.body and shown. Step 2 clicks the "India" option inside the
+    portal. State check: trigger label and data-value reflect the choice,
+    listbox is collapsed (aria-expanded=false) after selection.
+    """
+    from bubblegum import act
+
+    await page.goto(f"{base_url}/combobox.html")
+    await page.wait_for_load_state("domcontentloaded")
+
+    step_open = await act(
+        "Click Select country",
+        page=page,
+        channel="web",
+        action_type="click",
+        selector="#country-trigger",
+    )
+    # Wait for the portal listbox to be visible (it is created at first open).
+    await page.wait_for_selector("#country-listbox", state="visible", timeout=3000)
+
+    step_pick = await act(
+        "Click India",
+        page=page,
+        channel="web",
+        action_type="click",
+        selector="#country-listbox [role='option'][data-value='IN']",
+    )
+
+    trigger_text = (await page.locator("#country-trigger").inner_text()).strip()
+    trigger_value = await page.locator("#country-trigger").get_attribute("data-value")
+    aria_expanded = await page.locator("#country-trigger").get_attribute("aria-expanded")
+    result_text = await page.locator("#result").inner_text()
+
+    trigger_ok = trigger_text == "India" and trigger_value == "IN"
+    collapsed_ok = aria_expanded == "false"
+    text_ok = "India" in result_text
+
+    passed = (
+        step_open.status == "passed"
+        and step_pick.status == "passed"
+        and trigger_ok
+        and collapsed_ok
+        and text_ok
+    )
+    return _result(
+        "combobox-select",
+        passed,
+        open_status=step_open.status,
+        pick_status=step_pick.status,
+        trigger_text=trigger_text,
+        trigger_value=trigger_value,
+        aria_expanded=aria_expanded,
+        result_text=result_text,
+    )
+
+
+async def run_modal_scenario(page, base_url: str) -> dict:
+    """Open dialog → type into Name → close via session.close_dialog().
+
+    Drives a BubblegumSession so close_dialog() is on the public API path,
+    not just the internal helper. The scope is pushed manually with a
+    root_locator (the dialog element); 22D-6's close_dialog_web uses that
+    pinned root and bypasses the page-level dialog scan.
+    """
+    from bubblegum.session import BubblegumSession
+
+    await page.goto(f"{base_url}/modal.html")
+    await page.wait_for_load_state("domcontentloaded")
+
+    async with BubblegumSession.web(page) as s:
+        step_open = await s.act(
+            "Click Open Settings",
+            action_type="click",
+            selector="#open-settings",
+        )
+        await page.wait_for_selector(
+            "#settings-dialog[aria-modal='true']", state="visible", timeout=3000
+        )
+
+        # Push dialog scope with the dialog element as root_locator so
+        # close_dialog uses the scope path (skips page-level dialog scan).
+        dialog_locator = page.locator("#settings-dialog")
+        s.push_scope("dialog", label="Settings", root_locator=dialog_locator)
+
+        step_type = await s.act(
+            'Enter "Bishnu" into Name',
+            action_type="type",
+            selector="#dialog-name",
+            input_value="Bishnu",
+        )
+
+        # Verify the value landed inside the dialog before we close it.
+        typed_value = await page.locator("#dialog-name").input_value()
+
+        close_report = await s.close_dialog()
+
+        # Wait for the dialog backdrop to be hidden.
+        await page.wait_for_selector("#backdrop", state="hidden", timeout=3000)
+        dialog_modal_attr = await page.locator("#settings-dialog").get_attribute("aria-modal")
+        result_text = await page.locator("#result").inner_text()
+        scope_after = s.current_scope.type
+
+    open_ok = step_open.status == "passed"
+    type_ok = step_type.status == "passed" and typed_value == "Bishnu"
+    close_ok = close_report["closed_by"] == "close_button"
+    scope_ok = scope_after == "page" and close_report["popped_scope"] == {
+        "type": "dialog",
+        "label": "Settings",
+    }
+    dom_ok = dialog_modal_attr is None and "Saved name: Bishnu" in result_text
+
+    passed = open_ok and type_ok and close_ok and scope_ok and dom_ok
+    return _result(
+        "modal-flow",
+        passed,
+        open_status=step_open.status,
+        type_status=step_type.status,
+        typed_value=typed_value,
+        close_report=close_report,
+        dialog_modal_after=dialog_modal_attr,
+        result_text=result_text,
+        scope_after=scope_after,
+    )
+
+
 async def run_link_vs_button_scenario(page, base_url: str) -> dict:
     """Disambiguation: NL "Click the Sign in link" picks the <a>, not the <button>.
 
@@ -318,6 +451,8 @@ async def run(headless: bool) -> int:
                 results.append(await run_checkbox_scenario(page, base_url))
                 results.append(await run_radio_scenario(page, base_url))
                 results.append(await run_link_vs_button_scenario(page, base_url))
+                results.append(await run_combobox_scenario(page, base_url))
+                results.append(await run_modal_scenario(page, base_url))
             finally:
                 await browser.close()
     finally:
