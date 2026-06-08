@@ -94,6 +94,8 @@ def test_dataset_has_expected_coverage() -> None:
         "upload-to-field",
         "attach-as-field",
         "check-that-is-verify",
+        "leading-verb-click-beats-select-in-target",
+        "leading-verb-open-becomes-click",
     }
     missing = required - case_ids
     assert not missing, f"Required golden cases removed from dataset: {missing}"

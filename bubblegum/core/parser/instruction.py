@@ -114,6 +114,49 @@ def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
     return ParsedIntent(action, target, explicit_value, confident=bool(target))
 
 
+# Phase 22E-1e: when the instruction's first word is a known verb, that
+# verb determines the action. Substring matching against the whole text
+# (the older behaviour) mis-classifies "Click Select country" as
+# action=select because "Select" appears in the target's name, not as a
+# verb. The leading-verb rule fixes that without breaking the substring
+# fallbacks below (which still catch verify markers and the bare
+# "value into target" idiom).
+_LEADING_VERB_TO_ACTION: dict[str, str] = {
+    "click": "click",
+    "press": "click",
+    "open": "click",
+    "follow": "click",
+    "navigate": "click",
+    "go": "click",
+    "tap": "tap",
+    "touch": "tap",
+    "type": "type",
+    "enter": "type",
+    "fill": "type",
+    "input": "type",
+    "select": "select",
+    "choose": "select",
+    "pick": "select",
+    "upload": "upload",
+    "attach": "upload",
+    "check": "check",
+    "tick": "check",
+    "toggle": "check",
+    "uncheck": "uncheck",
+    "untick": "uncheck",
+    "scroll": "scroll",
+    "extract": "extract",
+    "get": "extract",
+    "read": "extract",
+    "fetch": "extract",
+    "verify": "verify",
+    "assert": "verify",
+    "confirm": "verify",
+    "ensure": "verify",
+    "see": "verify",
+}
+
+
 def infer_action_type(instruction: str, kwargs: dict) -> str:
     """Infer action_type from kwargs or instruction text."""
     if "action_type" in kwargs:
@@ -123,8 +166,20 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
     # "check" as a verb (e.g. "Check that login is visible" → verify).
     if any(w in lowered for w in ("verify", "assert", "visible", "present", "displayed", "shown")):
         return "verify"
-    if re.search(r'\bcheck\s+(?:that|if)\b', lowered):
+    if re.search(r'\bcheck\s+(?:that|if|whether)\b', lowered):
         return "verify"
+
+    # Leading-verb rule: when the first word is a known verb, use it.
+    # Catches "Click Select country" -> click (the verb is "Click", "Select"
+    # is part of the target's accessible name).
+    first_word_match = re.match(r"^\s*([a-z]+)", lowered)
+    if first_word_match:
+        first_word = first_word_match.group(1)
+        if first_word in _LEADING_VERB_TO_ACTION:
+            return _LEADING_VERB_TO_ACTION[first_word]
+
+    # Substring fallbacks for instructions that do not start with a verb
+    # (e.g. "tomsmith into Username" — bare value relying on a separator).
     if re.search(r'\b(upload|attach)\b', lowered):
         return "upload"
     if re.search(r'\b(uncheck|untick)\b', lowered):
