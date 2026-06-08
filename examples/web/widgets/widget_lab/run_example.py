@@ -323,6 +323,14 @@ async def run_combobox_scenario(page, base_url: str, *, nl_only: bool = False) -
         ),
     )
     _diag(nl_only, "pick-india", step_pick)
+    if nl_only and step_pick.status != "passed":
+        # Listbox is open; dump the snapshot so we can see exactly which
+        # option entries Playwright surfaced.
+        snap = await page.locator("body").aria_snapshot()
+        print(f"  [diag] pick-india: dump aria_snapshot (option entries):")
+        for line in snap.splitlines():
+            if "option" in line.lower() or "listbox" in line.lower() or "combobox" in line.lower():
+                print(f"    {line}")
 
     trigger_text = (await page.locator("#country-trigger").inner_text()).strip()
     trigger_value = await page.locator("#country-trigger").get_attribute("data-value")

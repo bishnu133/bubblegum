@@ -321,6 +321,21 @@ def test_real_link_vs_button_button_wins_when_no_kind_hint():
     assert top == 'role=button[name="Sign in"]'
 
 
+def test_combobox_option_passes_review_threshold():
+    """Phase 22E-1g: a role=option click target must score above the
+    review_threshold (0.70). Pre-fix role_fit_score(option, click)=0.5
+    gave option a weighted score of 0.67, so the engine dropped it.
+    The fix bumps option to the 0.8 tier (same as menuitem/tab/etc).
+    """
+    snapshot = (
+        '- combobox "Country"\n'
+        '- listbox "Country"\n'
+        '  - option "India"\n'
+        '  - option "Singapore"\n'
+    )
+    assert _top_ref(snapshot, "Click India") == 'role=option[name="India"]'
+
+
 def test_real_combobox_with_name_and_value_resolves_by_name():
     """Phase 22E-1f: when the combobox has BOTH an accessible name AND an
     inline value (`combobox "Select country": Select country`), the
