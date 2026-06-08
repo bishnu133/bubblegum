@@ -251,6 +251,15 @@ class AccessibilityTreeResolver(Resolver):
                 enriched.append(target)
                 continue
             _, tmatch, rmatch, vis = row
+            # Phase 22E-1c: kind-aligned candidates also get role_match=1.0
+            # so the downstream ranker cannot undo the 22E-1a confidence
+            # bias via the role signal. Without this, "Click the Sign in
+            # link" still loses to role=button (role_fit=1.0 for click) even
+            # though role=link got the +0.03 confidence nudge.
+            if kind_hint != "none" and _kind_role_aligned(
+                kind_hint, str(target.metadata.get("role", ""))
+            ):
+                rmatch = 1.0
             uniq = 1.0 if counts.get(target.ref, 0) == 1 else 0.6
             boosted_tmatch = _signal_text_match(
                 intent=intent,

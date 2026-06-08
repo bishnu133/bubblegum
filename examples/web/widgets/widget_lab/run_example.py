@@ -80,6 +80,25 @@ def _safety_net(nl_only: bool, **strict_kwargs):
     return {} if nl_only else strict_kwargs
 
 
+def _diag(nl_only: bool, label: str, step) -> None:
+    """Print the resolver outcome for a strict-mode step.
+
+    Strict NL-only runs are where we learn whether the synthetic-snapshot
+    probe matches real-browser behaviour. When something fails, this diag
+    line tells us which element the resolver actually picked so we can
+    target the fix instead of guessing.
+    """
+    if not nl_only:
+        return
+    if step.target is None:
+        print(f"  [diag] {label}: status={step.status}  target=None  (resolver returned no candidates)")
+        return
+    ref = step.target.ref
+    resolver = step.target.resolver_name
+    conf = step.target.confidence
+    print(f"  [diag] {label}: status={step.status}  ref={ref!r}  conf={conf:.2f}  resolver={resolver}")
+
+
 async def run_select_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     from bubblegum import act
 
@@ -98,6 +117,7 @@ async def run_select_scenario(page, base_url: str, *, nl_only: bool = False) -> 
         channel="web",
         **_safety_net(nl_only, action_type="select", selector="#country", input_value="IN"),
     )
+    _diag(nl_only, "select-country", step)
 
     selected_value = await page.locator("#country").input_value()
     state_ok = selected_value == "IN"
@@ -140,6 +160,7 @@ async def run_upload_scenario(page, base_url: str, *, nl_only: bool = False) -> 
         channel="web",
         **_safety_net(nl_only, action_type="upload", selector="#resume", input_value=upload_path),
     )
+    _diag(nl_only, "upload-resume", step)
 
     has_files = await page.evaluate(
         "() => { const i = document.querySelector('#resume');"
@@ -175,6 +196,7 @@ async def run_checkbox_scenario(page, base_url: str, *, nl_only: bool = False) -
         channel="web",
         **_safety_net(nl_only, action_type="check", selector="#cb_newsletter"),
     )
+    _diag(nl_only, "check-newsletter", step_check)
     newsletter_checked = await page.locator("#cb_newsletter").is_checked()
 
     # 2) Uncheck Marketing emails (starts checked) -> should be unchecked
@@ -184,6 +206,7 @@ async def run_checkbox_scenario(page, base_url: str, *, nl_only: bool = False) -
         channel="web",
         **_safety_net(nl_only, action_type="uncheck", selector="#cb_marketing"),
     )
+    _diag(nl_only, "uncheck-marketing", step_uncheck)
     marketing_unchecked = not await page.locator("#cb_marketing").is_checked()
 
     # 3) Terms left untouched -> should stay unchecked
@@ -224,6 +247,7 @@ async def run_radio_scenario(page, base_url: str, *, nl_only: bool = False) -> d
         channel="web",
         **_safety_net(nl_only, action_type="check", selector="#r_red"),
     )
+    _diag(nl_only, "click-red-radio", step)
 
     red_checked = await page.locator("#r_red").is_checked()
     blue_checked = await page.locator("#r_blue").is_checked()
@@ -273,8 +297,20 @@ async def run_combobox_scenario(page, base_url: str, *, nl_only: bool = False) -
         channel="web",
         **_safety_net(nl_only, action_type="click", selector="#country-trigger"),
     )
+    _diag(nl_only, "open-combobox", step_open)
     # Wait for the portal listbox to be visible (it is created at first open).
-    await page.wait_for_selector("#country-listbox", state="visible", timeout=3000)
+    try:
+        await page.wait_for_selector("#country-listbox", state="visible", timeout=3000)
+    except Exception as exc:
+        # Strict-mode diagnostic: if the trigger click did not open the
+        # listbox, capture the live aria_snapshot so we can see what the
+        # resolver actually saw.
+        if nl_only:
+            snap = await page.locator("body").aria_snapshot()
+            print(f"  [diag] open-combobox: listbox never opened; aria_snapshot follows:")
+            for line in snap.splitlines()[:40]:
+                print(f"    {line}")
+        raise
 
     step_pick = await act(
         "Click India",
@@ -286,6 +322,7 @@ async def run_combobox_scenario(page, base_url: str, *, nl_only: bool = False) -
             selector="#country-listbox [role='option'][data-value='IN']",
         ),
     )
+    _diag(nl_only, "pick-india", step_pick)
 
     trigger_text = (await page.locator("#country-trigger").inner_text()).strip()
     trigger_value = await page.locator("#country-trigger").get_attribute("data-value")
@@ -334,6 +371,7 @@ async def run_modal_scenario(page, base_url: str, *, nl_only: bool = False) -> d
             "Click Open Settings",
             **_safety_net(nl_only, action_type="click", selector="#open-settings"),
         )
+        _diag(nl_only, "open-settings", step_open)
         await page.wait_for_selector(
             "#settings-dialog[aria-modal='true']", state="visible", timeout=3000
         )
@@ -347,6 +385,7 @@ async def run_modal_scenario(page, base_url: str, *, nl_only: bool = False) -> d
             'Enter "Bishnu" into Name',
             **_safety_net(nl_only, action_type="type", selector="#dialog-name", input_value="Bishnu"),
         )
+        _diag(nl_only, "type-name", step_type)
 
         # Verify the value landed inside the dialog before we close it.
         typed_value = await page.locator("#dialog-name").input_value()
@@ -404,8 +443,19 @@ async def run_link_vs_button_scenario(page, base_url: str, *, nl_only: bool = Fa
         channel="web",
         **_safety_net(nl_only, action_type="click", selector="#lnk_signin"),
     )
+    _diag(nl_only, "click-sign-in-link", step_link)
     await page.wait_for_load_state("domcontentloaded")
-    heading_text = await page.locator("#heading").inner_text()
+    try:
+        heading_text = await page.locator("#heading").inner_text(timeout=3000)
+    except Exception:
+        # Strict-mode diagnostic: if the link click did not navigate, dump
+        # the aria_snapshot so we can see which element actually got clicked.
+        if nl_only:
+            snap = await page.locator("body").aria_snapshot()
+            print(f"  [diag] click-sign-in-link: did not navigate; aria_snapshot follows:")
+            for line in snap.splitlines()[:30]:
+                print(f"    {line}")
+        raise
     url_after = page.url
     link_navigated = url_after != url_before and url_after.endswith("/link-clicked.html")
     link_heading_ok = heading_text.strip() == "Link clicked!"
@@ -421,6 +471,7 @@ async def run_link_vs_button_scenario(page, base_url: str, *, nl_only: bool = Fa
         channel="web",
         **_safety_net(nl_only, action_type="click", selector="#btn_signin"),
     )
+    _diag(nl_only, "click-sign-in-button", step_btn)
     # The button does not navigate; wait briefly for the onclick handler.
     await page.wait_for_function(
         "() => document.getElementById('result') && "
