@@ -1,7 +1,7 @@
 """Internal normalized cross-platform element models (Phase 19C MVP)."""
 
 from .graph import ElementGraph
-from .query import build_graph_query_diagnostics
+from .query import ControlKind, KNOWN_CONTROL_KINDS, build_graph_query_diagnostics
 from .normalized import (
     NormalizedBounds,
     NormalizedElement,
@@ -10,7 +10,9 @@ from .normalized import (
 )
 
 __all__ = [
+    "ControlKind",
     "ElementGraph",
+    "KNOWN_CONTROL_KINDS",
     "build_graph_query_diagnostics",
     "NormalizedBounds",
     "NormalizedElement",

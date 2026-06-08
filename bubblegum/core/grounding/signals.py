@@ -35,9 +35,15 @@ def role_fit_score(role: str, action_type: str) -> float:
     for click, textbox > link for type).
     """
     if action_type in ("click", "tap"):
-        if role in {"button", "switch"}:
+        # combobox: a <button role="combobox"> trigger is the primary
+        # clickable surface that opens its listbox -- treat it like button.
+        if role in {"button", "switch", "combobox"}:
             return 1.0
-        if role in {"tab", "menuitem", "checkbox", "radio"}:
+        # option: a <li role="option"> inside an opened listbox is a
+        # first-class click target (same family as menuitem/tab). Without
+        # this, "Click India" on a combobox option weights to 0.67 and
+        # falls below the engine's review_threshold of 0.70.
+        if role in {"tab", "menuitem", "checkbox", "radio", "option"}:
             return 0.8
         if role == "link":
             return 0.7

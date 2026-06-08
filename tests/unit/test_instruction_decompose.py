@@ -20,7 +20,9 @@ from bubblegum.core.parser import decompose
         ("Fill 'secret' in Password", "type", "Password", "secret"),
         ("Select California from State", "select", "State", "California"),
         ("Click Login", "click", "Login", None),
-        ("Tap the Submit button", "tap", "Submit button", None),
+        # Phase 22D-2: trailing widget-kind suffix ("button") is stripped so
+        # the target phrase matches the element's accessible name.
+        ("Tap the Submit button", "tap", "Submit", None),
         ("Verify Dashboard is visible", "verify", "Dashboard is visible", None),
     ],
 )

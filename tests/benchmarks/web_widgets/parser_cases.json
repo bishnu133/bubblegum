@@ -1,0 +1,228 @@
+{
+  "version": 1,
+  "phase": "22D-2",
+  "description": "Golden parser cases for Bubblegum widget vocabulary. Each case asserts the output of decompose() and parse_relational_intent() for one NL instruction. Absent fields are not checked.",
+  "cases": [
+    {
+      "id": "select-from-country-no-dropdown-word",
+      "instruction": "Select India from Country",
+      "expected": {
+        "action_type": "select",
+        "target_phrase": "Country",
+        "input_value": "India",
+        "control_kind_hint": "dropdown",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "select-from-country-with-dropdown-word",
+      "instruction": "Select Singapore from the Country dropdown",
+      "expected": {
+        "action_type": "select",
+        "input_value": "Singapore",
+        "control_kind_hint": "dropdown",
+        "relation_type": "within_region",
+        "scope_label": "Country"
+      }
+    },
+    {
+      "id": "choose-from-colors",
+      "instruction": "Choose Red from Colors",
+      "expected": {
+        "action_type": "select",
+        "target_phrase": "Colors",
+        "input_value": "Red",
+        "control_kind_hint": "dropdown",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "click-link",
+      "instruction": "Click the Sign in link",
+      "expected": {
+        "action_type": "click",
+        "target_phrase": "Sign in",
+        "control_kind_hint": "link",
+        "primary_target_text": "Sign in",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "open-link",
+      "instruction": "Open the Forgot password link",
+      "expected": {
+        "action_type": "click",
+        "target_phrase": "Forgot password",
+        "control_kind_hint": "link",
+        "primary_target_text": "Forgot password",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "click-radio",
+      "instruction": "Click Red radio",
+      "expected": {
+        "action_type": "click",
+        "target_phrase": "Red",
+        "control_kind_hint": "radio",
+        "primary_target_text": "Red",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "choose-radio-button",
+      "instruction": "Choose Blue radio button",
+      "expected": {
+        "action_type": "select",
+        "target_phrase": "Blue",
+        "control_kind_hint": "radio",
+        "primary_target_text": "Blue",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "check-checkbox-bare",
+      "instruction": "Check Remember me",
+      "expected": {
+        "action_type": "check",
+        "target_phrase": "Remember me",
+        "control_kind_hint": "checkbox",
+        "primary_target_text": "Remember me",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "uncheck-checkbox",
+      "instruction": "Uncheck Newsletter",
+      "expected": {
+        "action_type": "uncheck",
+        "target_phrase": "Newsletter",
+        "control_kind_hint": "checkbox",
+        "primary_target_text": "Newsletter",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "tick-checkbox",
+      "instruction": "Tick Terms and Conditions",
+      "expected": {
+        "action_type": "check",
+        "control_kind_hint": "checkbox",
+        "primary_target_text": "Terms and Conditions",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "untick-checkbox",
+      "instruction": "Untick Subscribe",
+      "expected": {
+        "action_type": "uncheck",
+        "control_kind_hint": "checkbox",
+        "primary_target_text": "Subscribe",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "toggle-switch",
+      "instruction": "Toggle dark mode",
+      "expected": {
+        "action_type": "check",
+        "target_phrase": "dark mode",
+        "control_kind_hint": "switch",
+        "primary_target_text": "dark mode",
+        "relation_type": "label_for"
+      }
+    },
+    {
+      "id": "upload-to-field",
+      "instruction": "Upload /tmp/resume.pdf to Resume",
+      "expected": {
+        "action_type": "upload",
+        "target_phrase": "Resume",
+        "input_value": "/tmp/resume.pdf"
+      }
+    },
+    {
+      "id": "attach-as-field",
+      "instruction": "Attach /tmp/avatar.png as Profile picture",
+      "expected": {
+        "action_type": "upload",
+        "target_phrase": "Profile picture",
+        "input_value": "/tmp/avatar.png"
+      }
+    },
+    {
+      "id": "check-that-is-verify",
+      "instruction": "Check that login is visible",
+      "expected": {
+        "action_type": "verify"
+      }
+    },
+    {
+      "id": "verify-visible-stays-verify",
+      "instruction": "Verify Welcome message is visible",
+      "expected": {
+        "action_type": "verify"
+      }
+    },
+    {
+      "id": "click-stays-click",
+      "instruction": "Click Login",
+      "expected": {
+        "action_type": "click",
+        "target_phrase": "Login"
+      }
+    },
+    {
+      "id": "leading-verb-click-beats-select-in-target",
+      "instruction": "Click Select country",
+      "expected": {
+        "action_type": "click",
+        "target_phrase": "Select country"
+      }
+    },
+    {
+      "id": "leading-verb-click-beats-type-in-target",
+      "instruction": "Click Type filter",
+      "expected": {
+        "action_type": "click",
+        "target_phrase": "Type filter"
+      }
+    },
+    {
+      "id": "leading-verb-open-becomes-click",
+      "instruction": "Open Settings",
+      "expected": {
+        "action_type": "click",
+        "target_phrase": "Settings"
+      }
+    },
+    {
+      "id": "type-into-stays-type",
+      "instruction": "Enter \"tomsmith\" into Username",
+      "expected": {
+        "action_type": "type",
+        "target_phrase": "Username",
+        "input_value": "tomsmith"
+      }
+    },
+    {
+      "id": "for-anchor-relational",
+      "instruction": "Click Edit for Alice Johnson",
+      "expected": {
+        "action_type": "click",
+        "relation_type": "same_row_as_text",
+        "anchor_text": "Alice Johnson"
+      }
+    },
+    {
+      "id": "in-modal-relational",
+      "instruction": "Click Delete in the confirmation modal",
+      "expected": {
+        "action_type": "click",
+        "relation_type": "within_modal",
+        "scope_label": "confirmation modal"
+      }
+    }
+  ]
+}

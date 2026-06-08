@@ -89,24 +89,65 @@ _ROLE_ALIASES: dict[str, str] = {
 
 
 def _make_snapshot_re() -> re.Pattern:
-    # Built as a plain string to avoid any ambiguity with raw-string escaping.
-    # Captures three named groups: role, elname (element name), attrs.
-    # Example lines matched:
-    #   - button "Login"
-    #     - textbox "Username"
-    #   - heading "My App" [level=1]
-    #   - button
+    # Captures: role, elname (from `"name"` OR `: name` forms), attrs.
+    # Playwright's locator.aria_snapshot() uses two different name forms:
+    #
+    #   - button "Sign in"                  <- quoted form (most roles)
+    #   - combobox: Select country          <- inline-value form
+    #                                          (combobox, sometimes textbox)
+    #
+    # Some lines combine both, e.g.
+    #
+    #   - combobox "Country": United States <- quoted name + inline value
+    #
+    # We always extract the quoted name when present (the accessible name
+    # is the right text for the role-based selector), and let the trailing
+    # `: value` be discarded by the final `\s*(?::\s*[^\[\n]*)?\s*$`.
+    # YAML "has children" colons stay unmatched because the bare colon
+    # branch requires at least one non-whitespace char of inline value.
     pattern = (
-        r"^[\s\-]*"                     # optional indent / dashes
-        r"(?P<role>[a-zA-Z]+)"          # role word
-        r'(?:\s+"(?P<elname>[^"]+)")?'  # optional  "quoted name"
-        r"(?:\s+\[(?P<attrs>[^\]]*)\])?" # optional [attrs]
-        r"\s*:?\s*$"
+        r"^[\s\-]*"                                 # optional indent / dashes
+        r"(?P<role>[a-zA-Z]+)"                      # role word
+        r'(?:'
+        r'\s+"(?P<elname_q>[^"]+)"'                 # role "name"
+        r'|:\s*(?P<elname_c>[^\s\[][^\[\n]*?)'      # role: name (inline value)
+        r')?'
+        r"(?:\s+\[(?P<attrs>[^\]]*)\])?"            # optional [attrs]
+        r"\s*(?::\s*[^\[\n]*)?"                     # optional trailing : value
+        r"\s*$"
     )
     return re.compile(pattern)
 
 
 _SNAPSHOT_LINE_RE = _make_snapshot_re()
+
+
+# Phase 22E-1: when the parser surfaces a control_kind_hint (link, radio,
+# combobox, dialog, switch, tab, input, button), candidates whose role
+# aligns with that hint get a small tie-breaking confidence boost. This
+# lets "Click the Sign in link" prefer role=link over role=button when
+# both candidates would otherwise tie on text match. Stays small (< 0.05)
+# so it cannot promote a weak-match candidate over a strong one.
+_KIND_ROLE_ALIGNMENT: dict[str, frozenset[str]] = {
+    "link":     frozenset({"link"}),
+    "button":   frozenset({"button"}),
+    "checkbox": frozenset({"checkbox"}),
+    "radio":    frozenset({"radio"}),
+    "switch":   frozenset({"switch"}),
+    "tab":      frozenset({"tab"}),
+    "dropdown": frozenset({"combobox", "listbox"}),
+    "select":   frozenset({"combobox", "listbox"}),
+    "combobox": frozenset({"combobox"}),
+    "dialog":   frozenset({"dialog", "alertdialog"}),
+    "input":    frozenset({"textbox", "searchbox"}),
+}
+_KIND_BIAS = 0.03  # < 0.05 so it cannot cross the ambiguity_gap threshold.
+
+
+def _kind_role_aligned(kind: str, role: str) -> bool:
+    if not kind or kind == "none":
+        return False
+    return role in _KIND_ROLE_ALIGNMENT.get(kind, frozenset())
 
 
 class AccessibilityTreeResolver(Resolver):
@@ -144,7 +185,9 @@ class AccessibilityTreeResolver(Resolver):
                 continue
 
             raw_role = m.group("role").lower()
-            elname   = strip_icon_chars((m.group("elname") or "").strip())
+            elname   = strip_icon_chars(
+                (m.group("elname_q") or m.group("elname_c") or "").strip()
+            )
             role     = _ROLE_ALIASES.get(raw_role)
 
             if not role:
@@ -199,6 +242,23 @@ class AccessibilityTreeResolver(Resolver):
         if isinstance(context_graph, ElementGraph) and isinstance(relational_intent, dict):
             diagnostics = build_graph_query_diagnostics(context_graph, relational_intent, action_type=intent.action_type)
 
+        # Phase 22E-1: kind-hint tie-break. If the parser said "Click the Sign
+        # in link", boost role=link over role=button when their text scores
+        # would otherwise tie.
+        kind_hint = "none"
+        if isinstance(relational_intent, dict):
+            kind_hint = str(relational_intent.get("control_kind_hint") or "none").lower()
+        if kind_hint != "none":
+            biased: list[ResolvedTarget] = []
+            for cand in candidates:
+                role = str(cand.metadata.get("role", ""))
+                if _kind_role_aligned(kind_hint, role):
+                    nudged = min(1.0, cand.confidence + _KIND_BIAS)
+                    biased.append(cand.model_copy(update={"confidence": nudged}))
+                else:
+                    biased.append(cand)
+            candidates = biased
+
         enriched: list[ResolvedTarget] = []
         for target in candidates:
             row = next((r for r in signal_rows if r[0] == target.ref), None)
@@ -206,6 +266,19 @@ class AccessibilityTreeResolver(Resolver):
                 enriched.append(target)
                 continue
             _, tmatch, rmatch, vis = row
+            # Phase 22E-1c/d: kind-aligned candidates get role_match=1.0;
+            # candidates whose role does NOT match an explicit kind hint
+            # get a penalty so the aligned candidate has a real lead in
+            # the ranker (otherwise both can end up at 1.0 after the
+            # alignment boost and tie -- ranker.rank is stable so the
+            # earlier-in-snapshot candidate wins, which is exactly the
+            # wrong behaviour for "Click the Sign in link").
+            if kind_hint != "none":
+                target_role = str(target.metadata.get("role", ""))
+                if _kind_role_aligned(kind_hint, target_role):
+                    rmatch = 1.0
+                else:
+                    rmatch = max(0.0, rmatch * 0.7)
             uniq = 1.0 if counts.get(target.ref, 0) == 1 else 0.6
             boosted_tmatch = _signal_text_match(
                 intent=intent,
