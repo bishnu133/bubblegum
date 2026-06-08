@@ -35,7 +35,9 @@ def role_fit_score(role: str, action_type: str) -> float:
     for click, textbox > link for type).
     """
     if action_type in ("click", "tap"):
-        if role in {"button", "switch"}:
+        # combobox: a <button role="combobox"> trigger is the primary
+        # clickable surface that opens its listbox -- treat it like button.
+        if role in {"button", "switch", "combobox"}:
             return 1.0
         if role in {"tab", "menuitem", "checkbox", "radio"}:
             return 0.8

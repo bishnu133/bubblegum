@@ -89,18 +89,23 @@ _ROLE_ALIASES: dict[str, str] = {
 
 
 def _make_snapshot_re() -> re.Pattern:
-    # Built as a plain string to avoid any ambiguity with raw-string escaping.
-    # Captures three named groups: role, elname (element name), attrs.
-    # Example lines matched:
-    #   - button "Login"
-    #     - textbox "Username"
-    #   - heading "My App" [level=1]
-    #   - button
+    # Captures: role, elname (from `"name"` OR `: name` forms), attrs.
+    # Playwright's locator.aria_snapshot() uses two different name forms:
+    #
+    #   - button "Sign in"                  <- quoted form (most roles)
+    #   - combobox: Select country          <- inline-value form
+    #                                          (combobox, sometimes textbox)
+    #
+    # YAML "has children" colons stay unmatched because the `:` branch
+    # requires at least one non-whitespace char of inline value after it.
     pattern = (
-        r"^[\s\-]*"                     # optional indent / dashes
-        r"(?P<role>[a-zA-Z]+)"          # role word
-        r'(?:\s+"(?P<elname>[^"]+)")?'  # optional  "quoted name"
-        r"(?:\s+\[(?P<attrs>[^\]]*)\])?" # optional [attrs]
+        r"^[\s\-]*"                                 # optional indent / dashes
+        r"(?P<role>[a-zA-Z]+)"                      # role word
+        r'(?:'
+        r'\s+"(?P<elname_q>[^"]+)"'                 # role "name"
+        r'|:\s*(?P<elname_c>[^\s\[][^\[\n]*?)'      # role: name (inline value)
+        r')?'
+        r"(?:\s+\[(?P<attrs>[^\]]*)\])?"            # optional [attrs]
         r"\s*:?\s*$"
     )
     return re.compile(pattern)
@@ -172,7 +177,9 @@ class AccessibilityTreeResolver(Resolver):
                 continue
 
             raw_role = m.group("role").lower()
-            elname   = strip_icon_chars((m.group("elname") or "").strip())
+            elname   = strip_icon_chars(
+                (m.group("elname_q") or m.group("elname_c") or "").strip()
+            )
             role     = _ROLE_ALIASES.get(raw_role)
 
             if not role:
@@ -251,15 +258,19 @@ class AccessibilityTreeResolver(Resolver):
                 enriched.append(target)
                 continue
             _, tmatch, rmatch, vis = row
-            # Phase 22E-1c: kind-aligned candidates also get role_match=1.0
-            # so the downstream ranker cannot undo the 22E-1a confidence
-            # bias via the role signal. Without this, "Click the Sign in
-            # link" still loses to role=button (role_fit=1.0 for click) even
-            # though role=link got the +0.03 confidence nudge.
-            if kind_hint != "none" and _kind_role_aligned(
-                kind_hint, str(target.metadata.get("role", ""))
-            ):
-                rmatch = 1.0
+            # Phase 22E-1c/d: kind-aligned candidates get role_match=1.0;
+            # candidates whose role does NOT match an explicit kind hint
+            # get a penalty so the aligned candidate has a real lead in
+            # the ranker (otherwise both can end up at 1.0 after the
+            # alignment boost and tie -- ranker.rank is stable so the
+            # earlier-in-snapshot candidate wins, which is exactly the
+            # wrong behaviour for "Click the Sign in link").
+            if kind_hint != "none":
+                target_role = str(target.metadata.get("role", ""))
+                if _kind_role_aligned(kind_hint, target_role):
+                    rmatch = 1.0
+                else:
+                    rmatch = max(0.0, rmatch * 0.7)
             uniq = 1.0 if counts.get(target.ref, 0) == 1 else 0.6
             boosted_tmatch = _signal_text_match(
                 intent=intent,

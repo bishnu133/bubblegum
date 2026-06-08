@@ -17,9 +17,11 @@ from typing import Optional
 
 import pytest
 
+from bubblegum.core.grounding.ranker import CandidateRanker
 from bubblegum.core.grounding.resolvers.accessibility_tree import (
     AccessibilityTreeResolver,
 )
+from bubblegum.core.grounding.resolvers.fuzzy_text import FuzzyTextResolver
 from bubblegum.core.parser.instruction import (
     decompose,
     infer_action_type,
@@ -29,7 +31,12 @@ from bubblegum.core.schemas import StepIntent
 
 
 # ---------------------------------------------------------------------------
-# Helpers: build a StepIntent the same way the SDK does, then run resolver.
+# Helpers: build a StepIntent the same way the SDK does, then run the full
+# Tier 1 + Tier 2 candidate pipeline through the ranker. Using the ranker
+# (not raw resolver.confidence) is critical: the engine's early-exit and
+# tie-breaking use the ranker's weighted score, so a probe that only looks
+# at raw confidence can miss the real production ordering (which is what
+# the 22E-1c lab strict run exposed).
 # ---------------------------------------------------------------------------
 
 
@@ -51,19 +58,23 @@ def _intent(instruction: str, snapshot: str) -> StepIntent:
     )
 
 
+def _resolve_all(snapshot: str, instruction: str):
+    intent = _intent(instruction, snapshot)
+    candidates = []
+    for resolver in (AccessibilityTreeResolver(), FuzzyTextResolver()):
+        candidates.extend(resolver.resolve(intent))
+    return candidates
+
+
 def _top_ref(snapshot: str, instruction: str) -> Optional[str]:
-    resolver = AccessibilityTreeResolver()
-    candidates = resolver.resolve(_intent(instruction, snapshot))
+    candidates = _resolve_all(snapshot, instruction)
     if not candidates:
         return None
-    top = max(candidates, key=lambda c: c.confidence)
-    return top.ref
+    return CandidateRanker().best(candidates).ref
 
 
 def _all_refs(snapshot: str, instruction: str) -> list[str]:
-    resolver = AccessibilityTreeResolver()
-    candidates = resolver.resolve(_intent(instruction, snapshot))
-    return [c.ref for c in candidates]
+    return [c.ref for c in _resolve_all(snapshot, instruction)]
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +154,41 @@ SNAPSHOT_COMBOBOX_OPEN = """\
   - option "India"
   - option "United Kingdom"
   - option "Singapore"
+"""
+
+# Phase 22E-1c surfaced this: Playwright's real aria_snapshot uses an
+# inline-value form for the combobox trigger ("role: name", not "role
+# \"name\""). The 22E-1d regex update accepts both forms; this snapshot
+# pins the new behaviour.
+SNAPSHOT_COMBOBOX_REAL_CLOSED = """\
+- heading "Custom combobox (portal-rendered listbox)" [level=1]
+- paragraph:
+  - text: The trigger lives inline; the listbox is appended to
+  - code: document.body
+- combobox: Select country
+- paragraph
+"""
+
+# Real link-vs-button snapshot the user captured: contains both `button
+# "Sign in"` and `link "Sign in":` (with children for the href). Tier-1
+# regression: the link must win when the NL says "link" even when the
+# button appears earlier in DOM order.
+SNAPSHOT_LINK_VS_BUTTON_REAL = """\
+- heading "Link vs Button — same label" [level=1]
+- paragraph: "Both controls have the accessible name \\"Sign in\\". The expected disambiguation:"
+- list:
+  - listitem:
+    - text: "\\"Click the Sign in"
+    - strong: link
+    - text: "\\" → navigates to"
+    - code: /link-clicked.html
+  - listitem:
+    - text: "\\"Click the Sign in"
+    - strong: button
+- button "Sign in"
+- link "Sign in":
+  - /url: /link-clicked.html
+- paragraph: Button clicked!
 """
 
 # Modal — pages/modal.html (after opening the dialog)
@@ -244,6 +290,34 @@ def test_link_vs_button_button_default_when_no_kind_hint():
 def test_link_vs_button_button_resolves_to_button_when_button_in_phrase():
     """When the NL says 'button', the result is still the button."""
     top = _top_ref(SNAPSHOT_LINK_VS_BUTTON, "Click the Sign in button")
+    assert top == 'role=button[name="Sign in"]'
+
+
+# ---------------------------------------------------------------------------
+# 22E-1d real-snapshot regressions (from the lab strict run user pasted)
+# ---------------------------------------------------------------------------
+
+
+def test_real_combobox_inline_value_form_resolves():
+    """`combobox: Select country` (no quotes around the name) must parse
+    correctly with the 22E-1d regex update. Pre-22E-1d this dropped the
+    name and the resolver returned target=None.
+    """
+    top = _top_ref(SNAPSHOT_COMBOBOX_REAL_CLOSED, "Click Select country")
+    assert top == 'role=combobox[name="Select country"]'
+
+
+def test_real_link_vs_button_link_wins_against_noisy_snapshot():
+    """Real Playwright snapshot includes paragraph/listitem text that also
+    mentions 'Sign in' (from the page's instructional copy). The kind-hint
+    bias must still pick the role=link element, not noise.
+    """
+    top = _top_ref(SNAPSHOT_LINK_VS_BUTTON_REAL, "Click the Sign in link")
+    assert top == 'role=link[name="Sign in"]'
+
+
+def test_real_link_vs_button_button_wins_when_no_kind_hint():
+    top = _top_ref(SNAPSHOT_LINK_VS_BUTTON_REAL, "Click Sign in")
     assert top == 'role=button[name="Sign in"]'
 
 

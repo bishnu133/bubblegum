@@ -81,11 +81,40 @@ for _a, _b in _SYNONYMS:
 # ---------------------------------------------------------------------------
 # Snapshot line parser (same pattern as AccessibilityTreeResolver)
 # ---------------------------------------------------------------------------
+# Phase 22E-1d: kind-hint role alignment table. Mirrors the one in
+# accessibility_tree.py so the kind hint works whichever resolver wins.
+_KIND_ROLE_ALIGNMENT: dict[str, frozenset[str]] = {
+    "link":     frozenset({"link"}),
+    "button":   frozenset({"button"}),
+    "checkbox": frozenset({"checkbox"}),
+    "radio":    frozenset({"radio"}),
+    "switch":   frozenset({"switch"}),
+    "tab":      frozenset({"tab"}),
+    "dropdown": frozenset({"combobox", "listbox"}),
+    "select":   frozenset({"combobox", "listbox"}),
+    "combobox": frozenset({"combobox"}),
+    "dialog":   frozenset({"dialog", "alertdialog"}),
+    "input":    frozenset({"textbox", "searchbox"}),
+}
+
+
+def _fuzzy_kind_role_aligned(kind: str, role: str) -> bool:
+    if not kind or kind == "none":
+        return False
+    return role in _KIND_ROLE_ALIGNMENT.get(kind, frozenset())
+
+
+# Phase 22E-1d: accept both `role "name"` and `role: name` (Playwright's
+# inline-value form, common for combobox / textbox). See accessibility_tree
+# for the rationale.
 _SNAPSHOT_LINE_RE = re.compile(
     r"""
     ^[\s\-]*
     (?P<role>[a-zA-Z]+)
-    (?:\s+"(?P<elname>[^"]+)")?
+    (?:
+        \s+"(?P<elname_q>[^"]+)"
+      | :\s*(?P<elname_c>[^\s\[][^\[\n]*?)
+    )?
     (?:\s+\[(?P<attrs>[^\]]*)\])?
     \s*:?\s*$
     """,
@@ -156,7 +185,9 @@ class FuzzyTextResolver(Resolver):
                 continue
 
             raw_role = m.group("role").lower()
-            elname   = strip_icon_chars((m.group("elname") or "").strip())
+            elname   = strip_icon_chars(
+                (m.group("elname_q") or m.group("elname_c") or "").strip()
+            )
 
             if not elname:
                 continue  # fuzzy matching requires an accessible name
@@ -195,6 +226,13 @@ class FuzzyTextResolver(Resolver):
                 ref, confidence, ratio, matched,
             )
 
+        # Phase 22E-1d: same kind-hint bias as accessibility_tree so the
+        # kind hint works regardless of which Tier 1/2 resolver wins.
+        relational_intent = intent.context.get("relational_intent")
+        kind_hint = "none"
+        if isinstance(relational_intent, dict):
+            kind_hint = str(relational_intent.get("control_kind_hint") or "none").lower()
+
         counts={r:0 for r,_,_ in rows}
         for r,_,_ in rows: counts[r]+=1
         enriched=[]
@@ -203,6 +241,12 @@ class FuzzyTextResolver(Resolver):
             if row is None:
                 enriched.append(t); continue
             _, ratio, rmatch = row
+            if kind_hint != "none":
+                target_role = str(t.metadata.get("role", ""))
+                if _fuzzy_kind_role_aligned(kind_hint, target_role):
+                    rmatch = 1.0
+                else:
+                    rmatch = max(0.0, rmatch * 0.7)
             uniq = 1.0 if counts.get(t.ref,0)==1 else 0.6
             meta=dict(t.metadata); meta["signals"] = make_signals(text_match=ratio, role_match=rmatch, visibility=0.8, uniqueness=uniq, memory=0.0)
             enriched.append(t.model_copy(update={"metadata": meta}))
