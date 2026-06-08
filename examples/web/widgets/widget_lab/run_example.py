@@ -69,23 +69,34 @@ def _result(name: str, passed: bool, **detail) -> dict:
     return out
 
 
-async def run_select_scenario(page, base_url: str) -> dict:
+def _safety_net(nl_only: bool, **strict_kwargs):
+    """Return strict_kwargs unless we are in NL-only mode.
+
+    When `nl_only=True` we drop every selector / action_type / input_value
+    safety net so the resolver chain and the parser have to do the work end
+    to end. Anything the parser cannot extract from the NL string (e.g. a
+    file path the test generates at runtime) is passed via `keep_value=`.
+    """
+    return {} if nl_only else strict_kwargs
+
+
+async def run_select_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     from bubblegum import act
 
     await page.goto(f"{base_url}/select.html")
     await page.wait_for_load_state("domcontentloaded")
 
-    # NL instruction with explicit selector + value as a safety net so the
-    # adapter dispatch path is exercised even when the resolver chain has
-    # not yet been wired for accessibility-tree label-for lookup on
-    # <select> elements (added in 22D-7).
+    # In safety-net mode we pass selector + value so the adapter dispatch is
+    # exercised independently of the resolver. In strict NL-only mode the
+    # parser extracts target="Country" + value="India" from the instruction,
+    # and the accessibility-tree resolver finds the labeled <select>.
+    # select_option() accepts an option's visible label, so "India" works
+    # for a <select> whose option value is "IN".
     step = await act(
         "Select India from Country",
         page=page,
         channel="web",
-        action_type="select",
-        selector="#country",
-        input_value="IN",
+        **_safety_net(nl_only, action_type="select", selector="#country", input_value="IN"),
     )
 
     selected_value = await page.locator("#country").input_value()
@@ -97,6 +108,7 @@ async def run_select_scenario(page, base_url: str) -> dict:
     return _result(
         "native-select",
         passed,
+        nl_only=nl_only,
         action_status=step.status,
         selected_value=selected_value,
         result_text=result_text,
@@ -105,7 +117,7 @@ async def run_select_scenario(page, base_url: str) -> dict:
     )
 
 
-async def run_upload_scenario(page, base_url: str) -> dict:
+async def run_upload_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     from bubblegum import act
 
     await page.goto(f"{base_url}/upload.html")
@@ -119,13 +131,14 @@ async def run_upload_scenario(page, base_url: str) -> dict:
     finally:
         tmp.close()
 
+    # The parser extracts the path from "Upload <path> to Resume", so we can
+    # drop input_value too in NL-only mode. The accessibility-tree resolver
+    # finds the file input by its associated <label for="resume">Resume.
     step = await act(
         f"Upload {upload_path} to Resume",
         page=page,
         channel="web",
-        action_type="upload",
-        selector="#resume",
-        input_value=upload_path,
+        **_safety_net(nl_only, action_type="upload", selector="#resume", input_value=upload_path),
     )
 
     has_files = await page.evaluate(
@@ -140,6 +153,7 @@ async def run_upload_scenario(page, base_url: str) -> dict:
     return _result(
         "file-upload",
         passed,
+        nl_only=nl_only,
         action_status=step.status,
         upload_path=upload_path,
         has_files=bool(has_files),
@@ -148,7 +162,7 @@ async def run_upload_scenario(page, base_url: str) -> dict:
     )
 
 
-async def run_checkbox_scenario(page, base_url: str) -> dict:
+async def run_checkbox_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     from bubblegum import act
 
     await page.goto(f"{base_url}/checkboxes.html")
@@ -159,8 +173,7 @@ async def run_checkbox_scenario(page, base_url: str) -> dict:
         "Check Newsletter",
         page=page,
         channel="web",
-        action_type="check",
-        selector="#cb_newsletter",
+        **_safety_net(nl_only, action_type="check", selector="#cb_newsletter"),
     )
     newsletter_checked = await page.locator("#cb_newsletter").is_checked()
 
@@ -169,8 +182,7 @@ async def run_checkbox_scenario(page, base_url: str) -> dict:
         "Uncheck Marketing emails",
         page=page,
         channel="web",
-        action_type="uncheck",
-        selector="#cb_marketing",
+        **_safety_net(nl_only, action_type="uncheck", selector="#cb_marketing"),
     )
     marketing_unchecked = not await page.locator("#cb_marketing").is_checked()
 
@@ -187,6 +199,7 @@ async def run_checkbox_scenario(page, base_url: str) -> dict:
     return _result(
         "checkbox-group",
         passed,
+        nl_only=nl_only,
         check_status=step_check.status,
         uncheck_status=step_uncheck.status,
         newsletter_checked=newsletter_checked,
@@ -195,19 +208,21 @@ async def run_checkbox_scenario(page, base_url: str) -> dict:
     )
 
 
-async def run_radio_scenario(page, base_url: str) -> dict:
+async def run_radio_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     from bubblegum import act
 
     await page.goto(f"{base_url}/radios.html")
     await page.wait_for_load_state("domcontentloaded")
 
-    # NL "Click Red radio" -> Red selected, Blue/Green unselected.
+    # NL "Click Red radio" -> Red selected, Blue/Green unselected. In NL-only
+    # mode the parser infers action_type=click and target=Red (the "radio"
+    # suffix is stripped); the resolver finds role=radio[name="Red"] and the
+    # adapter dispatches click(), which selects the native input[type=radio].
     step = await act(
         "Click Red radio",
         page=page,
         channel="web",
-        action_type="check",
-        selector="#r_red",
+        **_safety_net(nl_only, action_type="check", selector="#r_red"),
     )
 
     red_checked = await page.locator("#r_red").is_checked()
@@ -226,6 +241,7 @@ async def run_radio_scenario(page, base_url: str) -> dict:
     return _result(
         "radio-group",
         passed,
+        nl_only=nl_only,
         action_status=step.status,
         red_checked=red_checked,
         blue_checked=blue_checked,
@@ -235,13 +251,16 @@ async def run_radio_scenario(page, base_url: str) -> dict:
     )
 
 
-async def run_combobox_scenario(page, base_url: str) -> dict:
+async def run_combobox_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     """ARIA combobox with a portal-rendered listbox.
 
     Step 1 clicks the combobox trigger so the listbox is appended to
     document.body and shown. Step 2 clicks the "India" option inside the
-    portal. State check: trigger label and data-value reflect the choice,
-    listbox is collapsed (aria-expanded=false) after selection.
+    portal. In NL-only mode both steps rely on the resolver finding the
+    combobox by accessible name and the option by visible label after the
+    listbox is appended to the live DOM. State check: trigger label and
+    data-value reflect the choice, listbox is collapsed (aria-expanded=false)
+    after selection.
     """
     from bubblegum import act
 
@@ -252,8 +271,7 @@ async def run_combobox_scenario(page, base_url: str) -> dict:
         "Click Select country",
         page=page,
         channel="web",
-        action_type="click",
-        selector="#country-trigger",
+        **_safety_net(nl_only, action_type="click", selector="#country-trigger"),
     )
     # Wait for the portal listbox to be visible (it is created at first open).
     await page.wait_for_selector("#country-listbox", state="visible", timeout=3000)
@@ -262,8 +280,11 @@ async def run_combobox_scenario(page, base_url: str) -> dict:
         "Click India",
         page=page,
         channel="web",
-        action_type="click",
-        selector="#country-listbox [role='option'][data-value='IN']",
+        **_safety_net(
+            nl_only,
+            action_type="click",
+            selector="#country-listbox [role='option'][data-value='IN']",
+        ),
     )
 
     trigger_text = (await page.locator("#country-trigger").inner_text()).strip()
@@ -285,6 +306,7 @@ async def run_combobox_scenario(page, base_url: str) -> dict:
     return _result(
         "combobox-select",
         passed,
+        nl_only=nl_only,
         open_status=step_open.status,
         pick_status=step_pick.status,
         trigger_text=trigger_text,
@@ -294,7 +316,7 @@ async def run_combobox_scenario(page, base_url: str) -> dict:
     )
 
 
-async def run_modal_scenario(page, base_url: str) -> dict:
+async def run_modal_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     """Open dialog → type into Name → close via session.close_dialog().
 
     Drives a BubblegumSession so close_dialog() is on the public API path,
@@ -310,8 +332,7 @@ async def run_modal_scenario(page, base_url: str) -> dict:
     async with BubblegumSession.web(page) as s:
         step_open = await s.act(
             "Click Open Settings",
-            action_type="click",
-            selector="#open-settings",
+            **_safety_net(nl_only, action_type="click", selector="#open-settings"),
         )
         await page.wait_for_selector(
             "#settings-dialog[aria-modal='true']", state="visible", timeout=3000
@@ -324,9 +345,7 @@ async def run_modal_scenario(page, base_url: str) -> dict:
 
         step_type = await s.act(
             'Enter "Bishnu" into Name',
-            action_type="type",
-            selector="#dialog-name",
-            input_value="Bishnu",
+            **_safety_net(nl_only, action_type="type", selector="#dialog-name", input_value="Bishnu"),
         )
 
         # Verify the value landed inside the dialog before we close it.
@@ -353,6 +372,7 @@ async def run_modal_scenario(page, base_url: str) -> dict:
     return _result(
         "modal-flow",
         passed,
+        nl_only=nl_only,
         open_status=step_open.status,
         type_status=step_type.status,
         typed_value=typed_value,
@@ -363,11 +383,13 @@ async def run_modal_scenario(page, base_url: str) -> dict:
     )
 
 
-async def run_link_vs_button_scenario(page, base_url: str) -> dict:
+async def run_link_vs_button_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
     """Disambiguation: NL "Click the Sign in link" picks the <a>, not the <button>.
 
     Verifies the link branch by URL transition AND the button branch by result
-    text on a separate visit so both code paths run.
+    text on a separate visit so both code paths run. In NL-only mode the 22E-1a
+    kind-hint bias is what makes "link" win the tie over "button" with the
+    same accessible name.
     """
     from bubblegum import act
 
@@ -380,8 +402,7 @@ async def run_link_vs_button_scenario(page, base_url: str) -> dict:
         "Click the Sign in link",
         page=page,
         channel="web",
-        action_type="click",
-        selector="#lnk_signin",
+        **_safety_net(nl_only, action_type="click", selector="#lnk_signin"),
     )
     await page.wait_for_load_state("domcontentloaded")
     heading_text = await page.locator("#heading").inner_text()
@@ -398,8 +419,7 @@ async def run_link_vs_button_scenario(page, base_url: str) -> dict:
         "Click the Sign in button",
         page=page,
         channel="web",
-        action_type="click",
-        selector="#btn_signin",
+        **_safety_net(nl_only, action_type="click", selector="#btn_signin"),
     )
     # The button does not navigate; wait briefly for the onclick handler.
     await page.wait_for_function(
@@ -422,6 +442,7 @@ async def run_link_vs_button_scenario(page, base_url: str) -> dict:
     return _result(
         "link-vs-button",
         passed,
+        nl_only=nl_only,
         link_status=step_link.status,
         button_status=step_btn.status,
         link_navigated=link_navigated,
@@ -431,11 +452,12 @@ async def run_link_vs_button_scenario(page, base_url: str) -> dict:
     )
 
 
-async def run(headless: bool) -> int:
+async def run(headless: bool, nl_only: bool = False) -> int:
     from playwright.async_api import async_playwright
 
     server, base_url = _start_server()
-    print(f"Serving widget lab at {base_url}")
+    mode = "strict NL-only" if nl_only else "with selector safety net"
+    print(f"Serving widget lab at {base_url}  ({mode})")
 
     results: list[dict] = []
     try:
@@ -446,13 +468,13 @@ async def run(headless: bool) -> int:
                 page = await context.new_page()
                 page.set_default_timeout(5_000)
 
-                results.append(await run_select_scenario(page, base_url))
-                results.append(await run_upload_scenario(page, base_url))
-                results.append(await run_checkbox_scenario(page, base_url))
-                results.append(await run_radio_scenario(page, base_url))
-                results.append(await run_link_vs_button_scenario(page, base_url))
-                results.append(await run_combobox_scenario(page, base_url))
-                results.append(await run_modal_scenario(page, base_url))
+                results.append(await run_select_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_upload_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_checkbox_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_radio_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_link_vs_button_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_combobox_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_modal_scenario(page, base_url, nl_only=nl_only))
             finally:
                 await browser.close()
     finally:
@@ -475,10 +497,18 @@ async def run(headless: bool) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--headed", action="store_true", help="Run with a visible browser")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Strict NL-only mode: drop selector= / action_type= / input_value= "
+            "from every scenario and let the parser + resolver do the work."
+        ),
+    )
     args = parser.parse_args()
 
     try:
-        return asyncio.run(run(headless=not args.headed))
+        return asyncio.run(run(headless=not args.headed, nl_only=args.strict))
     except ModuleNotFoundError as exc:
         if "playwright" in str(exc):
             print(PLAYWRIGHT_INSTALL_HINT)

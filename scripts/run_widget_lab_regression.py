@@ -13,6 +13,7 @@ public-site smoke. Opt-in because the public site is not always reachable.
 
 Usage:
   python scripts/run_widget_lab_regression.py
+  python scripts/run_widget_lab_regression.py --strict     # NL-only mode
   python scripts/run_widget_lab_regression.py --public
   python scripts/run_widget_lab_regression.py --headed
   python scripts/run_widget_lab_regression.py --json /tmp/report.json
@@ -236,7 +237,7 @@ async def _timed(coro: Awaitable[dict[str, Any]], *, source: str) -> dict[str, A
     return result
 
 
-async def _run_lab(headless: bool) -> list[dict[str, Any]]:
+async def _run_lab(headless: bool, *, nl_only: bool = False) -> list[dict[str, Any]]:
     lab = _import_lab_module()
     from playwright.async_api import async_playwright
 
@@ -258,7 +259,7 @@ async def _run_lab(headless: bool) -> list[dict[str, Any]]:
                     lab.run_combobox_scenario,
                     lab.run_modal_scenario,
                 ):
-                    results.append(await _timed(fn(page, base_url), source="lab"))
+                    results.append(await _timed(fn(page, base_url, nl_only=nl_only), source="lab"))
             finally:
                 await browser.close()
     finally:
@@ -349,7 +350,7 @@ async def _run(args: argparse.Namespace) -> int:
     headless = not args.headed
     results: list[dict[str, Any]] = []
 
-    results.extend(await _run_lab(headless=headless))
+    results.extend(await _run_lab(headless=headless, nl_only=args.strict))
     if args.public:
         try:
             results.extend(await _run_public(headless=headless))
@@ -370,6 +371,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--public", action="store_true", help="Also run public-site smoke")
     parser.add_argument("--headed", action="store_true", help="Run with a visible browser")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Strict NL-only mode for lab scenarios: drop selector= / "
+            "action_type= / input_value= and let the parser + resolver work."
+        ),
+    )
     parser.add_argument(
         "--json",
         default=None,
