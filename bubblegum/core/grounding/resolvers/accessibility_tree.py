@@ -96,8 +96,15 @@ def _make_snapshot_re() -> re.Pattern:
     #   - combobox: Select country          <- inline-value form
     #                                          (combobox, sometimes textbox)
     #
-    # YAML "has children" colons stay unmatched because the `:` branch
-    # requires at least one non-whitespace char of inline value after it.
+    # Some lines combine both, e.g.
+    #
+    #   - combobox "Country": United States <- quoted name + inline value
+    #
+    # We always extract the quoted name when present (the accessible name
+    # is the right text for the role-based selector), and let the trailing
+    # `: value` be discarded by the final `\s*(?::\s*[^\[\n]*)?\s*$`.
+    # YAML "has children" colons stay unmatched because the bare colon
+    # branch requires at least one non-whitespace char of inline value.
     pattern = (
         r"^[\s\-]*"                                 # optional indent / dashes
         r"(?P<role>[a-zA-Z]+)"                      # role word
@@ -106,7 +113,8 @@ def _make_snapshot_re() -> re.Pattern:
         r'|:\s*(?P<elname_c>[^\s\[][^\[\n]*?)'      # role: name (inline value)
         r')?'
         r"(?:\s+\[(?P<attrs>[^\]]*)\])?"            # optional [attrs]
-        r"\s*:?\s*$"
+        r"\s*(?::\s*[^\[\n]*)?"                     # optional trailing : value
+        r"\s*$"
     )
     return re.compile(pattern)
 

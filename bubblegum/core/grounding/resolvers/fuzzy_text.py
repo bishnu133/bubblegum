@@ -105,8 +105,9 @@ def _fuzzy_kind_role_aligned(kind: str, role: str) -> bool:
 
 
 # Phase 22E-1d: accept both `role "name"` and `role: name` (Playwright's
-# inline-value form, common for combobox / textbox). See accessibility_tree
-# for the rationale.
+# inline-value form, common for combobox / textbox). 22E-1f: also accept
+# a trailing `: value` after a quoted name (`combobox "Country": US`).
+# See accessibility_tree for the rationale.
 _SNAPSHOT_LINE_RE = re.compile(
     r"""
     ^[\s\-]*
@@ -116,7 +117,8 @@ _SNAPSHOT_LINE_RE = re.compile(
       | :\s*(?P<elname_c>[^\s\[][^\[\n]*?)
     )?
     (?:\s+\[(?P<attrs>[^\]]*)\])?
-    \s*:?\s*$
+    \s*(?::\s*[^\[\n]*)?
+    \s*$
     """,
     re.VERBOSE,
 )

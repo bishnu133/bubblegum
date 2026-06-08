@@ -321,6 +321,21 @@ def test_real_link_vs_button_button_wins_when_no_kind_hint():
     assert top == 'role=button[name="Sign in"]'
 
 
+def test_real_combobox_with_name_and_value_resolves_by_name():
+    """Phase 22E-1f: when the combobox has BOTH an accessible name AND an
+    inline value (`combobox "Select country": Select country`), the
+    resolver must extract the quoted name and ignore the value, so the
+    Playwright role-name selector matches the trigger.
+    """
+    snapshot = (
+        '- heading "Custom combobox" [level=1]\n'
+        '- combobox "Select country": Select country\n'
+        '- paragraph\n'
+    )
+    assert _top_ref(snapshot, "Click Select country") == \
+        'role=combobox[name="Select country"]'
+
+
 # ---------------------------------------------------------------------------
 # Summary marker — fail loudly if a PASS case starts regressing
 # ---------------------------------------------------------------------------
