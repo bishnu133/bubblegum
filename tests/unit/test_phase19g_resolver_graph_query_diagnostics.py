@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from bubblegum.core.elements import ElementGraph, NormalizedBounds, NormalizedElement
 from bubblegum.core.grounding.resolvers.accessibility_tree import AccessibilityTreeResolver
 from bubblegum.core.grounding.resolvers.appium_hierarchy import AppiumHierarchyResolver
@@ -43,7 +45,10 @@ def test_accessibility_emits_graph_query_diagnostics_when_graph_and_relational_i
     assert gqd["relation_type"] == "same_row_as_text"
     assert set(gqd.keys()) == {"status", "relation_type", "anchor_resolution", "scope_resolution", "matched_ids", "excluded_ids", "ambiguity", "reasons"}
     assert out[0].ref == 'role=button[name="Edit"]'
-    assert out[0].confidence == 0.96
+    # Phase 22E-1: control_kind_hint=button aligns with role=button, so the
+    # resolver applies a small tie-break confidence bias on top of the 0.96
+    # text-match score.
+    assert out[0].confidence == pytest.approx(0.99, abs=1e-6)
     assert "signals" in md
     assert "graph_signals" in md
     assert "a11y_snapshot" not in json.dumps(gqd)

@@ -109,6 +109,34 @@ def _make_snapshot_re() -> re.Pattern:
 _SNAPSHOT_LINE_RE = _make_snapshot_re()
 
 
+# Phase 22E-1: when the parser surfaces a control_kind_hint (link, radio,
+# combobox, dialog, switch, tab, input, button), candidates whose role
+# aligns with that hint get a small tie-breaking confidence boost. This
+# lets "Click the Sign in link" prefer role=link over role=button when
+# both candidates would otherwise tie on text match. Stays small (< 0.05)
+# so it cannot promote a weak-match candidate over a strong one.
+_KIND_ROLE_ALIGNMENT: dict[str, frozenset[str]] = {
+    "link":     frozenset({"link"}),
+    "button":   frozenset({"button"}),
+    "checkbox": frozenset({"checkbox"}),
+    "radio":    frozenset({"radio"}),
+    "switch":   frozenset({"switch"}),
+    "tab":      frozenset({"tab"}),
+    "dropdown": frozenset({"combobox", "listbox"}),
+    "select":   frozenset({"combobox", "listbox"}),
+    "combobox": frozenset({"combobox"}),
+    "dialog":   frozenset({"dialog", "alertdialog"}),
+    "input":    frozenset({"textbox", "searchbox"}),
+}
+_KIND_BIAS = 0.03  # < 0.05 so it cannot cross the ambiguity_gap threshold.
+
+
+def _kind_role_aligned(kind: str, role: str) -> bool:
+    if not kind or kind == "none":
+        return False
+    return role in _KIND_ROLE_ALIGNMENT.get(kind, frozenset())
+
+
 class AccessibilityTreeResolver(Resolver):
     """
     Parses the YAML-format aria snapshot from Playwright's locator.aria_snapshot()
@@ -198,6 +226,23 @@ class AccessibilityTreeResolver(Resolver):
         diagnostics = None
         if isinstance(context_graph, ElementGraph) and isinstance(relational_intent, dict):
             diagnostics = build_graph_query_diagnostics(context_graph, relational_intent, action_type=intent.action_type)
+
+        # Phase 22E-1: kind-hint tie-break. If the parser said "Click the Sign
+        # in link", boost role=link over role=button when their text scores
+        # would otherwise tie.
+        kind_hint = "none"
+        if isinstance(relational_intent, dict):
+            kind_hint = str(relational_intent.get("control_kind_hint") or "none").lower()
+        if kind_hint != "none":
+            biased: list[ResolvedTarget] = []
+            for cand in candidates:
+                role = str(cand.metadata.get("role", ""))
+                if _kind_role_aligned(kind_hint, role):
+                    nudged = min(1.0, cand.confidence + _KIND_BIAS)
+                    biased.append(cand.model_copy(update={"confidence": nudged}))
+                else:
+                    biased.append(cand)
+            candidates = biased
 
         enriched: list[ResolvedTarget] = []
         for target in candidates:
