@@ -117,6 +117,20 @@ def pytest_configure(config: pytest.Config) -> None:
     )
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call):
+    """Pin per-phase reports on the item so fixture finalizers can branch on pass/fail.
+
+    Standard pytest cookbook pattern: each phase report (setup/call/teardown)
+    is stored as ``item.rep_<phase>``. The ``bubblegum_web`` fixture reads
+    ``rep_call`` during teardown to decide whether to write a failure
+    screenshot.
+    """
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
+
+
 @pytest.fixture(scope="session")
 def bubblegum_config(pytestconfig: pytest.Config) -> BubblegumConfig:
     config_path = pytestconfig.getoption("--bubblegum-config")
@@ -197,12 +211,17 @@ def widget_lab():
 if _HAS_PYTEST_ASYNCIO:
 
     @pytest_asyncio.fixture
-    async def bubblegum_web(pytestconfig: pytest.Config):
+    async def bubblegum_web(request: pytest.FixtureRequest, pytestconfig: pytest.Config):
         """Yield a ``BubblegumSession.web`` wrapping a fresh Playwright Page.
 
         Launches Chromium, creates a context + page, and wraps them in a
         BubblegumSession. Honours ``--bubblegum-headed``. Tears the browser
         down at the end of the test.
+
+        On test failure, writes a screenshot to ``<artifacts>/<test>-final.png``
+        (the directory is set via ``--bubblegum-artifacts``, default
+        ``artifacts/``). Step-level failures inside the session are captured
+        separately as ``<test>-stepN.png`` by ``BubblegumSession``.
 
         Requires ``pytest-asyncio`` and Playwright. When Playwright is not
         installed the test is skipped with a clear hint.
@@ -216,9 +235,12 @@ if _HAS_PYTEST_ASYNCIO:
             )
             return
 
+        from pathlib import Path as _Path
         from bubblegum.session import BubblegumSession
 
         headed = bool(pytestconfig.getoption("--bubblegum-headed"))
+        artifacts_dir = _Path(pytestconfig.getoption("--bubblegum-artifacts") or "artifacts")
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=not headed)
             try:
@@ -226,6 +248,15 @@ if _HAS_PYTEST_ASYNCIO:
                 page = await context.new_page()
                 page.set_default_timeout(5_000)
                 async with BubblegumSession.web(page) as session:
-                    yield session
+                    session.label = request.node.nodeid
+                    session.artifacts_dir = artifacts_dir
+                    try:
+                        yield session
+                    finally:
+                        # rep_call is set by the makereport hookwrapper above
+                        # if the call phase ran; missing => fixture errored before call.
+                        rep_call = getattr(request.node, "rep_call", None)
+                        if rep_call is not None and rep_call.failed:
+                            await session.capture_failure_screenshot(suffix="final")
             finally:
                 await browser.close()

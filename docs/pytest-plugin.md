@@ -90,3 +90,46 @@ reaching into the session's privates.
 ```bash
 pytest tests/ -m bubblegum --bubblegum-headed
 ```
+
+## State probes (Phase 22E-3)
+
+`BubblegumSession` exposes async probes that resolve the NL target via
+the same grounding chain as `act` / `verify` and then read state
+directly from the Playwright locator.
+
+| Probe | Returns | Backing call |
+|---|---|---|
+| `await s.is_checked(target)` | `bool` | `locator.is_checked()` |
+| `await s.selected_value(target)` | `str` | `locator.input_value()` |
+| `await s.is_visible(target)` | `bool` | `locator.is_visible()` |
+
+```python
+async def test_checkbox_flow(bubblegum_web, widget_lab):
+    await bubblegum_web.page.goto(f"{widget_lab}/checkboxes.html")
+
+    assert await bubblegum_web.is_checked("Marketing emails") is True
+    assert await bubblegum_web.is_checked("Newsletter") is False
+
+    await bubblegum_web.act("Check Newsletter")
+    assert await bubblegum_web.is_checked("Newsletter") is True
+```
+
+Probes raise `BubblegumProbeError` when the target cannot be resolved.
+They are web-only in 22E-3; mobile probes are tracked separately.
+
+## Auto-screenshot on failure (Phase 22E-3)
+
+When a `bubblegum_web` test fails, the fixture finalizer writes a
+PNG to `<artifacts>/<sanitized-nodeid>-final.png`. Step-level failures
+inside `act` / `verify` / `extract` write an additional
+`<sanitized-nodeid>-step<N>.png` at the moment the step fails.
+
+```bash
+pytest tests/ -m bubblegum --bubblegum-artifacts=artifacts
+# → artifacts/tests_integration_test_login.py_test_signin-step3.png
+# → artifacts/tests_integration_test_login.py_test_signin-final.png
+```
+
+The artifacts directory is created on demand. Passing tests write no
+files. Use `session.failure_screenshots` from inside a test to inspect
+the paths captured so far.
