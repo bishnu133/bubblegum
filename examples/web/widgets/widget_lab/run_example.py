@@ -31,12 +31,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import socket
 import tempfile
-import threading
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from bubblegum.testing.widget_lab import start_widget_lab_server
 
 PLAYWRIGHT_INSTALL_HINT = """Playwright is not installed.
 Install with:
@@ -48,19 +46,8 @@ Then install browser binaries:
 _PAGES_DIR = Path(__file__).resolve().parent / "pages"
 
 
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _start_server() -> tuple[ThreadingHTTPServer, str]:
-    port = _find_free_port()
-    handler = partial(SimpleHTTPRequestHandler, directory=str(_PAGES_DIR))
-    server = ThreadingHTTPServer(("127.0.0.1", port), handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server, f"http://127.0.0.1:{port}"
+def _start_server():
+    return start_widget_lab_server(pages_dir=_PAGES_DIR)
 
 
 def _result(name: str, passed: bool, **detail) -> dict:

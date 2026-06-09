@@ -62,4 +62,5 @@ markers = [
     "hybrid_webview: marks hybrid/WebView metadata smoke scenarios",
     "system_dialog: marks system-dialog smoke scenarios",
     "slow: marks extended-duration smoke scenarios",
+    "bubblegum: marks tests that use Bubblegum pytest fixtures (web/mobile)",
 ]

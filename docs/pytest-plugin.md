@@ -48,5 +48,45 @@ async def test_checkout_smoke(page):
 
 - `--bubblegum-ai` — available/reserved for future AI-related pytest behavior toggles.
 - `--bubblegum-memory` — available/reserved for future memory-related pytest behavior toggles.
+- `--bubblegum-headed` — launch the `bubblegum_web` fixture browser in headed mode (default: headless).
 
 These flags are currently optional and are not required for report generation flows above.
+
+## Web fixtures (Phase 22E-2)
+
+`bubblegum.pytest_plugin` ships two fixtures that remove session/page setup
+boilerplate from web tests:
+
+| Fixture | Scope | Yields | Requires |
+|---|---|---|---|
+| `bubblegum_web` | function | `BubblegumSession` wrapping a fresh Chromium page | `pytest-asyncio`, `playwright` |
+| `widget_lab` | session | base URL string for the local widget-lab pages server | — |
+
+The `bubblegum` marker labels tests that use these fixtures so they can
+be filtered with `-m bubblegum` (e.g. to run only the high-level
+NL flow tests).
+
+```python
+import pytest
+
+pytestmark = [pytest.mark.bubblegum, pytest.mark.asyncio]
+
+
+async def test_select_india(bubblegum_web, widget_lab):
+    await bubblegum_web.page.goto(f"{widget_lab}/select.html")
+
+    await bubblegum_web.act("Select India from Country")
+
+    assert await bubblegum_web.page.locator("#country").input_value() == "IN"
+    bubblegum_web.assert_all_passed()
+```
+
+`bubblegum_web.page` (and `.driver`, `.channel`) expose the underlying
+runtime handle so tests can navigate / assert against the page without
+reaching into the session's privates.
+
+### Headed mode for debugging
+
+```bash
+pytest tests/ -m bubblegum --bubblegum-headed
+```

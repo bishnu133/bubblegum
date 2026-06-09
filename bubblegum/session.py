@@ -89,6 +89,25 @@ class BubblegumSession:
         return cls(channel="mobile", driver=driver, dry_run=dry_run, **kwargs)
 
     # ------------------------------------------------------------------
+    # Wrapped runtime handles
+    # ------------------------------------------------------------------
+
+    @property
+    def page(self):
+        """The Playwright Page wrapped by a web session (else None)."""
+        return self._page
+
+    @property
+    def driver(self):
+        """The Appium driver wrapped by a mobile session (else None)."""
+        return self._driver
+
+    @property
+    def channel(self) -> str:
+        """The channel name passed at construction (``web`` or ``mobile``)."""
+        return self._channel
+
+    # ------------------------------------------------------------------
     # Step methods
     # ------------------------------------------------------------------
 
