@@ -17,6 +17,11 @@
   .MuiSvgIcon-root {
     width: 1.25em; height: 1.25em; border: 2px solid rgba(0,0,0,0.6); border-radius: 3px;
     box-sizing: border-box; background: white; transition: background 0.15s;
+    /* Decorative — real MUI lets clicks pass through to the underlying
+       hidden input. Without this the checked-state Mui-checked class adds
+       position:relative, which pushes the SVG above the absolutely-
+       positioned input in the stacking context and traps the click. */
+    pointer-events: none;
   }
   .MuiCheckbox-root.Mui-checked .MuiSvgIcon-root {
     background: #1976d2; border-color: #1976d2; position: relative;

@@ -72,3 +72,23 @@ def test_regression_script_can_import_lab():
     lab = reg._import_lab_module()
     assert hasattr(lab, "run_select_scenario")
     assert hasattr(lab, "run_autocomplete_scenario")
+
+
+def test_mui_checkbox_svg_is_pointer_event_transparent():
+    """Regression for the 22E-4 dogfooding round: when MUI's `.Mui-checked`
+    adds `position: relative` to the SVG icon, the SVG ends up in the same
+    stacking context as the absolutely-positioned hidden input but later in
+    DOM order, so it intercepts clicks meant for the input. Real MUI sets
+    `pointer-events: none` on the decorative icon to fix this — assert our
+    sample does the same so the lab doesn't go red whenever the checked
+    state changes the stacking context.
+    """
+    body = (_MUI_PAGES / "checkbox.html").read_text(encoding="utf-8")
+    assert ".MuiSvgIcon-root" in body
+    # Look for the rule block on .MuiSvgIcon-root containing pointer-events: none.
+    icon_block_start = body.index(".MuiSvgIcon-root {")
+    icon_block_end = body.index("}", icon_block_start)
+    block = body[icon_block_start:icon_block_end]
+    assert "pointer-events: none" in block, (
+        "MuiSvgIcon-root must be pointer-event-transparent so clicks reach the input"
+    )
