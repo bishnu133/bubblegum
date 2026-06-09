@@ -133,3 +133,37 @@ pytest tests/ -m bubblegum --bubblegum-artifacts=artifacts
 The artifacts directory is created on demand. Passing tests write no
 files. Use `session.failure_screenshots` from inside a test to inspect
 the paths captured so far.
+
+## MUI lab (Phase 22E-4)
+
+`examples/web/widgets/mui_lab/` is a self-hosted minimal Material-UI
+sample. Pages emit real MUI classnames + ARIA so Bubblegum's resolver
+runs against the same DOM shape a React + MUI app produces — no Node
+or bundler required, just the static pages served by the same helper
+behind the `widget_lab` fixture.
+
+| Scenario | Page | Demonstrates |
+|---|---|---|
+| `mui-select` | `select.html` | MUI Select with portal-rendered menu, hidden input value |
+| `mui-checkbox` | `checkbox.html` | MUI Checkbox wrapping native input, `is_checked` probe |
+| `mui-dialog` | `dialog.html` | MUI Dialog (portal + backdrop), type + Save flow |
+| `mui-autocomplete` | `autocomplete.html` | MUI Autocomplete with filtering portal listbox |
+
+```bash
+# Direct runner (safety-net mode by default)
+python examples/web/widgets/mui_lab/run_example.py
+python examples/web/widgets/mui_lab/run_example.py --strict   # NL-only
+python examples/web/widgets/mui_lab/run_example.py --headed   # visible
+
+# Regression runner — JSON report + summary table
+python scripts/run_mui_lab_regression.py
+python scripts/run_mui_lab_regression.py --strict
+# → artifacts/mui_lab_regression.json
+
+# pytest entry points
+python -m pytest tests/integration/test_phase22e4_mui_lab.py --playwright -v
+```
+
+A local `mui_lab` fixture pattern is shown in
+`tests/integration/test_phase22e4_mui_lab.py` — it mirrors the built-in
+`widget_lab` fixture but points the server at the MUI pages directory.

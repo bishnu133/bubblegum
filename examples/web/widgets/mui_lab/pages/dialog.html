@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MUI Lab — Dialog</title>
+<style>
+  body { font-family: Roboto, -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  .MuiButton-root {
+    background: #1976d2; color: white; border: none; border-radius: 4px;
+    padding: 0.5em 1em; font-size: 0.875em; text-transform: uppercase; cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .MuiButton-root.MuiButton-text { background: transparent; color: #1976d2; box-shadow: none; }
+  .MuiBackdrop-root {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none;
+    align-items: center; justify-content: center; z-index: 1300;
+  }
+  .MuiBackdrop-root[data-open="true"] { display: flex; }
+  .MuiDialog-paper {
+    background: white; border-radius: 4px; box-shadow: 0 11px 15px rgba(0,0,0,0.2);
+    min-width: 18em; max-width: 32em; padding: 0;
+  }
+  .MuiDialogTitle-root { margin: 0; padding: 1em 1.5em 0.5em; font-size: 1.25em; font-weight: 500; }
+  .MuiDialogContent-root { padding: 0.5em 1.5em 1em; }
+  .MuiDialogContent-root label { display: block; font-size: 0.85em; color: rgba(0,0,0,0.6); margin-bottom: 0.25em; }
+  .MuiDialogContent-root input {
+    width: 100%; padding: 0.5em; border: 1px solid rgba(0,0,0,0.23); border-radius: 4px;
+    font-size: 1em; box-sizing: border-box;
+  }
+  .MuiDialogActions-root {
+    display: flex; justify-content: flex-end; gap: 0.5em; padding: 0.5em 1em 1em;
+  }
+  #result { margin-top: 1.5em; padding: 0.5em; background: #f5f5f5; border-radius: 4px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>MUI Dialog</h1>
+<p>Reproduces MUI's <code>Dialog</code>: portal-rendered backdrop +
+paper, ARIA <code>role="dialog"</code> with <code>aria-modal="true"</code>
+and <code>aria-labelledby</code> pointing at the title. Close button
+naming matches what <code>close_dialog</code> recognises.</p>
+
+<button id="open-edit" class="MuiButton-root">Edit Profile</button>
+
+<p id="result"></p>
+
+<template id="dialog-template">
+  <div class="MuiBackdrop-root" id="edit-backdrop" data-open="true">
+    <div
+      id="edit-dialog"
+      class="MuiDialog-paper"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-dialog-title"
+    >
+      <h2 id="edit-dialog-title" class="MuiDialogTitle-root">Edit Profile</h2>
+      <div class="MuiDialogContent-root">
+        <label for="edit-name">Name</label>
+        <input id="edit-name" type="text" aria-label="Name" autocomplete="off">
+      </div>
+      <div class="MuiDialogActions-root">
+        <button type="button" class="MuiButton-root MuiButton-text" id="edit-cancel">Cancel</button>
+        <button type="button" class="MuiButton-root" id="edit-save">Save</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  const openBtn = document.getElementById('open-edit');
+  const result = document.getElementById('result');
+
+  openBtn.addEventListener('click', () => {
+    const frag = document.getElementById('dialog-template').content.cloneNode(true);
+    document.body.appendChild(frag);
+    const backdrop = document.getElementById('edit-backdrop');
+    const dialog = document.getElementById('edit-dialog');
+    const cancel = document.getElementById('edit-cancel');
+    const save = document.getElementById('edit-save');
+    const nameInput = document.getElementById('edit-name');
+
+    function close() {
+      backdrop.remove();
+      openBtn.focus();
+    }
+    cancel.addEventListener('click', close);
+    save.addEventListener('click', () => {
+      result.textContent = 'Saved name: ' + nameInput.value;
+      close();
+    });
+    // Escape closes the dialog (close_dialog falls back to Escape).
+    backdrop.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    });
+    nameInput.focus();
+  });
+</script>
+</body>
+</html>

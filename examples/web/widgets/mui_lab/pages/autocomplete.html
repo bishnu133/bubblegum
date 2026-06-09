@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MUI Lab — Autocomplete</title>
+<style>
+  body { font-family: Roboto, -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  .MuiFormControl-root { display: inline-flex; flex-direction: column; gap: 0.25em; min-width: 16em; }
+  .MuiInputLabel-root {
+    font-size: 0.85em; color: rgba(0,0,0,0.6); padding: 0 0.25em; background: white;
+    position: relative; align-self: flex-start; top: 0.6em; left: 0.6em; z-index: 1;
+  }
+  .MuiAutocomplete-root .MuiOutlinedInput-root {
+    position: relative; padding: 0.6em 1em; border: 1px solid rgba(0,0,0,0.23);
+    border-radius: 4px; background: white;
+  }
+  .MuiAutocomplete-input {
+    border: none; outline: none; width: 100%; font-size: 1em; padding: 0; box-sizing: border-box;
+  }
+  .MuiAutocomplete-popper {
+    position: absolute; background: white; border-radius: 4px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2); margin: 0; padding: 0.5em 0;
+    list-style: none; min-width: 16em; z-index: 1300;
+  }
+  .MuiAutocomplete-popper[hidden] { display: none; }
+  .MuiAutocomplete-option { padding: 0.5em 1em; cursor: pointer; }
+  .MuiAutocomplete-option:hover, .MuiAutocomplete-option[data-focus="true"] { background: rgba(0,0,0,0.04); }
+  #result { margin-top: 1.5em; padding: 0.5em; background: #f5f5f5; border-radius: 4px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>MUI Autocomplete</h1>
+<p>MUI <code>Autocomplete</code> structure: a <code>combobox</code>
+textbox with <code>aria-autocomplete="list"</code> and a portal listbox
+that filters as the user types. Bubblegum drives both the input typing
+and the option selection through NL only.</p>
+
+<div class="MuiAutocomplete-root">
+  <div class="MuiFormControl-root">
+    <label id="country-label" class="MuiInputLabel-root" for="country-input">Country</label>
+    <div class="MuiOutlinedInput-root">
+      <input
+        id="country-input"
+        class="MuiAutocomplete-input"
+        type="text"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-controls="country-listbox"
+        aria-expanded="false"
+        aria-autocomplete="list"
+        aria-labelledby="country-label"
+        autocomplete="off"
+        placeholder="Start typing…"
+      >
+    </div>
+  </div>
+</div>
+
+<p id="result"></p>
+
+<template id="listbox-template">
+  <ul id="country-listbox" class="MuiAutocomplete-popper" role="listbox" aria-labelledby="country-label">
+    <li class="MuiAutocomplete-option" role="option" data-value="India">India</li>
+    <li class="MuiAutocomplete-option" role="option" data-value="Indonesia">Indonesia</li>
+    <li class="MuiAutocomplete-option" role="option" data-value="Ireland">Ireland</li>
+    <li class="MuiAutocomplete-option" role="option" data-value="Italy">Italy</li>
+    <li class="MuiAutocomplete-option" role="option" data-value="Iceland">Iceland</li>
+    <li class="MuiAutocomplete-option" role="option" data-value="United States">United States</li>
+    <li class="MuiAutocomplete-option" role="option" data-value="United Kingdom">United Kingdom</li>
+    <li class="MuiAutocomplete-option" role="option" data-value="Singapore">Singapore</li>
+  </ul>
+</template>
+
+<script>
+  const input = document.getElementById('country-input');
+  const result = document.getElementById('result');
+  let listbox = null;
+
+  function ensureListbox() {
+    if (listbox) return listbox;
+    const frag = document.getElementById('listbox-template').content.cloneNode(true);
+    document.body.appendChild(frag);
+    listbox = document.getElementById('country-listbox');
+    listbox.hidden = true;
+    listbox.addEventListener('mousedown', (e) => {
+      // mousedown so the click lands before input blur hides the listbox.
+      const opt = e.target.closest('[role="option"]');
+      if (!opt) return;
+      e.preventDefault();
+      input.value = opt.dataset.value;
+      result.textContent = 'Selected: ' + opt.dataset.value;
+      hideListbox();
+    });
+    return listbox;
+  }
+
+  function positionListbox() {
+    const lb = ensureListbox();
+    const inputContainer = input.closest('.MuiOutlinedInput-root');
+    const r = inputContainer.getBoundingClientRect();
+    lb.style.top = (r.bottom + window.scrollY) + 'px';
+    lb.style.left = (r.left + window.scrollX) + 'px';
+    lb.style.minWidth = r.width + 'px';
+  }
+
+  function filterAndShow() {
+    const lb = ensureListbox();
+    positionListbox();
+    const q = input.value.trim().toLowerCase();
+    let visible = 0;
+    lb.querySelectorAll('[role="option"]').forEach(opt => {
+      const match = !q || opt.dataset.value.toLowerCase().includes(q);
+      opt.hidden = !match;
+      if (match) visible++;
+    });
+    lb.hidden = visible === 0;
+    input.setAttribute('aria-expanded', lb.hidden ? 'false' : 'true');
+  }
+
+  function hideListbox() {
+    if (listbox) {
+      listbox.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  input.addEventListener('focus', filterAndShow);
+  input.addEventListener('input', filterAndShow);
+  input.addEventListener('blur', () => {
+    // Delay so option click handler can fire first.
+    setTimeout(hideListbox, 100);
+  });
+</script>
+</body>
+</html>
