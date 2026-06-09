@@ -167,3 +167,28 @@ python -m pytest tests/integration/test_phase22e4_mui_lab.py --playwright -v
 A local `mui_lab` fixture pattern is shown in
 `tests/integration/test_phase22e4_mui_lab.py` — it mirrors the built-in
 `widget_lab` fixture but points the server at the MUI pages directory.
+
+## Tier 2 widgets (Phase 22E-5)
+
+Adds NL coverage for ARIA `tabs`, `accordion`, and HTML5 `slider`:
+
+| NL pattern | Parser action | Kind hint | Resolver target |
+|---|---|---|---|
+| `Click <X> tab` / `Open <X> tab` | click | tab | `role=tab[name=X]` |
+| `Expand <X> section` / `Collapse <X> panel` / `Open <X> accordion` | click | button | `role=button[name=X]` (the header) |
+| `Set <X> to <N>` / `Set <X> slider to <N>` | set | slider | `role=slider[name=X]` |
+
+The `set` action drives the value via JS (`evaluate` + `input`/`change`
+events) so it works against native `<input type=range>`, ARIA sliders
+with backing inputs, and MUI's hidden-input slider pattern. React /
+Vue listeners on `input` / `change` fire as if the user dragged.
+
+```bash
+# 3 new lab scenarios appended to widget_lab/run_example.py
+python examples/web/widgets/widget_lab/run_example.py
+# → tabs-click / accordion-expand / slider-set added to the summary
+
+# Strict NL-only (resolver does all the work)
+python scripts/run_widget_lab_regression.py --strict
+# Expect: 10 passed, 0 failed
+```

@@ -60,6 +60,14 @@ def role_fit_score(role: str, action_type: str) -> float:
         if role in {"combobox", "listbox", "option"}:
             return 1.0
         return 0.0
+    if action_type == "set":
+        # 22E-5: "Set Volume to 75" — slider / spinbutton are the canonical
+        # targets; range inputs surface as role=slider in the a11y tree.
+        if role in {"slider", "spinbutton"}:
+            return 1.0
+        if role in {"textbox", "searchbox"}:
+            return 0.4
+        return 0.0
     # verify / extract / scroll — any element can be read; role is not a filter
     return 1.0 if role else 0.0
 

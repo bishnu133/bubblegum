@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Accordion</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  .accordion-item { border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0.5em; }
+  .accordion-header {
+    display: block; width: 100%; padding: 0.75em 1em; background: #fafafa;
+    text-align: left; border: none; cursor: pointer; font-size: 1em; font-weight: 600;
+  }
+  .accordion-header[aria-expanded="true"] { background: #e8f0fe; }
+  .accordion-header::after {
+    content: "▾"; float: right; transition: transform 0.15s;
+  }
+  .accordion-header[aria-expanded="true"]::after { transform: rotate(180deg); display: inline-block; }
+  .accordion-region { padding: 0.75em 1em; border-top: 1px solid #ddd; }
+  .accordion-region[hidden] { display: none; }
+</style>
+</head>
+<body>
+<h1>Accordion (button + region)</h1>
+<p>Standard collapsible pattern: a <code>button</code> with
+<code>aria-expanded</code> controlling a region whose <code>id</code> is
+the button's <code>aria-controls</code>. Clicking the header toggles
+expansion.</p>
+
+<div class="accordion-item">
+  <button class="accordion-header" aria-expanded="false" aria-controls="region-profile" id="hdr-profile">Profile</button>
+  <div id="region-profile" role="region" aria-labelledby="hdr-profile" class="accordion-region" hidden>
+    Profile details: name, photo, bio.
+  </div>
+</div>
+
+<div class="accordion-item">
+  <button class="accordion-header" aria-expanded="false" aria-controls="region-billing" id="hdr-billing">Billing</button>
+  <div id="region-billing" role="region" aria-labelledby="hdr-billing" class="accordion-region" hidden>
+    Billing details: invoices, payment method.
+  </div>
+</div>
+
+<div class="accordion-item">
+  <button class="accordion-header" aria-expanded="false" aria-controls="region-security" id="hdr-security">Security</button>
+  <div id="region-security" role="region" aria-labelledby="hdr-security" class="accordion-region" hidden>
+    Security details: 2FA, sessions, password.
+  </div>
+</div>
+
+<p id="result"></p>
+
+<script>
+  document.querySelectorAll('.accordion-header').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+      const region = document.getElementById(btn.getAttribute('aria-controls'));
+      if (region) region.hidden = expanded;
+      document.getElementById('result').textContent =
+        btn.textContent.trim() + ' is ' + (expanded ? 'collapsed' : 'expanded');
+    });
+  });
+</script>
+</body>
+</html>

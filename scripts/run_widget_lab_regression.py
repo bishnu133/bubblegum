@@ -258,6 +258,9 @@ async def _run_lab(headless: bool, *, nl_only: bool = False) -> list[dict[str, A
                     lab.run_link_vs_button_scenario,
                     lab.run_combobox_scenario,
                     lab.run_modal_scenario,
+                    lab.run_tabs_scenario,
+                    lab.run_accordion_scenario,
+                    lab.run_slider_scenario,
                 ):
                     results.append(await _timed(fn(page, base_url, nl_only=nl_only), source="lab"))
             finally:

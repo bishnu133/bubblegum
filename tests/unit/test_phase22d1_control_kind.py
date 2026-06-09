@@ -35,7 +35,7 @@ def _match(elements: list[NormalizedElement], hint: str, action: str | None = No
 def test_control_kind_enum_values_are_closed_vocabulary():
     expected = {
         "none", "button", "input", "dropdown", "select", "combobox",
-        "checkbox", "radio", "link", "dialog", "tab", "switch",
+        "checkbox", "radio", "link", "dialog", "tab", "switch", "slider",
     }
     assert KNOWN_CONTROL_KINDS == expected
 
@@ -48,6 +48,7 @@ def test_control_kind_constants_match_string_values():
     assert ControlKind.SWITCH == "switch"
     assert ControlKind.SELECT == "select"
     assert ControlKind.DROPDOWN == "dropdown"
+    assert ControlKind.SLIDER == "slider"
 
 
 # ---------------------------------------------------------------------------
