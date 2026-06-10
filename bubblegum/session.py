@@ -328,9 +328,11 @@ class BubblegumSession:
         """Capture a screenshot now (used by the pytest fixture finalizer).
 
         Returns the path of the written file, or None if capture is skipped
-        (no page / no label / IO error).
+        (no page/driver / no label / IO error). Works for both web (via the
+        Playwright page) and mobile (via the Appium driver).
         """
-        if self._channel != "web" or self._page is None or not self._label:
+        handle = self._page if self._channel == "web" else self._driver
+        if handle is None or not self._label:
             return None
         try:
             self._artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -338,7 +340,12 @@ class BubblegumSession:
             safe_label = _sanitize_label(self._label)
             tag = suffix if suffix == "final" else f"step{step_idx}"
             path = self._artifacts_dir / f"{safe_label}-{tag}.png"
-            await self._page.screenshot(path=str(path))
+            if self._channel == "web":
+                await self._page.screenshot(path=str(path))
+            else:
+                # Appium's get_screenshot_as_png() is synchronous.
+                png = self._driver.get_screenshot_as_png()
+                path.write_bytes(png)
             self._failure_screenshots.append(path)
             return path
         except Exception as exc:

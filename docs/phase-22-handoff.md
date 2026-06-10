@@ -1,6 +1,6 @@
 # Phase 22 — Handoff
 
-Status: Phase 22D + 22E-1 + **22E-2 through 22E-7 shipped end-to-end**.
+Status: Phase 22D + 22E-1 + **22E-2 through 22E-8 shipped end-to-end**.
 The widget lab runs 10/10 scenarios NL-only against real Chromium with
 no `selector=`, `action_type=`, or `input_value=` safety nets. The MUI
 lab adds 4 React-shaped scenarios (select / checkbox / dialog /
@@ -103,14 +103,34 @@ acceptance gate, and queued PR is captured below.
   "function"` set in pyproject — the pytest-asyncio deprecation
   warning on every run is gone.
 
+### 22E-8 — bubblegum_mobile Appium fixture (shipped)
+- `bubblegum_mobile` (async, function-scoped): builds an Appium driver
+  and wraps it in `BubblegumSession.mobile`. Mirrors `bubblegum_web` —
+  label, artifacts dir, failure screenshot on teardown.
+- CLI options `--bubblegum-appium-url` (default
+  `http://localhost:4723`) and `--bubblegum-capabilities` (path to a
+  JSON file OR inline JSON object; must include `platformName`).
+- Driver-construction logic lives in `bubblegum/testing/appium_driver.py`
+  (`load_capabilities`, `build_appium_options`, `create_appium_driver`)
+  so it's unit-testable without a device. `build_appium_options` picks
+  `UiAutomator2Options` (android) / `XCUITestOptions` (ios) across
+  Appium Python Client v3.x–v5.x import layouts.
+- `BubblegumSession.capture_failure_screenshot` extended for mobile:
+  uses the Appium driver's `get_screenshot_as_png()` (was web-only).
+- Skips cleanly when appium-python-client is missing, no capabilities
+  are passed, or the Appium server is unreachable.
+
 ### Validation evidence (head of branch)
-- `python -m pytest tests/unit -q` → **1,182 passed**, 17 baseline
-  failures unrelated to this branch (the documented anthropic +
-  `AsyncMock`/`_FakePage` issues).
+- `python -m pytest tests/unit -q` → **1,196 passed**, 3 skipped
+  (Appium options-class tests skip without appium-python-client), 17
+  baseline failures unrelated to this branch (the documented anthropic
+  + `AsyncMock`/`_FakePage` issues).
 - `python scripts/run_widget_lab_regression.py --strict` → **10/10**.
 - `python scripts/run_mui_lab_regression.py --strict` → **4/4**.
 - `python -m pytest --playwright -m bubblegum -v` → **18 passed**
-  (2 + 3 + 4 + 3 + 3 + 3 across 22E-2 / 3 / 4 / 5 / 6 / 7).
+  (2 + 3 + 4 + 3 + 3 + 3 across 22E-2 / 3 / 4 / 5 / 6 / 7). The 22E-8
+  mobile integration test is `--appium`-gated and skips without a
+  device.
 - Browser rows validated locally (macOS, real Chromium, 2026-06-10):
   10/10 widget lab, 4/4 MUI lab, 15/15 `-m bubblegum`. 22E-6 runtime
   win confirmed: radio-group 106 ms, tabs-click 66 ms, slider-set
@@ -125,7 +145,6 @@ library for tests" goal:
 
 | PR | Scope | Estimated size | Why |
 |---|---|---|---|
-| **22E-8** | `bubblegum_mobile` async fixture: Appium driver + `BubblegumSession.mobile`. CLI options `--bubblegum-appium-url`, `--bubblegum-capabilities`. Mirrors `bubblegum_web` API. | M | First-class mobile parity. Unblocks the mobile side of the "real local script" plan I sketched earlier. |
 | **22E-9** | `examples/web/real_local/` — minimal multi-page sample app (login → dashboard → settings) served by the shared helper, demonstrated through `bubblegum_web` + a `sample_app` fixture. Plus `docs/getting-started-for-testers.md` rewrite. | M | The "first 60 seconds" surface a new user judges the library by. |
 
 ### Small follow-ups (drop into any PR or batch)
@@ -146,10 +165,13 @@ library for tests" goal:
 ```
 bubblegum/
   pytest_plugin.py                            22E-2/3 fixtures, hookwrapper,
-                                              22E-7 browser/page split
+                                              22E-7 browser/page split,
+                                              22E-8 bubblegum_mobile
   session.py                                  22E-3 probes + auto-screenshot,
-                                              22E-7 goto()
+                                              22E-7 goto(),
+                                              22E-8 mobile failure screenshot
   testing/widget_lab.py                       shared static-server helper
+  testing/appium_driver.py                    22E-8 caps + driver builder
   adapters/web/playwright/adapter.py          dispatch table (set added),
                                               22E-6 nav-wait skip
   core/
@@ -170,8 +192,9 @@ scripts/
   run_mui_lab_regression.py                   4 rows (+strict)
 
 tests/
-  unit/test_phase22e{2,3,4,5,6,7}_*.py        fixture / probe / smoke / parser / nav-wait / goto
-  integration/test_phase22e{2,3,4,5,6,7}_*.py --playwright-gated live tests
+  unit/test_phase22e{2..8}_*.py               fixture / probe / smoke / parser / nav-wait / goto / mobile
+  integration/test_phase22e{2..7}_*.py        --playwright-gated live tests
+  integration/test_phase22e8_*.py             --appium-gated live test
 ```
 
 ---
@@ -182,7 +205,7 @@ tests/
 pip install -e ".[web,test]"
 python -m playwright install chromium
 
-# Full unit baseline — expect 1,182 passed, 17 baseline failures
+# Full unit baseline — expect 1,196 passed, 3 skipped, 17 baseline failures
 python -m pytest tests/unit -q
 
 # Widget lab regression (strict NL-only)
@@ -194,6 +217,16 @@ python scripts/run_mui_lab_regression.py --strict           # 4/4
 
 # All bubblegum-marked integration tests
 python -m pytest --playwright -m bubblegum -v               # 18 passed
+
+# Mobile fixture (requires Appium server + device; 22E-8)
+pip install -e ".[mobile]"
+python -m pytest --appium -m bubblegum \
+  --bubblegum-capabilities '{"platformName":"Android",\
+"appium:deviceName":"emulator-5554",\
+"appium:appPackage":"io.appium.android.apis",\
+"appium:appActivity":".ApiDemos",\
+"appium:automationName":"UiAutomator2"}' \
+  tests/integration/test_phase22e8_mobile_fixture.py        # 1 passed
 ```
 
 ---
@@ -201,7 +234,7 @@ python -m pytest --playwright -m bubblegum -v               # 18 passed
 ## Resuming in a fresh session
 
 Open the new chat with: **"Continue Phase 22 from
-`docs/phase-22-handoff.md`. Start 22E-8."**
+`docs/phase-22-handoff.md`. Start 22E-9."**
 
 (Or pick any other queued PR from the table above.) That single line
 plus this doc is the full context the next session needs.
