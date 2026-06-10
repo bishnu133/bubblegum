@@ -477,6 +477,36 @@ def safe_hydration_metadata(metadata: dict) -> dict[str, str]:
     return out
 
 
+_SAFE_HEALING_FIELDS = (
+    "applied", "requested", "matched", "resolver",
+    "match_kind", "similarity", "severity", "message",
+)
+
+
+def safe_healing_metadata(metadata: dict) -> dict[str, Any]:
+    """Return report-safe self-healing advisory metadata for JSON/HTML surfaces."""
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("healing")
+    if not isinstance(raw, dict) or not raw.get("applied"):
+        return {}
+    out: dict[str, Any] = {}
+    for key in _SAFE_HEALING_FIELDS:
+        if key not in raw:
+            continue
+        value = raw[key]
+        if key == "applied":
+            out[key] = bool(value)
+        elif key == "similarity":
+            try:
+                out[key] = round(float(value), 3)
+            except (TypeError, ValueError):
+                continue
+        elif value is not None:
+            out[key] = str(value)
+    return out
+
+
 def sanitize_reporting_metadata(metadata: dict) -> dict:
     """Remove known unsafe fields from report surfaces."""
     if not isinstance(metadata, dict):
@@ -946,6 +976,30 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'border-left:3px solid #ef4444;border-radius:4px;'
             f'font-size:0.82rem;color:#991b1b;">'
             f'<strong>Error:</strong> {html.escape(result.error.message)}'
+            f'</div>'
+        )
+
+    healing_html = ""
+    healing = safe_healing_metadata(result.target.metadata if result.target else {})
+    if healing:
+        review = healing.get("severity") == "review"
+        bg = "#fffbeb" if review else "#f8fafc"
+        border = "#f59e0b" if review else "#cbd5e1"
+        colour = "#92400e" if review else "#475569"
+        heading = (
+            "⚠ Self-healing applied — possible defect"
+            if review else "Self-healing applied"
+        )
+        healing_html = (
+            f'<div style="margin-top:8px;padding:8px;background:{bg};'
+            f'border-left:3px solid {border};border-radius:4px;'
+            f'font-size:0.82rem;color:{colour};">'
+            f'<strong>{heading}.</strong> '
+            f'Requested <code>{html.escape(str(healing.get("requested", "")))}</code> → '
+            f'matched <code>{html.escape(str(healing.get("matched", "")))}</code> '
+            f'({html.escape(str(healing.get("match_kind", "")))}, '
+            f'similarity {html.escape(str(healing.get("similarity", "")))}). '
+            f'Revisit your test step to confirm this substitution is intended.'
             f'</div>'
         )
 
@@ -1430,6 +1484,7 @@ def _render_step(idx: int, result: StepResult) -> str:
         </span>
       </div>
       {error_html}
+      {healing_html}
       {screenshot_html}
       {hydration_html}
       {graph_html}
@@ -1480,12 +1535,20 @@ def write_html_report(
     resolver_win_counts = analytics["resolver_win_counts"]
     error_type_counts = analytics["error_type_counts"]
 
+    healing_summary = analytics.get("healing_summary", {"total": 0, "severity_counts": {}, "match_kind_counts": {}})
+    healed_total = healing_summary.get("total", 0)
+    healed_review = healing_summary.get("severity_counts", {}).get("review", 0)
+
     total = analytics["total"]
     passed = status_counts["passed"]
     recovered = status_counts["recovered"]
     failed = status_counts["failed"]
     skipped = status_counts["skipped"]
 
+    healed_card = (
+        _summary_card("Healed", healed_total, _STATUS_COLOURS["recovered"])
+        if healed_total else ""
+    )
     summary_html = (
         f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;">'
         f'{_summary_card("Total",     total,     "#64748b")}'
@@ -1493,8 +1556,26 @@ def write_html_report(
         f'{_summary_card("Recovered", recovered, _STATUS_COLOURS["recovered"])}'
         f'{_summary_card("Failed",    failed,    _STATUS_COLOURS["failed"])}'
         f'{_summary_card("Skipped",   skipped,   _STATUS_COLOURS["skipped"])}'
+        f'{healed_card}'
         f'</div>'
     )
+
+    healing_banner_html = ""
+    if healed_total:
+        plural = "step" if healed_total == 1 else "steps"
+        review_note = (
+            f" {healed_review} flagged for review as a possible defect."
+            if healed_review else ""
+        )
+        healing_banner_html = (
+            f'<div style="margin-bottom:20px;padding:10px 14px;background:#fffbeb;'
+            f'border-left:4px solid #f59e0b;border-radius:6px;color:#92400e;'
+            f'font-size:0.86rem;">'
+            f'<strong>Self-healing was applied to {healed_total} {plural}.</strong>'
+            f'{review_note} Review the highlighted steps below — a healed step may '
+            f'mask a real defect.'
+            f'</div>'
+        )
 
     resolver_dist_html = (
         "".join(
@@ -1578,6 +1659,7 @@ def write_html_report(
   <h1>🧠 {html.escape(title)}</h1>
   <div class="subtitle">Generated by Bubblegum — AI-powered test recovery &amp; NL execution</div>
   {summary_html}
+  {healing_banner_html}
   {analytics_html}
   {steps_html}
 </body>
@@ -1776,12 +1858,21 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     webview_readiness_poll_interval_ms_buckets: Counter[str] = Counter()
     webview_readiness_context_refresh_attempts_buckets: Counter[str] = Counter()
     webview_readiness_max_context_refresh_attempts_buckets: Counter[str] = Counter()
+    healing_total = 0
+    healing_severity_counts: Counter[str] = Counter()
+    healing_match_kind_counts: Counter[str] = Counter()
 
     for result in results:
         status_counts[result.status] += 1
 
         if result.target and result.target.resolver_name:
             resolver_win_counts[result.target.resolver_name] += 1
+
+        healing = safe_healing_metadata(result.target.metadata if result.target else {})
+        if healing:
+            healing_total += 1
+            _count_categorical_field(healing_severity_counts, healing.get("severity"))
+            _count_categorical_field(healing_match_kind_counts, healing.get("match_kind"))
 
         if result.error and result.error.error_type:
             error_type_counts[result.error.error_type] += 1
@@ -2407,6 +2498,11 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
         "resolver_win_counts": dict(resolver_win_counts),
         "confidence_summary": confidence_summary,
         "error_type_counts": dict(error_type_counts),
+        "healing_summary": {
+            "total": healing_total,
+            "severity_counts": dict(healing_severity_counts),
+            "match_kind_counts": dict(healing_match_kind_counts),
+        },
         "hydration_summary": hydration_summary,
         "graph_signal_summary": graph_signal_summary,
         "graph_query_summary": graph_query_summary,

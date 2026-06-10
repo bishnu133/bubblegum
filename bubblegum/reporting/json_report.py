@@ -28,6 +28,7 @@ from bubblegum.reporting.html_report import (
     safe_icon_detection_metadata,
     safe_mobile_memory_signature_metadata,
     safe_cloud_provider_summary_metadata,
+    safe_healing_metadata,
     sanitize_reporting_metadata,
 )
 
@@ -57,6 +58,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             icon_detection = safe_icon_detection_metadata(metadata)
             mobile_memory_signature = safe_mobile_memory_signature_metadata(metadata)
             cloud_provider_summary = safe_cloud_provider_summary_metadata(metadata)
+            healing = safe_healing_metadata(metadata)
             for key in list(metadata.keys()):
                 if key.startswith("hydration_") or key in {"match_field", "match_count"}:
                     metadata.pop(key, None)
@@ -78,6 +80,7 @@ def _safe_result_dump(result: StepResult) -> dict:
             metadata.pop("mobile_memory_signature", None)
             metadata.pop("cloud_provider_metadata", None)
             metadata.pop("cloud_provider_summary", None)
+            metadata.pop("healing", None)
             metadata.update(hydration)
             if graph_signals:
                 metadata["graph_signals"] = graph_signals
@@ -113,6 +116,8 @@ def _safe_result_dump(result: StepResult) -> dict:
                 metadata["mobile_memory_signature"] = mobile_memory_signature
             if cloud_provider_summary:
                 metadata["cloud_provider_summary"] = cloud_provider_summary
+            if healing:
+                metadata["healing"] = healing
             target["metadata"] = metadata
     return payload
 

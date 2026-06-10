@@ -35,6 +35,7 @@ Phase 3 — record_success() / record_failure() wired into act() and recover()
 
 from __future__ import annotations
 
+import difflib
 import inspect
 import logging
 import time
@@ -137,6 +138,76 @@ def clear_vision_provider() -> None:
     """Clear the registered runtime vision provider. Safe to call repeatedly."""
     global _vision_provider
     _vision_provider = None
+
+
+# ---------------------------------------------------------------------------
+# Self-healing advisory
+# ---------------------------------------------------------------------------
+
+# A fuzzy/synonym match whose label is this similar to the requested phrase is
+# treated as a benign typo/case correction (e.g. "Logut" -> "Logout"). Below it,
+# the substitution is semantic (e.g. "login" -> "Sign In") and is flagged for
+# review as a possible defect.
+_HEALING_REVIEW_SIMILARITY = 0.85
+
+
+def _build_healing_advisory(intent: StepIntent, target: ResolvedTarget) -> dict | None:
+    """
+    Detect when self-healing substituted a different element label than the
+    tester wrote, and build a report advisory.
+
+    Returns None when the step matched cleanly (exact / substring), so clean
+    steps keep status "passed". Only fuzzy/synonym matches are considered heals.
+    """
+    if target is None or target.resolver_name != "fuzzy_text":
+        return None
+
+    requested = (intent.target_phrase or intent.instruction or "").strip()
+    matched = str(
+        target.metadata.get("element_name")
+        or target.metadata.get("matched_text")
+        or ""
+    ).strip()
+    if not requested or not matched:
+        return None
+
+    req_n = requested.lower()
+    matched_n = matched.lower()
+    # Exact or substring containment is not drift worth flagging.
+    if req_n == matched_n or req_n in matched_n or matched_n in req_n:
+        return None
+
+    fuzzy_ratio = float(target.metadata.get("fuzzy_ratio") or 0.0)
+    direct = difflib.SequenceMatcher(None, req_n, matched_n).ratio()
+
+    # A synonym substitution (the resolver's synonym table mapped the requested
+    # phrase to a different word) is the clearest possible-defect signal — the
+    # tester's literal label does not exist on the page at all.
+    from bubblegum.core.grounding.resolvers.fuzzy_text import _expand_with_synonyms
+    synonyms = {s for s in _expand_with_synonyms(req_n) if s != req_n}
+    is_synonym = matched_n in synonyms
+
+    if is_synonym:
+        severity, match_kind = "review", "synonym"
+    elif direct >= _HEALING_REVIEW_SIMILARITY:
+        severity, match_kind = "info", "fuzzy"
+    else:
+        severity, match_kind = "review", "fuzzy"
+
+    return {
+        "applied": True,
+        "requested": requested,
+        "matched": matched,
+        "resolver": target.resolver_name,
+        "match_kind": match_kind,
+        "similarity": round(fuzzy_ratio, 3),
+        "severity": severity,
+        "message": (
+            f"Self-healing applied: your step referenced '{requested}', but the "
+            f"closest element on the page was '{matched}'. If this substitution is "
+            f"unexpected, it may be a real defect — please revisit your test step."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +318,16 @@ async def act(
     # Phase 3 — persist the winning resolution for self-healing replay
     _memory_cache.record_success(intent, target)
 
+    # Self-healing advisory: a fuzzy/synonym match means the literal step did
+    # not match the page. Surface it so a tester can confirm the substitution
+    # is intended and not masking a real defect.
+    advisory = _build_healing_advisory(intent, target)
+    status = "passed"
+    if advisory is not None:
+        target.metadata["healing"] = advisory
+        if advisory["severity"] == "review":
+            status = "recovered"
+
     # 5. Capture screenshot artifact after successful execution
     artifacts: list[ArtifactRef] = []
     try:
@@ -256,7 +337,7 @@ async def act(
         logger.warning("Screenshot capture failed after act(): %s", exc)
 
     return StepResult(
-        status="passed",
+        status=status,
         action=instruction,
         target=target,
         confidence=target.confidence,
