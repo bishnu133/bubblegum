@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Radio group</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  fieldset { border: 1px solid #ccc; padding: 1em; }
+  legend { font-weight: 600; padding: 0 0.5em; }
+  .row { margin: 0.4em 0; }
+  label { margin-left: 0.4em; }
+  #result { margin-top: 1em; color: #205020; }
+</style>
+</head>
+<body>
+<h1>Radio group</h1>
+<p>Single-select radio group with a group label and three labeled options. Each option uses <code>&lt;label for=…&gt;</code> so NL "Click Red radio" resolves deterministically.</p>
+
+<fieldset>
+  <legend>Color</legend>
+
+  <div class="row">
+    <input type="radio" id="r_red" name="color" value="red">
+    <label for="r_red">Red</label>
+  </div>
+
+  <div class="row">
+    <input type="radio" id="r_blue" name="color" value="blue">
+    <label for="r_blue">Blue</label>
+  </div>
+
+  <div class="row">
+    <input type="radio" id="r_green" name="color" value="green">
+    <label for="r_green">Green</label>
+  </div>
+</fieldset>
+
+<p id="result"></p>
+
+<script>
+  document.querySelectorAll('input[name="color"]').forEach(r => {
+    r.addEventListener('change', () => {
+      if (r.checked) {
+        document.getElementById('result').textContent = 'Chosen: ' + r.value;
+      }
+    });
+  });
+</script>
+</body>
+</html>

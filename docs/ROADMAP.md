@@ -43,10 +43,18 @@ heal it. It should:
   Follow-up (not blocking): add a vision-grounding regression fixture to the
   widget-lab harness once a screenshot corpus is available.
 
-## PR 4 — PyPI packaging (v0.0.5a)
-- Ship the sample pages (`sample_app` / `widget_lab`) inside the package so pip-installed
-  users get the quickstart without a repo checkout.
-- Build/validate/publish dry-run via `publish-check.yml`.
+## PR 4 — PyPI packaging (v0.0.5a) ✅
+- The `widget_lab` and `sample_app` quickstart pages now ship inside the package
+  (`bubblegum/testing/pages/`) and are included in the wheel via
+  `[tool.setuptools.package-data]`, so pip-installed users get the fixtures without a
+  repo checkout.
+- `find_pages_dir()` resolves a repo checkout first (dev), then falls back to the bundled
+  copies (pip install). A drift guard test keeps the two byte-for-byte in sync.
+- `python -m build` produces a wheel containing all 14 sample pages; `validate_package.py`
+  (default + strict) passes.
+
+  Follow-up (not blocking): actual upload to PyPI / TestPyPI via `publish-check.yml` is a
+  release-time action, not a code change.
 
 ## PR 5 — BDD step library
 - pytest-bdd / behave Given/When/Then wrappers over the NL engine for manual-QA personas.

@@ -43,6 +43,11 @@ bubblegum = "bubblegum.pytest_plugin"
 where = ["."]
 include = ["bubblegum*"]
 
+[tool.setuptools.package-data]
+# Ship the quickstart sample pages inside the wheel so pip-installed users get
+# the widget_lab / sample_app fixtures without a repository checkout.
+"bubblegum.testing" = ["pages/**/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "function"

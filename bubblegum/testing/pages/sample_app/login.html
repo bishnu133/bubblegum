@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Acme Notes — Sign in</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 26em; margin: 0 auto; }
+  h1 { margin-bottom: 0.2em; }
+  .tagline { color: #666; margin-top: 0; }
+  .row { margin: 0.9em 0; }
+  label { display: block; font-weight: 600; margin-bottom: 0.25em; }
+  input { width: 100%; padding: 0.5em; font-size: 1em; box-sizing: border-box; }
+  button { padding: 0.6em 1.4em; font-size: 1em; margin-top: 0.5em; cursor: pointer; }
+  #error { color: #b00020; }
+</style>
+</head>
+<body>
+<h1>Acme Notes</h1>
+<p class="tagline">Sign in to manage your notes.</p>
+
+<form id="login-form">
+  <div class="row">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username">
+  </div>
+  <div class="row">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password">
+  </div>
+  <button id="signin" type="submit">Sign in</button>
+</form>
+
+<p id="error" role="alert" hidden>Invalid username or password.</p>
+
+<script>
+  // Demo credentials: tester / bubblegum!
+  document.getElementById('login-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const u = document.getElementById('username').value;
+    const p = document.getElementById('password').value;
+    if (u === 'tester' && p === 'bubblegum!') {
+      window.location.href = 'dashboard.html';
+    } else {
+      document.getElementById('error').hidden = false;
+    }
+  });
+</script>
+</body>
+</html>
