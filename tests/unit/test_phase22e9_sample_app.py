@@ -106,3 +106,111 @@ def test_sample_app_fixture_is_exposed_and_session_scoped():
         or getattr(getattr(fx, "_pytestfixturefunction", None), "scope", None)
     )
     assert scope == "session", f"expected session-scoped fixture, got {scope!r}"
+
+
+# ---------------------------------------------------------------------------
+# Probe fallback for content-named roles (the dashboard / settings probes)
+#
+# paragraph / status expose their text as snapshot content, not as an
+# accessible name, so get_by_role(role, name=...) matches zero elements.
+# The probe must fall back to an exact text locator in that case.
+# ---------------------------------------------------------------------------
+
+
+class _ProbeLocator:
+    def __init__(self, count: int, visible: bool) -> None:
+        self._count = count
+        self._visible = visible
+
+    @property
+    def first(self) -> "_ProbeLocator":
+        return self
+
+    async def count(self) -> int:
+        return self._count
+
+    async def is_visible(self) -> bool:
+        return self._visible
+
+
+class _ProbePage:
+    """Role locators match nothing; text locators match a visible element."""
+
+    def __init__(self) -> None:
+        self.url = "http://test/"
+        self.get_by_text_calls: list[tuple[str, bool]] = []
+        self.get_by_role_calls: list[str] = []
+
+    def get_by_role(self, role: str, name: str | None = None) -> _ProbeLocator:
+        self.get_by_role_calls.append(role)
+        # paragraph/status have no accessible name -> zero matches; headings
+        # take their name from content -> one match.
+        count = 1 if role == "heading" else 0
+        return _ProbeLocator(count=count, visible=count > 0)
+
+    def get_by_text(self, text: str, exact: bool = False) -> _ProbeLocator:
+        self.get_by_text_calls.append((text, exact))
+        return _ProbeLocator(count=1, visible=True)
+
+    def locator(self, ref: str) -> _ProbeLocator:
+        return _ProbeLocator(count=0, visible=False)
+
+
+def _probe_session_with_snapshot(snapshot: str):
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bubblegum.session import BubblegumSession
+
+    page = _ProbePage()
+    session = BubblegumSession.web(page)
+
+    ctx = MagicMock()
+    ctx.a11y_snapshot = snapshot
+    ctx.screenshot = None
+    ctx.screen_signature = "sig:probe"
+    ctx.hierarchy_xml = None
+    patcher = patch(
+        "bubblegum.adapters.web.playwright.adapter.PlaywrightAdapter.collect_context",
+        new=AsyncMock(return_value=ctx),
+    )
+    return page, session, patcher
+
+
+def test_is_visible_falls_back_to_text_for_paragraph_role():
+    import asyncio
+
+    page, session, patcher = _probe_session_with_snapshot(
+        '- heading "Dashboard" [level=1]\n- paragraph: Welcome back, tester.\n'
+    )
+    with patcher:
+        visible = asyncio.run(session.is_visible("Welcome back, tester."))
+
+    assert visible is True
+    assert page.get_by_text_calls == [("Welcome back, tester.", True)]
+
+
+def test_is_visible_falls_back_to_text_for_status_role():
+    import asyncio
+
+    page, session, patcher = _probe_session_with_snapshot(
+        '- button "Save"\n- status: Settings saved.\n'
+    )
+    with patcher:
+        visible = asyncio.run(session.is_visible("Settings saved."))
+
+    assert visible is True
+    assert page.get_by_text_calls == [("Settings saved.", True)]
+
+
+def test_is_visible_keeps_role_locator_when_it_matches():
+    import asyncio
+
+    page, session, patcher = _probe_session_with_snapshot(
+        '- heading "Dashboard" [level=1]\n- paragraph: Welcome back, tester.\n'
+    )
+    with patcher:
+        visible = asyncio.run(session.is_visible("Dashboard"))
+
+    assert visible is True
+    # The heading locator matched, so no text fallback was needed.
+    assert page.get_by_text_calls == []

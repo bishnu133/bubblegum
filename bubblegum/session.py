@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 
 _LABEL_SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
+# Extracts the name component of a role=<role>[name="<name>"] ref (kept in
+# sync with the Playwright adapter's ref grammar).
+_REF_NAME_RE = re.compile(r'\[name="([^"]+)"\]')
+
 
 def _sanitize_label(label: str) -> str:
     """Make a label safe for use as a filename fragment."""
@@ -292,7 +296,25 @@ class BubblegumSession:
             )
 
         adapter = sdk._get_adapter("web", page=self._page)
-        return adapter._resolve_locator(result.target.ref)
+        ref = result.target.ref
+        locator = adapter._resolve_locator(ref)
+
+        # 22E-9 fix: roles like paragraph / status / generic expose their
+        # text as snapshot *content*, not as an accessible name, so a
+        # role=...[name="..."] ref built from the snapshot can match zero
+        # elements (and Playwright's is_visible() reports False for zero
+        # matches instead of raising). When the role locator matches
+        # nothing, fall back to an exact text match on the same string.
+        try:
+            if await locator.count() > 0:
+                return locator
+        except Exception:
+            return locator
+
+        name_match = _REF_NAME_RE.search(ref)
+        if name_match:
+            return self._page.get_by_text(name_match.group(1), exact=True)
+        return locator
 
     # ------------------------------------------------------------------
     # Auto-screenshot on failure (Phase 22E-3)

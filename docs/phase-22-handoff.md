@@ -129,6 +129,12 @@ acceptance gate, and queued PR is captured below.
 - `sample_app` fixture (session-scoped) in the plugin serves the pages
   via the shared static-server helper. `find_pages_dir` grew a `rel`
   parameter so any example app can be located the same way.
+- Dogfooding fix shipped: `is_visible("Welcome back, tester.")` style
+  probes resolved to `role=paragraph[name=...]` / `role=status[name=...]`
+  refs that match zero elements (those roles don't take their accessible
+  name from content), and Playwright reports `is_visible() == False` for
+  zero matches. `_resolve_probe_locator` now falls back to an exact
+  `get_by_text` match when the role locator matches nothing.
 - `docs/getting-started-for-testers.md` rewritten around the real API:
   install → run the sample → first pytest test → session API table →
   `bubblegum_page` fast path → mobile → CLI reference →
@@ -136,7 +142,7 @@ acceptance gate, and queued PR is captured below.
   flows so the docs stay continuously proven.
 
 ### Validation evidence (head of branch)
-- `python -m pytest tests/unit -q` → **1,208 passed** with the mobile
+- `python -m pytest tests/unit -q` → **1,211 passed** with the mobile
   extra installed (3 of those skip without appium-python-client), 17
   baseline failures unrelated to this branch (the documented anthropic
   + `AsyncMock`/`_FakePage` issues).
@@ -231,7 +237,7 @@ python -m playwright install chromium
 # The "first 60 seconds" sample app (22E-9)
 python examples/web/real_local/run_example.py               # 7/7 steps
 
-# Full unit baseline — expect 1,208 passed, 17 baseline failures
+# Full unit baseline — expect 1,211 passed, 17 baseline failures
 # (3 of the passes skip without `pip install -e ".[mobile]"`)
 python -m pytest tests/unit -q
 
