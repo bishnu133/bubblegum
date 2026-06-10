@@ -78,6 +78,7 @@ class GroundingEngine:
         review_threshold: float = _REVIEW_THRESHOLD,
         ambiguous_gap:    float = _AMBIGUOUS_GAP,
         reject_threshold: float = _REJECT_THRESHOLD,
+        ai_first:         bool  = False,
     ) -> None:
         self.registry         = registry or ResolverRegistry()
         self.ranker           = CandidateRanker()
@@ -85,6 +86,12 @@ class GroundingEngine:
         self.review_threshold = review_threshold
         self.ambiguous_gap    = ambiguous_gap
         self.reject_threshold = reject_threshold
+        # When True, the AI tier (vision/LLM) is attempted before the
+        # deterministic tiers — "use AI as the first approach to find the
+        # element". Only reorders when the AI tier can actually run (cost
+        # policy permits and an eligible Tier 3 resolver exists), so it never
+        # blocks deterministic resolution when AI is unavailable.
+        self.ai_first         = ai_first
 
     # ------------------------------------------------------------------
     # Public API
@@ -108,7 +115,15 @@ class GroundingEngine:
         all_candidates: list[ResolvedTarget] = []
         all_traces:     list[ResolverTrace]  = []
 
-        for tier_num in (1, 2, 3):
+        # AI-first: attempt the AI tier before the deterministic tiers when the
+        # caller opted in AND the AI tier can actually run. Otherwise fall back
+        # to the standard deterministic-first order so AI-first never blocks or
+        # changes behaviour when AI is unavailable / cost-blocked.
+        tier_order: tuple[int, ...] = (1, 2, 3)
+        if self.ai_first and self._ai_tier_runnable(intent):
+            tier_order = (3, 1, 2)
+
+        for tier_num in tier_order:
             # Before running Tier 3: check if it is blocked by cost policy.
             # We check this even before _run_tier because can_run() will filter
             # all Tier 3 resolvers out when max_cost_level=low, so tier_candidates
@@ -191,6 +206,21 @@ class GroundingEngine:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _ai_tier_runnable(self, intent: StepIntent) -> bool:
+        """
+        True only when the AI tier (Tier 3) can actually run for this intent:
+        the cost policy permits AI and at least one eligible Tier 3 resolver
+        exists for the channel. Used to gate AI-first reordering so it never
+        blocks deterministic resolution when AI is unavailable or cost-blocked.
+        """
+        if intent.options.max_cost_level == "low":
+            return False
+        lo, hi = _TIER_RANGES[3]
+        return any(
+            lo <= r.priority <= hi and intent.channel in r.channels
+            for r in self.registry.all()
+        )
 
     def _run_tier(
         self, intent: StepIntent, tier_num: int

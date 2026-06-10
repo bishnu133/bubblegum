@@ -24,18 +24,24 @@ heal it. It should:
   real defect" callout, plus a per-run count of auto-healed steps.
 - Thresholds configurable (synonym hits always flag; fuzzy flags below a similarity cutoff).
 
-## PR 3 — Strong AI-first object recognition
+## PR 3 — Strong AI-first object recognition ✅
 - New **Claude vision backend** (`bubblegum/core/vision/backends/anthropic.py`): real
-  screenshot → `messages.create` (image block + structured-output JSON schema for
-  bboxes/labels/roles) → normalized `VisionCandidate`s. Default `claude-opus-4-8`
-  (high-res, 1:1 pixel coordinates), configurable; provider injectable for tests.
+  screenshot → `messages.create` (image block) → JSON candidates →
+  normalized `VisionCandidate`s. Default `claude-opus-4-8` (high-res, 1:1 pixel
+  coordinates), injectable client for tests, fail-safe with sanitized diagnostics.
   OpenAI/callable backends and the injectable interface stay intact (provider-neutral seam).
-- Wire `VisionModelResolver` to actually capture a screenshot and call the backend
-  (today it only consumes injected candidates).
-- Add an **AI-first** resolution strategy flag so the vision/LLM tier can run before the
-  deterministic tiers when opted in, without losing the traceable fallback chain.
-- Honor `max_cost_level` so AI-first can't run unbounded paid calls in CI.
-- Add a vision-grounding regression fixture to the widget-lab harness.
+- The screenshot→provider→candidate pipeline was already wired in the SDK
+  (`_maybe_build_vision_candidates` → `build_vision_candidates_from_screenshot`);
+  PR3 supplies the Claude provider that plugs into it via `configure_vision_provider()`.
+- Added an **AI-first** resolution strategy (`grounding.ai_first`) so the AI tier runs
+  before the deterministic tiers when opted in. It only reorders when the AI tier can
+  actually run (cost policy permits + an eligible Tier 3 resolver exists), so it never
+  blocks deterministic resolution and keeps the traceable fallback chain.
+- `max_cost_level` continues to gate provider vision (only runs at `high`), so AI-first
+  can't trigger unbounded paid calls.
+
+  Follow-up (not blocking): add a vision-grounding regression fixture to the
+  widget-lab harness once a screenshot corpus is available.
 
 ## PR 4 — PyPI packaging (v0.0.5a)
 - Ship the sample pages (`sample_app` / `widget_lab`) inside the package so pip-installed

@@ -74,6 +74,7 @@ _engine = GroundingEngine(
     review_threshold=_config.grounding.review_threshold,
     ambiguous_gap=_config.grounding.ambiguous_gap,
     reject_threshold=_config.grounding.reject_threshold,
+    ai_first=_config.grounding.ai_first,
 )
 _memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for record_*
 _vision_provider: VisionProvider | None = None
@@ -99,6 +100,7 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
         review_threshold=_config.grounding.review_threshold,
         ambiguous_gap=_config.grounding.ambiguous_gap,
         reject_threshold=_config.grounding.reject_threshold,
+        ai_first=_config.grounding.ai_first,
     )
     return _config
 
