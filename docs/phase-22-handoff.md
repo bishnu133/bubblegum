@@ -1,6 +1,7 @@
 # Phase 22 — Handoff
 
-Status: Phase 22D + 22E-1 + **22E-2 through 22E-8 shipped end-to-end**.
+Status: Phase 22D + 22E-1 + **22E-2 through 22E-9 shipped end-to-end —
+the Phase 22E queue is complete**.
 The widget lab runs 10/10 scenarios NL-only against real Chromium with
 no `selector=`, `action_type=`, or `input_value=` safety nets. The MUI
 lab adds 4 React-shaped scenarios (select / checkbox / dialog /
@@ -120,17 +121,36 @@ acceptance gate, and queued PR is captured below.
 - Skips cleanly when appium-python-client is missing, no capabilities
   are passed, or the Appium server is unreachable.
 
+### 22E-9 — Acme Notes sample app + tester quickstart (shipped)
+- `examples/web/real_local/` — three-page login → dashboard → settings
+  app (plain HTML + a few lines of JS, no backend). Demo credentials
+  `tester` / `bubblegum!`. `run_example.py` drives the whole flow
+  NL-only and prints a step summary; `--headed` to watch.
+- `sample_app` fixture (session-scoped) in the plugin serves the pages
+  via the shared static-server helper. `find_pages_dir` grew a `rel`
+  parameter so any example app can be located the same way.
+- `docs/getting-started-for-testers.md` rewritten around the real API:
+  install → run the sample → first pytest test → session API table →
+  `bubblegum_page` fast path → mobile → CLI reference →
+  troubleshooting. The integration test runs the exact documented
+  flows so the docs stay continuously proven.
+
 ### Validation evidence (head of branch)
-- `python -m pytest tests/unit -q` → **1,196 passed**, 3 skipped
-  (Appium options-class tests skip without appium-python-client), 17
+- `python -m pytest tests/unit -q` → **1,208 passed** with the mobile
+  extra installed (3 of those skip without appium-python-client), 17
   baseline failures unrelated to this branch (the documented anthropic
   + `AsyncMock`/`_FakePage` issues).
 - `python scripts/run_widget_lab_regression.py --strict` → **10/10**.
 - `python scripts/run_mui_lab_regression.py --strict` → **4/4**.
-- `python -m pytest --playwright -m bubblegum -v` → **18 passed**
-  (2 + 3 + 4 + 3 + 3 + 3 across 22E-2 / 3 / 4 / 5 / 6 / 7). The 22E-8
-  mobile integration test is `--appium`-gated and skips without a
-  device.
+- `python -m pytest --playwright -m bubblegum -v` → **21 passed**,
+  1 skipped (2 + 3 + 4 + 3 + 3 + 3 + 3 across 22E-2 / 3 / 4 / 5 / 6 /
+  7 / 9; the skip is the `--appium`-gated 22E-8 test).
+- 22E-8 validated **live on a real Android emulator** (2026-06-10,
+  macOS): Appium 2.19 + UiAutomator2 + ApiDemos — `--appium` run →
+  **1 passed in 8.03s** through the `bubblegum_mobile` fixture.
+- 22E-6/7 runtime wins confirmed on real Chromium: radio-group 86 ms,
+  tabs-click 66 ms, combobox-select 111 ms, mui-select 169 ms (each
+  was ~5 s before the nav-wait skip).
 - Browser rows validated locally (macOS, real Chromium, 2026-06-10):
   10/10 widget lab, 4/4 MUI lab, 15/15 `-m bubblegum`. 22E-6 runtime
   win confirmed: radio-group 106 ms, tabs-click 66 ms, slider-set
@@ -140,12 +160,9 @@ acceptance gate, and queued PR is captured below.
 
 ## What's queued (next session — pick one)
 
-Picked in order of return on the original "simple to use, powerful
-library for tests" goal:
-
-| PR | Scope | Estimated size | Why |
-|---|---|---|---|
-| **22E-9** | `examples/web/real_local/` — minimal multi-page sample app (login → dashboard → settings) served by the shared helper, demonstrated through `bubblegum_web` + a `sample_app` fixture. Plus `docs/getting-started-for-testers.md` rewrite. | M | The "first 60 seconds" surface a new user judges the library by. |
+**The Phase 22E queue is empty — 22E-2 through 22E-9 all shipped.**
+Next session picks from the follow-ups below, the deferred list, or a
+new phase plan (e.g. PyPI packaging, CI pipeline, BDD step library).
 
 ### Small follow-ups (drop into any PR or batch)
 - **Nameless-combobox resolver fallback** for ARIA-name-less comboboxes
@@ -171,6 +188,7 @@ bubblegum/
                                               22E-7 goto(),
                                               22E-8 mobile failure screenshot
   testing/widget_lab.py                       shared static-server helper
+                                              (+rel param, 22E-9)
   testing/appium_driver.py                    22E-8 caps + driver builder
   adapters/web/playwright/adapter.py          dispatch table (set added),
                                               22E-6 nav-wait skip
@@ -183,17 +201,22 @@ bubblegum/
         accessibility_tree.py                 Tier 1, slider in kind map
         fuzzy_text.py                         Tier 2, slider in kind map
 
-examples/web/widgets/
-  widget_lab/                                 10 scenarios + 10 pages
-  mui_lab/                                    4 scenarios + 4 MUI pages
+examples/web/
+  widgets/widget_lab/                         10 scenarios + 10 pages
+  widgets/mui_lab/                            4 scenarios + 4 MUI pages
+  real_local/                                 22E-9 Acme Notes sample app
+                                              (3 pages + run_example.py)
+
+docs/
+  getting-started-for-testers.md              22E-9 quickstart rewrite
 
 scripts/
   run_widget_lab_regression.py                10 rows (+strict, +public)
   run_mui_lab_regression.py                   4 rows (+strict)
 
 tests/
-  unit/test_phase22e{2..8}_*.py               fixture / probe / smoke / parser / nav-wait / goto / mobile
-  integration/test_phase22e{2..7}_*.py        --playwright-gated live tests
+  unit/test_phase22e{2..9}_*.py               fixture / probe / smoke / parser / nav-wait / goto / mobile / sample-app
+  integration/test_phase22e{2..7,9}_*.py      --playwright-gated live tests
   integration/test_phase22e8_*.py             --appium-gated live test
 ```
 
@@ -205,7 +228,11 @@ tests/
 pip install -e ".[web,test]"
 python -m playwright install chromium
 
-# Full unit baseline — expect 1,196 passed, 3 skipped, 17 baseline failures
+# The "first 60 seconds" sample app (22E-9)
+python examples/web/real_local/run_example.py               # 7/7 steps
+
+# Full unit baseline — expect 1,208 passed, 17 baseline failures
+# (3 of the passes skip without `pip install -e ".[mobile]"`)
 python -m pytest tests/unit -q
 
 # Widget lab regression (strict NL-only)
@@ -216,7 +243,7 @@ python scripts/run_widget_lab_regression.py --public        # 14/14
 python scripts/run_mui_lab_regression.py --strict           # 4/4
 
 # All bubblegum-marked integration tests
-python -m pytest --playwright -m bubblegum -v               # 18 passed
+python -m pytest --playwright -m bubblegum -v               # 21 passed, 1 skipped
 
 # Mobile fixture (requires Appium server + device; 22E-8)
 pip install -e ".[mobile]"
@@ -233,8 +260,7 @@ python -m pytest --appium -m bubblegum \
 
 ## Resuming in a fresh session
 
-Open the new chat with: **"Continue Phase 22 from
-`docs/phase-22-handoff.md`. Start 22E-9."**
-
-(Or pick any other queued PR from the table above.) That single line
-plus this doc is the full context the next session needs.
+The Phase 22E queue is complete. Open the next chat with:
+**"Continue from `docs/phase-22-handoff.md`. Phase 22E is done — plan
+the next phase."** (or name a follow-up / deferred item from the lists
+above). This doc is the full context the next session needs.

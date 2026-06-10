@@ -227,6 +227,26 @@ def widget_lab():
         server.shutdown()
 
 
+@pytest.fixture(scope="session")
+def sample_app():
+    """Yield the base URL of the Acme Notes sample app (Phase 22E-9).
+
+    Serves ``examples/web/real_local/pages`` — a three-page login →
+    dashboard → settings app used by the tester quickstart. Session-scoped,
+    same server semantics as ``widget_lab``.
+    """
+    from pathlib import Path as _Path
+
+    from bubblegum.testing.widget_lab import find_pages_dir, start_widget_lab_server
+
+    pages = find_pages_dir(rel=_Path("examples/web/real_local/pages"))
+    server, base_url = start_widget_lab_server(pages_dir=pages)
+    try:
+        yield base_url
+    finally:
+        server.shutdown()
+
+
 if _HAS_PYTEST_ASYNCIO:
 
     @pytest_asyncio.fixture
