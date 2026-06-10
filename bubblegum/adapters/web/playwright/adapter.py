@@ -106,6 +106,7 @@ _ACTION_DISPATCH = {
     "check":   lambda self, plan, locator, timeout: self._do_check(plan, locator, timeout),
     "uncheck": lambda self, plan, locator, timeout: self._do_uncheck(plan, locator, timeout),
     "scroll":  lambda self, plan, locator, timeout: self._do_scroll(plan, locator, timeout),
+    "set":     lambda self, plan, locator, timeout: self._do_set(plan, locator, timeout),
 }
 
 
@@ -300,6 +301,33 @@ class PlaywrightAdapter(BaseAdapter):
 
     async def _do_scroll(self, plan: ActionPlan, locator, timeout: int) -> None:
         await locator.scroll_into_view_if_needed(timeout=timeout)
+
+    async def _do_set(self, plan: ActionPlan, locator, timeout: int) -> None:
+        """Set a numeric / range value on the resolved element.
+
+        Used for "Set Volume to 75". Drives the value via JS so it works for
+        ``<input type="range">``, ARIA sliders with a backing native input,
+        and MUI's hidden-input slider pattern. Dispatches ``input`` +
+        ``change`` so React/Vue listeners pick up the new value.
+        """
+        if plan.input_value is None:
+            raise ValueError("set action requires input_value (the target value)")
+
+        value = str(plan.input_value)
+        await locator.wait_for(state="attached", timeout=timeout)
+        await locator.first.evaluate(
+            """(el, v) => {
+                // Find the underlying native input if the resolver landed on
+                // a styled wrapper (MUI slider thumb / role=slider on a div).
+                const input = (el.tagName === 'INPUT')
+                    ? el
+                    : (el.querySelector && el.querySelector('input')) || el;
+                if ('value' in input) input.value = v;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }""",
+            value,
+        )
 
     async def validate(self, plan: ValidationPlan) -> ValidationResult:
         """

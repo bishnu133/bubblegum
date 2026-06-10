@@ -33,6 +33,8 @@ Usage
 from __future__ import annotations
 
 import logging
+import re
+from pathlib import Path
 from typing import Any
 
 from bubblegum.core import sdk
@@ -40,6 +42,19 @@ from bubblegum.core.schemas import StepResult
 from bubblegum.core.scope import ScopeStack, SessionScope, close_dialog_web
 
 logger = logging.getLogger(__name__)
+
+
+_LABEL_SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _sanitize_label(label: str) -> str:
+    """Make a label safe for use as a filename fragment."""
+    cleaned = _LABEL_SANITIZE_RE.sub("_", label).strip("_")
+    return cleaned or "bubblegum"
+
+
+class BubblegumProbeError(RuntimeError):
+    """Raised when a state probe (``is_checked`` etc.) cannot resolve its target."""
 
 
 class BubblegumSession:
@@ -73,6 +88,12 @@ class BubblegumSession:
         self._defaults = defaults          # forwarded to every SDK call
         self._results: list[StepResult] = []
         self._scope_stack = ScopeStack()
+        # 22E-3: optional label used to name auto-screenshots on failure.
+        # The pytest fixture sets this from request.node.nodeid; tests that
+        # construct a session directly can set it themselves.
+        self._label: str | None = None
+        self._artifacts_dir: Path = Path("artifacts")
+        self._failure_screenshots: list[Path] = []
 
     # ------------------------------------------------------------------
     # Factory class methods
@@ -89,6 +110,48 @@ class BubblegumSession:
         return cls(channel="mobile", driver=driver, dry_run=dry_run, **kwargs)
 
     # ------------------------------------------------------------------
+    # Wrapped runtime handles
+    # ------------------------------------------------------------------
+
+    @property
+    def page(self):
+        """The Playwright Page wrapped by a web session (else None)."""
+        return self._page
+
+    @property
+    def driver(self):
+        """The Appium driver wrapped by a mobile session (else None)."""
+        return self._driver
+
+    @property
+    def channel(self) -> str:
+        """The channel name passed at construction (``web`` or ``mobile``)."""
+        return self._channel
+
+    @property
+    def label(self) -> str | None:
+        """Optional label used to name auto-screenshots and trace artifacts."""
+        return self._label
+
+    @label.setter
+    def label(self, value: str | None) -> None:
+        self._label = value
+
+    @property
+    def artifacts_dir(self) -> Path:
+        """Directory where auto-screenshots and other artifacts are written."""
+        return self._artifacts_dir
+
+    @artifacts_dir.setter
+    def artifacts_dir(self, value: Path | str) -> None:
+        self._artifacts_dir = Path(value)
+
+    @property
+    def failure_screenshots(self) -> list[Path]:
+        """Paths of auto-screenshots captured for failed steps in this session."""
+        return list(self._failure_screenshots)
+
+    # ------------------------------------------------------------------
     # Step methods
     # ------------------------------------------------------------------
 
@@ -103,6 +166,7 @@ class BubblegumSession:
         )
         self._results.append(result)
         self._log(instruction, result)
+        await self._maybe_screenshot_on_failure(result)
         return result
 
     async def verify(self, instruction: str, **kwargs) -> StepResult:
@@ -116,6 +180,7 @@ class BubblegumSession:
         )
         self._results.append(result)
         self._log(instruction, result)
+        await self._maybe_screenshot_on_failure(result)
         return result
 
     async def extract(self, instruction: str, **kwargs) -> StepResult:
@@ -129,6 +194,7 @@ class BubblegumSession:
         )
         self._results.append(result)
         self._log(instruction, result)
+        await self._maybe_screenshot_on_failure(result)
         return result
 
     async def recover(
@@ -148,7 +214,120 @@ class BubblegumSession:
         )
         self._results.append(result)
         self._log(intent, result)
+        await self._maybe_screenshot_on_failure(result)
         return result
+
+    # ------------------------------------------------------------------
+    # State probes (Phase 22E-3) — web only
+    # ------------------------------------------------------------------
+
+    async def is_checked(self, target: str, **kwargs) -> bool:
+        """Return whether the NL-resolved checkbox/radio is checked.
+
+        Example: ``await s.is_checked("Newsletter")``.
+        Raises ``BubblegumProbeError`` when the target cannot be resolved.
+        """
+        locator = await self._resolve_probe_locator(target, **kwargs)
+        return bool(await locator.first.is_checked())
+
+    async def selected_value(self, target: str, **kwargs) -> str:
+        """Return the current value of the NL-resolved <select> / combobox.
+
+        Reads ``input_value()`` so it works for native ``<select>`` and
+        ``<input>``; ARIA comboboxes that expose their value as text need a
+        custom probe (extract on the trigger).
+        """
+        locator = await self._resolve_probe_locator(target, **kwargs)
+        return await locator.first.input_value()
+
+    async def is_visible(self, target: str, **kwargs) -> bool:
+        """Return whether the NL-resolved element is visible to the user."""
+        locator = await self._resolve_probe_locator(target, **kwargs)
+        return bool(await locator.first.is_visible())
+
+    async def _resolve_probe_locator(self, target: str, **kwargs):
+        """Resolve an NL target via grounding and return a Playwright Locator.
+
+        Uses ``sdk.act`` with ``action_type="verify"`` + ``dry_run=True`` so
+        the resolver chain runs but the adapter never executes anything. The
+        resulting ``target.ref`` is handed back to the adapter's existing
+        ref-to-locator helper.
+        """
+        if self._channel != "web":
+            raise NotImplementedError(
+                "Bubblegum state probes are web-only in Phase 22E-3"
+            )
+
+        merged = self._merged(kwargs)
+        merged["dry_run"] = True
+        merged.setdefault("action_type", "verify")
+
+        result = await sdk.act(
+            target,
+            channel="web",
+            page=self._page,
+            driver=self._driver,
+            **merged,
+        )
+        if result.target is None:
+            err = result.error.message if result.error else "no candidates"
+            raise BubblegumProbeError(
+                f"Could not resolve {target!r} for state probe: {err}"
+            )
+
+        adapter = sdk._get_adapter("web", page=self._page)
+        return adapter._resolve_locator(result.target.ref)
+
+    # ------------------------------------------------------------------
+    # Auto-screenshot on failure (Phase 22E-3)
+    # ------------------------------------------------------------------
+
+    async def _maybe_screenshot_on_failure(self, result: StepResult) -> None:
+        """Capture a screenshot when a step fails.
+
+        Path format: ``<artifacts_dir>/<label>-step<N>.png`` where ``<label>``
+        is the session label (pytest fixture sets it from the test nodeid)
+        and ``N`` is 1-based step index. No-op for non-web channels, sessions
+        without a page, dry-run results, or when label is unset.
+        """
+        if result.status != "failed":
+            return
+        if self._channel != "web" or self._page is None:
+            return
+        if not self._label:
+            return
+
+        try:
+            self._artifacts_dir.mkdir(parents=True, exist_ok=True)
+            step_idx = len(self._results)
+            safe_label = _sanitize_label(self._label)
+            path = self._artifacts_dir / f"{safe_label}-step{step_idx}.png"
+            await self._page.screenshot(path=str(path))
+            self._failure_screenshots.append(path)
+            logger.debug("Auto-screenshot on failure: %s", path)
+        except Exception as exc:
+            logger.warning("Auto-screenshot capture failed: %s", exc)
+
+    async def capture_failure_screenshot(self, suffix: str = "final") -> Path | None:
+        """Capture a screenshot now (used by the pytest fixture finalizer).
+
+        Returns the path of the written file, or None if capture is skipped
+        (no page / no label / IO error).
+        """
+        if self._channel != "web" or self._page is None or not self._label:
+            return None
+        try:
+            self._artifacts_dir.mkdir(parents=True, exist_ok=True)
+            step_idx = len(self._results) + 1
+            safe_label = _sanitize_label(self._label)
+            tag = suffix if suffix == "final" else f"step{step_idx}"
+            path = self._artifacts_dir / f"{safe_label}-{tag}.png"
+            await self._page.screenshot(path=str(path))
+            self._failure_screenshots.append(path)
+            return path
+        except Exception as exc:
+            logger.warning("Auto-screenshot capture failed: %s", exc)
+            return None
 
     # ------------------------------------------------------------------
     # Scope (Phase 22D-6)

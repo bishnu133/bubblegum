@@ -28,14 +28,25 @@ _LEADING_VERBS = (
     "click", "tap", "press", "select", "choose", "pick", "type", "enter",
     "fill", "input", "verify", "check", "uncheck", "tick", "untick", "toggle",
     "upload", "attach", "open", "follow", "assert", "confirm", "ensure", "see",
-    "extract", "get", "read", "fetch", "scroll", "to", "on", "the",
+    "extract", "get", "read", "fetch", "scroll", "set", "expand", "collapse",
+    "to", "on", "the",
 )
 
 # "Enter <value> into <target>" grammar for type/select/upload actions.
 _VALUE_INTO_TARGET_RE = re.compile(
-    r'^\s*(?:enter|type|fill|input|select|choose|pick|set|upload|attach)\s+'
+    r'^\s*(?:enter|type|fill|input|select|choose|pick|upload|attach)\s+'
     r'(?:"([^"]+)"|\'([^\']+)\'|(.+?))\s+'
     r'(?:into|in|on|to|from|as|=)\s+(?:the\s+)?(.+?)\s*$',
+    re.IGNORECASE,
+)
+
+# Phase 22E-5: "Set <target> to <value>" — target/value order is reversed
+# from value-into-target, so the regex captures the target first.
+_SET_TARGET_TO_VALUE_RE = re.compile(
+    r'^\s*set\s+(?:the\s+)?'
+    r'(?:"([^"]+)"|\'([^\']+)\'|(.+?))\s+'
+    r'(?:to|=)\s+'
+    r'(?:"([^"]+)"|\'([^\']+)\'|(.+?))\s*[\.!?]?\s*$',
     re.IGNORECASE,
 )
 
@@ -51,7 +62,8 @@ _LEADING_VERB_RE = re.compile(
 # at the end of the phrase; the control_kind_hint already carries the
 # widget identity separately on the relational intent.
 _TRAILING_WIDGET_SUFFIX_RE = re.compile(
-    r"\s+(?:link|button|checkbox|radio(?:\s+button)?|switch|toggle|dropdown|tab)"
+    r"\s+(?:link|button|checkbox|radio(?:\s+button)?|switch|toggle|dropdown|tab"
+    r"|accordion|section|panel|slider)"
     r"\s*[\.!?]?\s*$",
     re.IGNORECASE,
 )
@@ -85,7 +97,15 @@ def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
 
     explicit_value = kwargs.get("input_value", kwargs.get("value"))
 
-    if action in {"type", "select", "upload"}:
+    if action == "set":
+        m = _SET_TARGET_TO_VALUE_RE.match(text)
+        if m:
+            target = m.group(1) or m.group(2) or m.group(3)
+            value = m.group(4) or m.group(5) or m.group(6)
+            return ParsedIntent(action, _strip_widget_suffix(target), _clean(value), confident=True)
+        # Fall through to the explicit-value / generic handling below.
+
+    if action in {"type", "select", "upload", "set"}:
         m = _VALUE_INTO_TARGET_RE.match(text)
         if m:
             value = m.group(1) or m.group(2) or m.group(3)
@@ -145,6 +165,9 @@ _LEADING_VERB_TO_ACTION: dict[str, str] = {
     "uncheck": "uncheck",
     "untick": "uncheck",
     "scroll": "scroll",
+    "set": "set",
+    "expand": "click",
+    "collapse": "click",
     "extract": "extract",
     "get": "extract",
     "read": "extract",
@@ -365,6 +388,57 @@ def parse_relational_intent(instruction: str, action_type: str | None = None) ->
             payload["primary_target_text"] = label
             payload["scope_type"] = "label"
             return payload
+
+    # 7b) "<verb> <label> tab" => label_for + tab (Phase 22E-5)
+    m_tab = re.match(
+        r"^\s*(?:click|tap|press|select|choose|pick|open)\s+(?:the\s+)?(.+?)\s+tab\s*[\.!?]?\s*$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m_tab:
+        label = _clean_fragment(m_tab.group(1))
+        if label:
+            payload = _base_relational_payload()
+            payload["relation_type"] = "label_for"
+            payload["control_kind_hint"] = "tab"
+            payload["primary_target_text"] = label
+            payload["scope_type"] = "label"
+            return payload
+
+    # 7c) "expand/collapse/open <label> section/panel/accordion" =>
+    # label_for + button. Accordion headers are buttons with aria-expanded;
+    # the visible accessible name is the section title, so hint=button
+    # routes the resolver to the header rather than the content region.
+    m_section = re.match(
+        r"^\s*(?:expand|collapse|open|click)\s+(?:the\s+)?(.+?)\s+"
+        r"(?:section|panel|accordion)\s*[\.!?]?\s*$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m_section:
+        label = _clean_fragment(m_section.group(1))
+        if label:
+            payload = _base_relational_payload()
+            payload["relation_type"] = "label_for"
+            payload["control_kind_hint"] = "button"
+            payload["primary_target_text"] = label
+            payload["scope_type"] = "label"
+            return payload
+
+    # 7d) "Set <label> to <value>" => label_for + slider. Real-world phrasing
+    # is target-first ("Set Volume to 75"), not value-first like type/enter.
+    if action_type == "set" or lowered.startswith("set "):
+        m_set = _SET_TARGET_TO_VALUE_RE.match(text)
+        if m_set:
+            target_raw = m_set.group(1) or m_set.group(2) or m_set.group(3)
+            label = _clean_fragment(_strip_widget_suffix(target_raw))
+            if label:
+                payload = _base_relational_payload()
+                payload["relation_type"] = "label_for"
+                payload["control_kind_hint"] = "slider"
+                payload["primary_target_text"] = label
+                payload["scope_type"] = "label"
+                return payload
 
     # 8) "select/choose/pick <value> from <label>" without "dropdown" suffix
     # => label_for + dropdown hint (Phase 22D-2)

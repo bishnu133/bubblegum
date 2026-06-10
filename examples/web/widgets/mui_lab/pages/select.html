@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MUI Lab — Select</title>
+<style>
+  body { font-family: Roboto, -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  .MuiFormControl-root { display: inline-flex; flex-direction: column; gap: 0.25em; min-width: 16em; }
+  .MuiInputLabel-root {
+    font-size: 0.85em; color: rgba(0,0,0,0.6); padding: 0 0.25em; background: white;
+    position: relative; align-self: flex-start; top: 0.6em; left: 0.6em; z-index: 1;
+  }
+  .MuiOutlinedInput-root {
+    position: relative; padding: 0.85em 1em; border: 1px solid rgba(0,0,0,0.23);
+    border-radius: 4px; background: white; cursor: pointer; min-height: 1.5em;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .MuiOutlinedInput-root[aria-expanded="true"] { border-color: #1976d2; border-width: 2px; padding: calc(0.85em - 1px) calc(1em - 1px); }
+  .MuiSelect-select { flex: 1; }
+  .MuiSelect-icon { width: 0.7em; height: 0.7em; border-right: 2px solid #555; border-bottom: 2px solid #555; transform: rotate(45deg); margin-left: 0.5em; }
+  .MuiPopover-root {
+    position: absolute; background: white; border-radius: 4px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.25); padding: 0.5em 0;
+    list-style: none; min-width: 16em; margin: 0; z-index: 1300;
+  }
+  .MuiPopover-root[hidden] { display: none; }
+  .MuiMenuItem-root { padding: 0.6em 1em; cursor: pointer; }
+  .MuiMenuItem-root:hover { background: rgba(0,0,0,0.04); }
+  .MuiMenuItem-root[aria-selected="true"] { background: rgba(25,118,210,0.08); }
+  #result { margin-top: 1.5em; padding: 0.5em; background: #f5f5f5; border-radius: 4px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>MUI Select</h1>
+<p>Reproduces MUI's outlined Select: label + portal-rendered menu, real
+MUI classnames, ARIA wired via <code>aria-labelledby</code>.</p>
+
+<div class="MuiFormControl-root">
+  <label id="country-label" class="MuiInputLabel-root">Country</label>
+  <div
+    id="country-select"
+    class="MuiOutlinedInput-root MuiSelect-root"
+    role="combobox"
+    aria-haspopup="listbox"
+    aria-controls="country-menu"
+    aria-expanded="false"
+    aria-labelledby="country-label"
+    tabindex="0"
+  >
+    <span class="MuiSelect-select" id="country-display">Choose…</span>
+    <span class="MuiSelect-icon" aria-hidden="true"></span>
+  </div>
+  <input type="hidden" id="country-value" name="country" value="">
+</div>
+
+<p id="result"></p>
+
+<template id="menu-template">
+  <ul id="country-menu" class="MuiPopover-root MuiMenu-list" role="listbox" aria-labelledby="country-label">
+    <li class="MuiMenuItem-root" role="option" data-value="US">United States</li>
+    <li class="MuiMenuItem-root" role="option" data-value="IN">India</li>
+    <li class="MuiMenuItem-root" role="option" data-value="UK">United Kingdom</li>
+    <li class="MuiMenuItem-root" role="option" data-value="SG">Singapore</li>
+  </ul>
+</template>
+
+<script>
+  const select = document.getElementById('country-select');
+  const display = document.getElementById('country-display');
+  const hiddenInput = document.getElementById('country-value');
+  const result = document.getElementById('result');
+  let menu = null;
+
+  function ensureMenu() {
+    if (menu) return menu;
+    const frag = document.getElementById('menu-template').content.cloneNode(true);
+    document.body.appendChild(frag);
+    menu = document.getElementById('country-menu');
+    menu.hidden = true;
+    menu.addEventListener('click', (e) => {
+      const opt = e.target.closest('[role="option"]');
+      if (!opt) return;
+      display.textContent = opt.textContent;
+      hiddenInput.value = opt.dataset.value;
+      menu.hidden = true;
+      select.setAttribute('aria-expanded', 'false');
+      result.textContent = 'Selected: ' + opt.textContent;
+      menu.querySelectorAll('[role="option"]').forEach(o =>
+        o.setAttribute('aria-selected', o === opt ? 'true' : 'false'));
+    });
+    return menu;
+  }
+
+  function toggleMenu() {
+    const m = ensureMenu();
+    const opening = m.hidden;
+    m.hidden = !opening;
+    select.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    if (opening) {
+      const r = select.getBoundingClientRect();
+      m.style.top = (r.bottom + window.scrollY) + 'px';
+      m.style.left = (r.left + window.scrollX) + 'px';
+    }
+  }
+
+  select.addEventListener('click', toggleMenu);
+  select.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMenu(); }
+  });
+</script>
+</body>
+</html>

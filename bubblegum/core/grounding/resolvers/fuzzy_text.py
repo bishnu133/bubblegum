@@ -95,6 +95,7 @@ _KIND_ROLE_ALIGNMENT: dict[str, frozenset[str]] = {
     "combobox": frozenset({"combobox"}),
     "dialog":   frozenset({"dialog", "alertdialog"}),
     "input":    frozenset({"textbox", "searchbox"}),
+    "slider":   frozenset({"slider", "spinbutton"}),
 }
 
 

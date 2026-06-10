@@ -31,12 +31,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import socket
 import tempfile
-import threading
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from bubblegum.testing.widget_lab import start_widget_lab_server
 
 PLAYWRIGHT_INSTALL_HINT = """Playwright is not installed.
 Install with:
@@ -48,19 +46,8 @@ Then install browser binaries:
 _PAGES_DIR = Path(__file__).resolve().parent / "pages"
 
 
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _start_server() -> tuple[ThreadingHTTPServer, str]:
-    port = _find_free_port()
-    handler = partial(SimpleHTTPRequestHandler, directory=str(_PAGES_DIR))
-    server = ThreadingHTTPServer(("127.0.0.1", port), handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server, f"http://127.0.0.1:{port}"
+def _start_server():
+    return start_widget_lab_server(pages_dir=_PAGES_DIR)
 
 
 def _result(name: str, passed: bool, **detail) -> dict:
@@ -511,6 +498,135 @@ async def run_link_vs_button_scenario(page, base_url: str, *, nl_only: bool = Fa
     )
 
 
+async def run_tabs_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
+    """ARIA tablist — click "Billing" tab, verify aria-selected flips and
+    the matching panel becomes visible. The tab suffix is stripped by the
+    parser and the relational intent sets kind_hint=tab so the resolver
+    targets role=tab[name="Billing"].
+    """
+    from bubblegum import act
+
+    await page.goto(f"{base_url}/tabs.html")
+    await page.wait_for_load_state("domcontentloaded")
+
+    step = await act(
+        "Click Billing tab",
+        page=page,
+        channel="web",
+        **_safety_net(nl_only, action_type="click", selector="#tab-billing"),
+    )
+    _diag(nl_only, "click-billing-tab", step)
+
+    billing_selected = (await page.locator("#tab-billing").get_attribute("aria-selected")) == "true"
+    profile_unselected = (await page.locator("#tab-profile").get_attribute("aria-selected")) == "false"
+    billing_panel_visible = await page.locator("#panel-billing").is_visible()
+    profile_panel_hidden = not await page.locator("#panel-profile").is_visible()
+    result_text = await page.locator("#result").inner_text()
+    text_ok = "Billing" in result_text
+
+    passed = (
+        step.status == "passed"
+        and billing_selected and profile_unselected
+        and billing_panel_visible and profile_panel_hidden and text_ok
+    )
+    return _result(
+        "tabs-click",
+        passed,
+        nl_only=nl_only,
+        action_status=step.status,
+        billing_selected=billing_selected,
+        profile_unselected=profile_unselected,
+        billing_panel_visible=billing_panel_visible,
+        profile_panel_hidden=profile_panel_hidden,
+        result_text=result_text,
+    )
+
+
+async def run_accordion_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
+    """Accordion — "Expand Billing section" flips aria-expanded on the
+    button and reveals the matching region. The parser strips the
+    "section" suffix and hint=button so the resolver picks the header
+    button (not the region or the visible label text).
+    """
+    from bubblegum import act
+
+    await page.goto(f"{base_url}/accordion.html")
+    await page.wait_for_load_state("domcontentloaded")
+
+    step = await act(
+        "Expand Billing section",
+        page=page,
+        channel="web",
+        **_safety_net(nl_only, action_type="click", selector="#hdr-billing"),
+    )
+    _diag(nl_only, "expand-billing-section", step)
+
+    billing_expanded = (await page.locator("#hdr-billing").get_attribute("aria-expanded")) == "true"
+    billing_region_visible = await page.locator("#region-billing").is_visible()
+    profile_collapsed = (await page.locator("#hdr-profile").get_attribute("aria-expanded")) == "false"
+    result_text = await page.locator("#result").inner_text()
+    text_ok = "Billing" in result_text and "expanded" in result_text
+
+    passed = (
+        step.status == "passed"
+        and billing_expanded and billing_region_visible
+        and profile_collapsed and text_ok
+    )
+    return _result(
+        "accordion-expand",
+        passed,
+        nl_only=nl_only,
+        action_status=step.status,
+        billing_expanded=billing_expanded,
+        billing_region_visible=billing_region_visible,
+        profile_collapsed=profile_collapsed,
+        result_text=result_text,
+    )
+
+
+async def run_slider_scenario(page, base_url: str, *, nl_only: bool = False) -> dict:
+    """Native range slider — "Set Volume to 75" drives input.value via JS
+    and dispatches input/change events; aria-valuenow reflects the new
+    value because <input type=range> updates it automatically.
+    """
+    from bubblegum import act
+
+    await page.goto(f"{base_url}/slider.html")
+    await page.wait_for_load_state("domcontentloaded")
+
+    step = await act(
+        "Set Volume to 75",
+        page=page,
+        channel="web",
+        **_safety_net(nl_only, action_type="set", selector="#volume-slider", input_value="75"),
+    )
+    _diag(nl_only, "set-volume", step)
+
+    value = await page.locator("#volume-slider").input_value()
+    aria_valuenow = await page.locator("#volume-slider").get_attribute("aria-valuenow")
+    brightness_unchanged = await page.locator("#brightness-slider").input_value() == "50"
+    # The visible <output> mirrors the slider value via the input handler.
+    # It's not an <input>/<textarea>/<select> so Playwright's input_value()
+    # rejects it — read text content instead.
+    output_text = (await page.locator("#volume-output").inner_text()).strip()
+    result_text = await page.locator("#result").inner_text()
+    text_ok = "Volume is 75" in result_text
+
+    state_ok = value == "75" and (aria_valuenow is None or aria_valuenow == "75")
+    passed = step.status == "passed" and state_ok and brightness_unchanged and text_ok
+    return _result(
+        "slider-set",
+        passed,
+        nl_only=nl_only,
+        action_status=step.status,
+        volume_value=value,
+        aria_valuenow=aria_valuenow,
+        brightness_unchanged=brightness_unchanged,
+        output_text=output_text,
+        result_text=result_text,
+    )
+
+
 async def run(headless: bool, nl_only: bool = False) -> int:
     from playwright.async_api import async_playwright
 
@@ -534,6 +650,9 @@ async def run(headless: bool, nl_only: bool = False) -> int:
                 results.append(await run_link_vs_button_scenario(page, base_url, nl_only=nl_only))
                 results.append(await run_combobox_scenario(page, base_url, nl_only=nl_only))
                 results.append(await run_modal_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_tabs_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_accordion_scenario(page, base_url, nl_only=nl_only))
+                results.append(await run_slider_scenario(page, base_url, nl_only=nl_only))
             finally:
                 await browser.close()
     finally:

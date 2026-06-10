@@ -40,6 +40,7 @@ class ControlKind:
     DIALOG = "dialog"
     TAB = "tab"
     SWITCH = "switch"
+    SLIDER = "slider"
 
 
 KNOWN_CONTROL_KINDS = frozenset({
@@ -55,6 +56,7 @@ KNOWN_CONTROL_KINDS = frozenset({
     ControlKind.DIALOG,
     ControlKind.TAB,
     ControlKind.SWITCH,
+    ControlKind.SLIDER,
 })
 
 

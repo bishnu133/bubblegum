@@ -228,5 +228,5 @@ def test_scroll_invokes_scroll_into_view_if_needed():
 def test_dispatch_table_covers_expected_action_types():
     from bubblegum.adapters.web.playwright.adapter import _ACTION_DISPATCH
 
-    expected = {"click", "tap", "type", "select", "upload", "check", "uncheck", "scroll"}
+    expected = {"click", "tap", "type", "select", "upload", "check", "uncheck", "scroll", "set"}
     assert set(_ACTION_DISPATCH.keys()) == expected
