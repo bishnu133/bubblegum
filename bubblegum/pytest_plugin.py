@@ -3,7 +3,9 @@
 Originally Phase 4A (report writers + engine handle). Phase 22E-2 adds
 the ``bubblegum_web`` and ``widget_lab`` fixtures plus the
 ``@pytest.mark.bubblegum`` marker so tests no longer need to repeat the
-Playwright launch / BubblegumSession setup boilerplate.
+Playwright launch / BubblegumSession setup boilerplate. Phase 22E-7 adds
+the session-scoped ``bubblegum_browser`` / function-scoped
+``bubblegum_page`` split so large suites launch Chromium once.
 """
 
 from __future__ import annotations
@@ -260,3 +262,75 @@ if _HAS_PYTEST_ASYNCIO:
                             await session.capture_failure_screenshot(suffix="final")
             finally:
                 await browser.close()
+
+    # -------------------------------------------------------------------
+    # Phase 22E-7: session-scoped browser + function-scoped page split.
+    # Launching Chromium costs ~1-2 s; suites with many tests pay it once
+    # via bubblegum_browser while bubblegum_page still gives each test a
+    # fresh incognito context (cookies / storage / pages isolated).
+    # -------------------------------------------------------------------
+
+    @pytest_asyncio.fixture(scope="session", loop_scope="session")
+    async def bubblegum_browser(pytestconfig: pytest.Config):
+        """Yield a Chromium browser shared by every test in the session.
+
+        Playwright objects are bound to the event loop they were created
+        on, so this fixture (and anything built on it, like
+        ``bubblegum_page``) runs on the session-scoped loop. Tests that
+        consume it must opt onto that loop:
+
+            pytestmark = pytest.mark.asyncio(loop_scope="session")
+
+        Honours ``--bubblegum-headed``. Skips dependents when Playwright
+        is not installed.
+        """
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            pytest.skip(
+                "Playwright is not installed; install with `pip install -e \".[web]\"` "
+                "and then `python -m playwright install chromium`."
+            )
+            return
+
+        headed = bool(pytestconfig.getoption("--bubblegum-headed"))
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=not headed)
+            try:
+                yield browser
+            finally:
+                await browser.close()
+
+    @pytest_asyncio.fixture(loop_scope="session")
+    async def bubblegum_page(
+        bubblegum_browser, request: pytest.FixtureRequest, pytestconfig: pytest.Config
+    ):
+        """Yield a ``BubblegumSession.web`` on the shared session browser.
+
+        Same contract as ``bubblegum_web`` (label, artifacts dir, failure
+        screenshot on teardown) but reuses ``bubblegum_browser`` instead of
+        launching Chromium per test — the per-test cost drops to a new
+        context + page. Tests must run on the session event loop:
+
+            pytestmark = pytest.mark.asyncio(loop_scope="session")
+        """
+        from pathlib import Path as _Path
+        from bubblegum.session import BubblegumSession
+
+        artifacts_dir = _Path(pytestconfig.getoption("--bubblegum-artifacts") or "artifacts")
+
+        context = await bubblegum_browser.new_context()
+        try:
+            page = await context.new_page()
+            page.set_default_timeout(5_000)
+            async with BubblegumSession.web(page) as session:
+                session.label = request.node.nodeid
+                session.artifacts_dir = artifacts_dir
+                try:
+                    yield session
+                finally:
+                    rep_call = getattr(request.node, "rep_call", None)
+                    if rep_call is not None and rep_call.failed:
+                        await session.capture_failure_screenshot(suffix="final")
+        finally:
+            await context.close()

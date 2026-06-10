@@ -218,6 +218,22 @@ class BubblegumSession:
         return result
 
     # ------------------------------------------------------------------
+    # Navigation (Phase 22E-7) — web only
+    # ------------------------------------------------------------------
+
+    async def goto(self, url: str, *, wait_until: str = "domcontentloaded") -> None:
+        """Navigate the wrapped Playwright page and wait for the load state.
+
+        Web-only convenience so tests don't reach into ``session.page``:
+
+            await s.goto(f"{widget_lab}/radios.html")
+            await s.act("Click Red radio")
+        """
+        if self._channel != "web" or self._page is None:
+            raise NotImplementedError("goto() is only available on web sessions")
+        await self._page.goto(url, wait_until=wait_until)
+
+    # ------------------------------------------------------------------
     # State probes (Phase 22E-3) — web only
     # ------------------------------------------------------------------
 
