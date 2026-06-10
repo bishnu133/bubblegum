@@ -11,10 +11,10 @@
     text-align: left; border: none; cursor: pointer; font-size: 1em; font-weight: 600;
   }
   .accordion-header[aria-expanded="true"] { background: #e8f0fe; }
-  .accordion-header::after {
-    content: "▾"; float: right; transition: transform 0.15s;
+  .accordion-header .chevron {
+    float: right; transition: transform 0.15s; display: inline-block;
   }
-  .accordion-header[aria-expanded="true"]::after { transform: rotate(180deg); display: inline-block; }
+  .accordion-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
   .accordion-region { padding: 0.75em 1em; border-top: 1px solid #ddd; }
   .accordion-region[hidden] { display: none; }
 </style>
@@ -24,24 +24,32 @@
 <p>Standard collapsible pattern: a <code>button</code> with
 <code>aria-expanded</code> controlling a region whose <code>id</code> is
 the button's <code>aria-controls</code>. Clicking the header toggles
-expansion.</p>
+expansion. The chevron lives in an <code>aria-hidden</code> span so the
+button's accessible name stays the clean section title (otherwise
+Chromium folds the pseudo-element content into the name).</p>
 
 <div class="accordion-item">
-  <button class="accordion-header" aria-expanded="false" aria-controls="region-profile" id="hdr-profile">Profile</button>
+  <button class="accordion-header" aria-expanded="false" aria-controls="region-profile" id="hdr-profile">
+    Profile<span class="chevron" aria-hidden="true">▾</span>
+  </button>
   <div id="region-profile" role="region" aria-labelledby="hdr-profile" class="accordion-region" hidden>
     Profile details: name, photo, bio.
   </div>
 </div>
 
 <div class="accordion-item">
-  <button class="accordion-header" aria-expanded="false" aria-controls="region-billing" id="hdr-billing">Billing</button>
+  <button class="accordion-header" aria-expanded="false" aria-controls="region-billing" id="hdr-billing">
+    Billing<span class="chevron" aria-hidden="true">▾</span>
+  </button>
   <div id="region-billing" role="region" aria-labelledby="hdr-billing" class="accordion-region" hidden>
     Billing details: invoices, payment method.
   </div>
 </div>
 
 <div class="accordion-item">
-  <button class="accordion-header" aria-expanded="false" aria-controls="region-security" id="hdr-security">Security</button>
+  <button class="accordion-header" aria-expanded="false" aria-controls="region-security" id="hdr-security">
+    Security<span class="chevron" aria-hidden="true">▾</span>
+  </button>
   <div id="region-security" role="region" aria-labelledby="hdr-security" class="accordion-region" hidden>
     Security details: 2FA, sessions, password.
   </div>
@@ -56,8 +64,11 @@ expansion.</p>
       btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
       const region = document.getElementById(btn.getAttribute('aria-controls'));
       if (region) region.hidden = expanded;
+      // The accessible name is just the section title (the chevron span is
+      // aria-hidden) — use the first text node so we don't include "▾".
+      const label = btn.childNodes[0].textContent.trim();
       document.getElementById('result').textContent =
-        btn.textContent.trim() + ' is ' + (expanded ? 'collapsed' : 'expanded');
+        label + ' is ' + (expanded ? 'collapsed' : 'expanded');
     });
   });
 </script>

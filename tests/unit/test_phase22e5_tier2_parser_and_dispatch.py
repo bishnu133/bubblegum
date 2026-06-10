@@ -198,3 +198,54 @@ def test_set_action_in_dispatch_table():
     from bubblegum.adapters.web.playwright.adapter import _ACTION_DISPATCH
 
     assert "set" in _ACTION_DISPATCH
+
+
+# ---------------------------------------------------------------------------
+# Lab-page regression guards (caught during live dogfooding)
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path
+
+_LAB_PAGES = (
+    _Path(__file__).resolve().parents[2]
+    / "examples" / "web" / "widgets" / "widget_lab" / "pages"
+)
+
+
+def test_accordion_chevron_is_aria_hidden_not_pseudo_element():
+    """22E-5 dogfooding: a ``::after { content: "▾" }`` pseudo-element is
+    folded into the button's accessible name by Chromium ("Billing ▾"),
+    which drops the resolver's confidence and risks ambiguity with a real
+    "Billing" target elsewhere on the page. Real component libraries put
+    the chevron in an ``aria-hidden`` element instead.
+    """
+    body = (_LAB_PAGES / "accordion.html").read_text(encoding="utf-8")
+    # The chevron glyph must live inside aria-hidden markup.
+    assert 'aria-hidden="true">▾' in body, (
+        "Accordion chevron must be inside an aria-hidden element so it is "
+        "not folded into the accessible name."
+    )
+    # And it must not be re-introduced via a pseudo-element.
+    assert "::after {" not in body or "content: \"▾\"" not in body
+    assert "content: '▾'" not in body
+
+
+def test_slider_scenario_reads_output_text_not_input_value():
+    """22E-5 dogfooding: ``<output>`` is not an ``<input>``/``<textarea>``/
+    ``<select>`` so Playwright's ``input_value()`` rejects it. The runner
+    must use ``inner_text()`` (or text_content) to read the mirrored value.
+    """
+    runner = (
+        _Path(__file__).resolve().parents[2]
+        / "examples" / "web" / "widgets" / "widget_lab" / "run_example.py"
+    ).read_text(encoding="utf-8")
+    # Inside the slider scenario, the volume output must be read via
+    # inner_text, NOT input_value (which raises on <output>).
+    slider_block_start = runner.index("async def run_slider_scenario")
+    slider_block_end = runner.index("\nasync def ", slider_block_start + 1)
+    block = runner[slider_block_start:slider_block_end]
+    assert "#volume-output" in block
+    assert "input_value" not in block.split("#volume-output", 1)[1].split("\n")[0], (
+        "run_slider_scenario must not call input_value() on #volume-output "
+        "(it's an <output> element)."
+    )

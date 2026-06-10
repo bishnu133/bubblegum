@@ -605,9 +605,10 @@ async def run_slider_scenario(page, base_url: str, *, nl_only: bool = False) -> 
     value = await page.locator("#volume-slider").input_value()
     aria_valuenow = await page.locator("#volume-slider").get_attribute("aria-valuenow")
     brightness_unchanged = await page.locator("#brightness-slider").input_value() == "50"
-    output_text = (await page.locator("#volume-output").input_value()) or (
-        await page.locator("#volume-output").inner_text()
-    )
+    # The visible <output> mirrors the slider value via the input handler.
+    # It's not an <input>/<textarea>/<select> so Playwright's input_value()
+    # rejects it — read text content instead.
+    output_text = (await page.locator("#volume-output").inner_text()).strip()
     result_text = await page.locator("#result").inner_text()
     text_ok = "Volume is 75" in result_text
 
