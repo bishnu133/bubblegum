@@ -1,6 +1,7 @@
 # Phase 22 — Handoff
 
-Status: Phase 22D + 22E-1 + **22E-2 through 22E-5 shipped end-to-end**.
+Status: Phase 22D + 22E-1 + **22E-2 through 22E-9 shipped end-to-end —
+the Phase 22E queue is complete**.
 The widget lab runs 10/10 scenarios NL-only against real Chromium with
 no `selector=`, `action_type=`, or `input_value=` safety nets. The MUI
 lab adds 4 React-shaped scenarios (select / checkbox / dialog /
@@ -68,34 +69,110 @@ acceptance gate, and queued PR is captured below.
   (was `::after` pseudo-element folded into a11y name); slider runner
   reads `<output>` via `inner_text` (was crashing on `input_value`).
 
+### 22E-6 — Nav-wait skip on non-navigating roles (shipped)
+- `_do_click` skips the cosmetic 5 s `wait_for_url` probe when the
+  resolved target's ARIA role is in `_NON_NAVIGATING_ROLES` (radio,
+  checkbox, switch, option, tab, combobox, menuitemcheckbox,
+  menuitemradio, slider, spinbutton). Role comes from `target.metadata["role"]` with
+  a `role=<role>[name=...]` ref-parse fallback (`_target_role`).
+- Action dispatch table + `_execute_action` now thread the
+  `ResolvedTarget` through to handlers; only `_do_click` consumes it.
+- Skips are observable: `target.metadata["nav_wait_skipped"]` /
+  `"nav_wait_skipped_role"` set on the skip path. Buttons, links, CSS
+  and text refs (unknown role) keep the probe — navigation still
+  detected.
+- Saves the full 5 s per click on `radio-group` / `tabs-click` /
+  `combobox-select` / `mui-select` style steps; every toggle or
+  popup-trigger click in a suite gets the win. Validated on real
+  Chromium: radio-group 106 ms, tabs-click 66 ms (was ~5 s each).
+
+### 22E-7 — goto() + shared-browser fixture split (shipped)
+- `BubblegumSession.goto(url, wait_until="domcontentloaded")` — web-only
+  navigation so tests don't reach into `session.page`.
+- `bubblegum_browser` (session-scoped, `loop_scope="session"`): one
+  Chromium launch per pytest session.
+- `bubblegum_page` (function-scoped, `loop_scope="session"`): fresh
+  incognito context + page per test on the shared browser; same
+  contract as `bubblegum_web` (label, artifacts dir, failure
+  screenshot on teardown).
+- Consumers of `bubblegum_page` must run on the session event loop —
+  Playwright objects are loop-bound:
+  `pytestmark = pytest.mark.asyncio(loop_scope="session")`.
+- `bubblegum_web` unchanged (still launches per test) for full
+  backward compatibility.
+- Follow-up folded in: `asyncio_default_fixture_loop_scope =
+  "function"` set in pyproject — the pytest-asyncio deprecation
+  warning on every run is gone.
+
+### 22E-8 — bubblegum_mobile Appium fixture (shipped)
+- `bubblegum_mobile` (async, function-scoped): builds an Appium driver
+  and wraps it in `BubblegumSession.mobile`. Mirrors `bubblegum_web` —
+  label, artifacts dir, failure screenshot on teardown.
+- CLI options `--bubblegum-appium-url` (default
+  `http://localhost:4723`) and `--bubblegum-capabilities` (path to a
+  JSON file OR inline JSON object; must include `platformName`).
+- Driver-construction logic lives in `bubblegum/testing/appium_driver.py`
+  (`load_capabilities`, `build_appium_options`, `create_appium_driver`)
+  so it's unit-testable without a device. `build_appium_options` picks
+  `UiAutomator2Options` (android) / `XCUITestOptions` (ios) across
+  Appium Python Client v3.x–v5.x import layouts.
+- `BubblegumSession.capture_failure_screenshot` extended for mobile:
+  uses the Appium driver's `get_screenshot_as_png()` (was web-only).
+- Skips cleanly when appium-python-client is missing, no capabilities
+  are passed, or the Appium server is unreachable.
+
+### 22E-9 — Acme Notes sample app + tester quickstart (shipped)
+- `examples/web/real_local/` — three-page login → dashboard → settings
+  app (plain HTML + a few lines of JS, no backend). Demo credentials
+  `tester` / `bubblegum!`. `run_example.py` drives the whole flow
+  NL-only and prints a step summary; `--headed` to watch.
+- `sample_app` fixture (session-scoped) in the plugin serves the pages
+  via the shared static-server helper. `find_pages_dir` grew a `rel`
+  parameter so any example app can be located the same way.
+- Dogfooding fix shipped: `is_visible("Welcome back, tester.")` style
+  probes resolved to `role=paragraph[name=...]` / `role=status[name=...]`
+  refs that match zero elements (those roles don't take their accessible
+  name from content), and Playwright reports `is_visible() == False` for
+  zero matches. `_resolve_probe_locator` now falls back to an exact
+  `get_by_text` match when the role locator matches nothing.
+- `docs/getting-started-for-testers.md` rewritten around the real API:
+  install → run the sample → first pytest test → session API table →
+  `bubblegum_page` fast path → mobile → CLI reference →
+  troubleshooting. The integration test runs the exact documented
+  flows so the docs stay continuously proven.
+
 ### Validation evidence (head of branch)
-- `python -m pytest tests/unit -q` → **1,159 passed**, 17 baseline
-  failures unrelated to this branch (the documented anthropic +
-  `AsyncMock`/`_FakePage` issues).
+- `python -m pytest tests/unit -q` → **1,211 passed** with the mobile
+  extra installed (3 of those skip without appium-python-client), 17
+  baseline failures unrelated to this branch (the documented anthropic
+  + `AsyncMock`/`_FakePage` issues).
 - `python scripts/run_widget_lab_regression.py --strict` → **10/10**.
 - `python scripts/run_mui_lab_regression.py --strict` → **4/4**.
-- `python -m pytest --playwright -m bubblegum -v` → **12 passed**
-  (2 + 3 + 4 + 3 across 22E-2 / 3 / 4 / 5).
+- `python -m pytest --playwright -m bubblegum -v` → **21 passed**,
+  1 skipped (2 + 3 + 4 + 3 + 3 + 3 + 3 across 22E-2 / 3 / 4 / 5 / 6 /
+  7 / 9; the skip is the `--appium`-gated 22E-8 test).
+- 22E-8 validated **live on a real Android emulator** (2026-06-10,
+  macOS): Appium 2.19 + UiAutomator2 + ApiDemos — `--appium` run →
+  **1 passed in 8.03s** through the `bubblegum_mobile` fixture.
+- 22E-6/7 runtime wins confirmed on real Chromium: radio-group 86 ms,
+  tabs-click 66 ms, combobox-select 111 ms, mui-select 169 ms (each
+  was ~5 s before the nav-wait skip).
+- Browser rows validated locally (macOS, real Chromium, 2026-06-10):
+  10/10 widget lab, 4/4 MUI lab, 15/15 `-m bubblegum`. 22E-6 runtime
+  win confirmed: radio-group 106 ms, tabs-click 66 ms, slider-set
+  63 ms (each was ~5 s before the nav-wait skip).
 
 ---
 
 ## What's queued (next session — pick one)
 
-Picked in order of return on the original "simple to use, powerful
-library for tests" goal:
-
-| PR | Scope | Estimated size | Why |
-|---|---|---|---|
-| **22E-6** | `_do_click` cosmetic `wait_for_url` skip for known non-navigating roles (radio / checkbox / option). Drops ~5 s per scenario from `radio-group`, `link-vs-button`, `tabs-click`, `accordion-expand`. | S | Visible runtime win for every tester; pure adapter change. |
-| **22E-7** | `BubblegumSession.goto(url)` + session-scoped `bubblegum_browser` / function-scoped `bubblegum_page` fixture split (vs today's everything-per-test). Suites with 50+ tests drop dramatically in wall-clock. | S–M | Most user-visible suite ergonomics improvement. |
-| **22E-8** | `bubblegum_mobile` async fixture: Appium driver + `BubblegumSession.mobile`. CLI options `--bubblegum-appium-url`, `--bubblegum-capabilities`. Mirrors `bubblegum_web` API. | M | First-class mobile parity. Unblocks the mobile side of the "real local script" plan I sketched earlier. |
-| **22E-9** | `examples/web/real_local/` — minimal multi-page sample app (login → dashboard → settings) served by the shared helper, demonstrated through `bubblegum_web` + a `sample_app` fixture. Plus `docs/getting-started-for-testers.md` rewrite. | M | The "first 60 seconds" surface a new user judges the library by. |
+**The Phase 22E queue is empty — 22E-2 through 22E-9 all shipped.**
+Next session picks from the follow-ups below, the deferred list, or a
+new phase plan (e.g. PyPI packaging, CI pipeline, BDD step library).
 
 ### Small follow-ups (drop into any PR or batch)
 - **Nameless-combobox resolver fallback** for ARIA-name-less comboboxes
   in the wild (use trigger inline text or `text=<inline-value>`).
-- `asyncio_default_fixture_loop_scope` set to silence the pytest-asyncio
-  deprecation warning shown on every run.
 
 ### Deferred (explicitly out of Tier 1 + 2)
 - BDD step library (behave / pytest-bdd).
@@ -110,10 +187,17 @@ library for tests" goal:
 
 ```
 bubblegum/
-  pytest_plugin.py                            22E-2/3 fixtures, hookwrapper
-  session.py                                  22E-3 probes + auto-screenshot
+  pytest_plugin.py                            22E-2/3 fixtures, hookwrapper,
+                                              22E-7 browser/page split,
+                                              22E-8 bubblegum_mobile
+  session.py                                  22E-3 probes + auto-screenshot,
+                                              22E-7 goto(),
+                                              22E-8 mobile failure screenshot
   testing/widget_lab.py                       shared static-server helper
-  adapters/web/playwright/adapter.py          dispatch table (set added)
+                                              (+rel param, 22E-9)
+  testing/appium_driver.py                    22E-8 caps + driver builder
+  adapters/web/playwright/adapter.py          dispatch table (set added),
+                                              22E-6 nav-wait skip
   core/
     elements/query.py                         ControlKind (SLIDER added)
     parser/instruction.py                     parser + relational intent
@@ -123,17 +207,23 @@ bubblegum/
         accessibility_tree.py                 Tier 1, slider in kind map
         fuzzy_text.py                         Tier 2, slider in kind map
 
-examples/web/widgets/
-  widget_lab/                                 10 scenarios + 10 pages
-  mui_lab/                                    4 scenarios + 4 MUI pages
+examples/web/
+  widgets/widget_lab/                         10 scenarios + 10 pages
+  widgets/mui_lab/                            4 scenarios + 4 MUI pages
+  real_local/                                 22E-9 Acme Notes sample app
+                                              (3 pages + run_example.py)
+
+docs/
+  getting-started-for-testers.md              22E-9 quickstart rewrite
 
 scripts/
   run_widget_lab_regression.py                10 rows (+strict, +public)
   run_mui_lab_regression.py                   4 rows (+strict)
 
 tests/
-  unit/test_phase22e{2,3,4,5}_*.py            fixture / probe / smoke / parser
-  integration/test_phase22e{2,3,4,5}_*.py     --playwright-gated live tests
+  unit/test_phase22e{2..9}_*.py               fixture / probe / smoke / parser / nav-wait / goto / mobile / sample-app
+  integration/test_phase22e{2..7,9}_*.py      --playwright-gated live tests
+  integration/test_phase22e8_*.py             --appium-gated live test
 ```
 
 ---
@@ -144,7 +234,11 @@ tests/
 pip install -e ".[web,test]"
 python -m playwright install chromium
 
-# Full unit baseline — expect 1,159 passed, 17 baseline failures
+# The "first 60 seconds" sample app (22E-9)
+python examples/web/real_local/run_example.py               # 7/7 steps
+
+# Full unit baseline — expect 1,211 passed, 17 baseline failures
+# (3 of the passes skip without `pip install -e ".[mobile]"`)
 python -m pytest tests/unit -q
 
 # Widget lab regression (strict NL-only)
@@ -155,15 +249,24 @@ python scripts/run_widget_lab_regression.py --public        # 14/14
 python scripts/run_mui_lab_regression.py --strict           # 4/4
 
 # All bubblegum-marked integration tests
-python -m pytest --playwright -m bubblegum -v               # 12 passed
+python -m pytest --playwright -m bubblegum -v               # 21 passed, 1 skipped
+
+# Mobile fixture (requires Appium server + device; 22E-8)
+pip install -e ".[mobile]"
+python -m pytest --appium -m bubblegum \
+  --bubblegum-capabilities '{"platformName":"Android",\
+"appium:deviceName":"emulator-5554",\
+"appium:appPackage":"io.appium.android.apis",\
+"appium:appActivity":".ApiDemos",\
+"appium:automationName":"UiAutomator2"}' \
+  tests/integration/test_phase22e8_mobile_fixture.py        # 1 passed
 ```
 
 ---
 
 ## Resuming in a fresh session
 
-Open the new chat with: **"Continue Phase 22 from
-`docs/phase-22-handoff.md`. Start 22E-6."**
-
-(Or pick any other queued PR from the table above.) That single line
-plus this doc is the full context the next session needs.
+The Phase 22E queue is complete. Open the next chat with:
+**"Continue from `docs/phase-22-handoff.md`. Phase 22E is done — plan
+the next phase."** (or name a follow-up / deferred item from the lists
+above). This doc is the full context the next session needs.

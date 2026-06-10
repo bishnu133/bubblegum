@@ -17,22 +17,27 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
-def find_pages_dir(start: Path | None = None) -> Path:
-    """Locate examples/web/widgets/widget_lab/pages by walking up from `start`.
+def find_pages_dir(
+    start: Path | None = None,
+    rel: Path | str = Path("examples/web/widgets/widget_lab/pages"),
+) -> Path:
+    """Locate an example pages directory by walking up from `start`.
 
-    Defaults to the current working directory. Raises FileNotFoundError
-    when no ancestor contains the expected layout — used by the fixture
+    Defaults to the widget lab pages relative to the current working
+    directory; pass ``rel`` to locate other example apps (e.g. the 22E-9
+    ``examples/web/real_local/pages`` sample app). Raises FileNotFoundError
+    when no ancestor contains the expected layout — used by the fixtures
     to fail fast with a clear message instead of serving an empty dir.
     """
     base = (start or Path.cwd()).resolve()
-    rel = Path("examples/web/widgets/widget_lab/pages")
+    rel = Path(rel)
     for candidate_root in [base, *base.parents]:
         candidate = candidate_root / rel
         if candidate.is_dir():
             return candidate
     raise FileNotFoundError(
         f"Could not locate {rel} at or above {base}. "
-        "The widget_lab fixture expects a Bubblegum repository checkout."
+        "This fixture expects a Bubblegum repository checkout."
     )
 
 

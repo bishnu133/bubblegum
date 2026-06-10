@@ -45,6 +45,7 @@ include = ["bubblegum*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "asyncio: marks tests that run with asyncio support",
     "llm: marks tests that call the real LLM API",

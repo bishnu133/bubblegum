@@ -3,7 +3,9 @@
 Originally Phase 4A (report writers + engine handle). Phase 22E-2 adds
 the ``bubblegum_web`` and ``widget_lab`` fixtures plus the
 ``@pytest.mark.bubblegum`` marker so tests no longer need to repeat the
-Playwright launch / BubblegumSession setup boilerplate.
+Playwright launch / BubblegumSession setup boilerplate. Phase 22E-7 adds
+the session-scoped ``bubblegum_browser`` / function-scoped
+``bubblegum_page`` split so large suites launch Chromium once.
 """
 
 from __future__ import annotations
@@ -108,6 +110,23 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Launch the bubblegum_web fixture browser in headed mode.",
     )
+    group.addoption(
+        "--bubblegum-appium-url",
+        action="store",
+        default="http://localhost:4723",
+        metavar="URL",
+        help="Appium server URL for the bubblegum_mobile fixture "
+        "(default: http://localhost:4723).",
+    )
+    group.addoption(
+        "--bubblegum-capabilities",
+        action="store",
+        default=None,
+        metavar="JSON_OR_PATH",
+        help="Appium capabilities for the bubblegum_mobile fixture: either a "
+        "path to a .json file or an inline JSON object. Must include "
+        "platformName.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -208,6 +227,26 @@ def widget_lab():
         server.shutdown()
 
 
+@pytest.fixture(scope="session")
+def sample_app():
+    """Yield the base URL of the Acme Notes sample app (Phase 22E-9).
+
+    Serves ``examples/web/real_local/pages`` — a three-page login →
+    dashboard → settings app used by the tester quickstart. Session-scoped,
+    same server semantics as ``widget_lab``.
+    """
+    from pathlib import Path as _Path
+
+    from bubblegum.testing.widget_lab import find_pages_dir, start_widget_lab_server
+
+    pages = find_pages_dir(rel=_Path("examples/web/real_local/pages"))
+    server, base_url = start_widget_lab_server(pages_dir=pages)
+    try:
+        yield base_url
+    finally:
+        server.shutdown()
+
+
 if _HAS_PYTEST_ASYNCIO:
 
     @pytest_asyncio.fixture
@@ -260,3 +299,140 @@ if _HAS_PYTEST_ASYNCIO:
                             await session.capture_failure_screenshot(suffix="final")
             finally:
                 await browser.close()
+
+    # -------------------------------------------------------------------
+    # Phase 22E-7: session-scoped browser + function-scoped page split.
+    # Launching Chromium costs ~1-2 s; suites with many tests pay it once
+    # via bubblegum_browser while bubblegum_page still gives each test a
+    # fresh incognito context (cookies / storage / pages isolated).
+    # -------------------------------------------------------------------
+
+    @pytest_asyncio.fixture(scope="session", loop_scope="session")
+    async def bubblegum_browser(pytestconfig: pytest.Config):
+        """Yield a Chromium browser shared by every test in the session.
+
+        Playwright objects are bound to the event loop they were created
+        on, so this fixture (and anything built on it, like
+        ``bubblegum_page``) runs on the session-scoped loop. Tests that
+        consume it must opt onto that loop:
+
+            pytestmark = pytest.mark.asyncio(loop_scope="session")
+
+        Honours ``--bubblegum-headed``. Skips dependents when Playwright
+        is not installed.
+        """
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            pytest.skip(
+                "Playwright is not installed; install with `pip install -e \".[web]\"` "
+                "and then `python -m playwright install chromium`."
+            )
+            return
+
+        headed = bool(pytestconfig.getoption("--bubblegum-headed"))
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=not headed)
+            try:
+                yield browser
+            finally:
+                await browser.close()
+
+    @pytest_asyncio.fixture(loop_scope="session")
+    async def bubblegum_page(
+        bubblegum_browser, request: pytest.FixtureRequest, pytestconfig: pytest.Config
+    ):
+        """Yield a ``BubblegumSession.web`` on the shared session browser.
+
+        Same contract as ``bubblegum_web`` (label, artifacts dir, failure
+        screenshot on teardown) but reuses ``bubblegum_browser`` instead of
+        launching Chromium per test — the per-test cost drops to a new
+        context + page. Tests must run on the session event loop:
+
+            pytestmark = pytest.mark.asyncio(loop_scope="session")
+        """
+        from pathlib import Path as _Path
+        from bubblegum.session import BubblegumSession
+
+        artifacts_dir = _Path(pytestconfig.getoption("--bubblegum-artifacts") or "artifacts")
+
+        context = await bubblegum_browser.new_context()
+        try:
+            page = await context.new_page()
+            page.set_default_timeout(5_000)
+            async with BubblegumSession.web(page) as session:
+                session.label = request.node.nodeid
+                session.artifacts_dir = artifacts_dir
+                try:
+                    yield session
+                finally:
+                    rep_call = getattr(request.node, "rep_call", None)
+                    if rep_call is not None and rep_call.failed:
+                        await session.capture_failure_screenshot(suffix="final")
+        finally:
+            await context.close()
+
+    # -------------------------------------------------------------------
+    # Phase 22E-8: bubblegum_mobile — Appium driver fixture (mobile parity
+    # with bubblegum_web). Builds a driver from --bubblegum-appium-url +
+    # --bubblegum-capabilities and wraps it in BubblegumSession.mobile.
+    # -------------------------------------------------------------------
+
+    @pytest_asyncio.fixture
+    async def bubblegum_mobile(request: pytest.FixtureRequest, pytestconfig: pytest.Config):
+        """Yield a ``BubblegumSession.mobile`` wrapping a fresh Appium driver.
+
+        Reads the Appium server URL from ``--bubblegum-appium-url`` and the
+        capabilities from ``--bubblegum-capabilities`` (a path to a JSON file
+        or an inline JSON object; must include ``platformName``). Quits the
+        driver at the end of the test.
+
+        Mirrors ``bubblegum_web``: sets the session label / artifacts dir and
+        writes ``<artifacts>/<test>-final.png`` (via the Appium driver) on
+        test-level failure.
+
+        Skips when appium-python-client is not installed, no capabilities are
+        provided, or the Appium server cannot be reached.
+        """
+        from pathlib import Path as _Path
+
+        from bubblegum.session import BubblegumSession
+        from bubblegum.testing.appium_driver import (
+            AppiumNotInstalledError,
+            create_appium_driver,
+            load_capabilities,
+        )
+
+        raw_caps = pytestconfig.getoption("--bubblegum-capabilities")
+        if not raw_caps:
+            pytest.skip(
+                "bubblegum_mobile requires --bubblegum-capabilities "
+                "(a JSON file path or inline JSON object including platformName)."
+            )
+            return
+
+        appium_url = pytestconfig.getoption("--bubblegum-appium-url")
+        artifacts_dir = _Path(pytestconfig.getoption("--bubblegum-artifacts") or "artifacts")
+
+        caps = load_capabilities(raw_caps)
+        try:
+            driver = create_appium_driver(appium_url, caps)
+        except AppiumNotInstalledError as exc:
+            pytest.skip(str(exc))
+            return
+        except Exception as exc:  # connection / session creation failure
+            pytest.skip(f"Cannot start Appium session at {appium_url}: {exc}")
+            return
+
+        try:
+            async with BubblegumSession.mobile(driver) as session:
+                session.label = request.node.nodeid
+                session.artifacts_dir = artifacts_dir
+                try:
+                    yield session
+                finally:
+                    rep_call = getattr(request.node, "rep_call", None)
+                    if rep_call is not None and rep_call.failed:
+                        await session.capture_failure_screenshot(suffix="final")
+        finally:
+            driver.quit()

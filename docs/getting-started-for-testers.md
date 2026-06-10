@@ -1,111 +1,196 @@
 # Getting Started for Testers
 
-## What is Bubblegum?
-Bubblegum is a test automation tool that lets you write simple, behavior-driven tests.
-It is made to help QA teams describe user actions in plain language and run them consistently.
+Bubblegum lets you write UI tests in plain language — no selectors, no
+test IDs, no XPath. You say *what* a user does ("Click Sign in",
+"Check Email notifications") and Bubblegum's grounding engine finds the
+right element through the page's accessibility tree.
 
-## Who should use it?
-Use Bubblegum if you are:
-- A manual tester starting automation
-- A QA engineer who wants simple test setup
-- A team that needs readable test scenarios
+```python
+await s.act('Enter "tester" into Username')
+await s.act('Enter "bubblegum!" into Password')
+await s.act("Click Sign in")
+assert await s.is_visible("Dashboard")
+```
 
-## What problem does it solve?
-Bubblegum helps you:
-- Turn repeatable manual checks into automated tests
-- Keep test steps readable for non-developers
-- Run local validation before bigger mobile/cloud trials
+That is a complete, working login test. This guide gets you from zero to
+that test in about five minutes.
 
-## Install locally (editable install)
+---
+
+## 1. Install (60 seconds)
+
 From the Bubblegum repo root:
 
 ```bash
-pip install -e .
+pip install -e ".[web,test]"
+python -m playwright install chromium
 ```
 
-Why editable install?
-- You test the local code directly
-- You can update docs/examples and re-run immediately
-- You do **not** need PyPI for this phase
+## 2. See it work (60 more seconds)
 
-## Create a test folder
-Create a simple folder structure:
-
-```text
-my-web-tests/
-  bubblegum.yaml
-  test_login.feature
-```
-
-Tip: You can copy the sample from `examples/web/simple_login/` and edit it.
-
-## Write a simple web test
-Create `test_login.feature` with steps like:
-- Open login page
-- Enter username
-- Enter password
-- Click login
-- Verify dashboard or welcome text
-
-Start small with one happy-path login scenario.
-
-## Configure browser and base URL
-In `bubblegum.yaml`, set:
-- `app_type: web`
-- `base_url: "https://your-app-url"`
-- `browser: "chromium"` (or your preferred browser)
-- `headless: true` for CI-like runs, `false` to watch browser
-- `timeout` for slow pages
-- `report_path` for output artifacts
-
-## Run tests locally
-Common commands:
+The repo ships **Acme Notes**, a small three-page app (login → dashboard
+→ settings) made for exactly this moment:
 
 ```bash
-pytest -q
+python examples/web/real_local/run_example.py            # headless
+python examples/web/real_local/run_example.py --headed   # watch the browser
 ```
 
-Or run a specific feature folder:
+You should see:
+
+```
+✅ Acme Notes flow complete: 7/7 steps passed in ...ms
+```
+
+Every one of those steps was natural language — open
+`examples/web/real_local/run_example.py` and read it; it fits on one
+screen.
+
+## 3. Your first pytest test
+
+Bubblegum ships a pytest plugin (auto-loaded — no conftest changes).
+Create `test_acme.py`:
+
+```python
+import pytest
+
+pytestmark = [pytest.mark.bubblegum, pytest.mark.asyncio]
+
+
+async def test_login(bubblegum_web, sample_app):
+    await bubblegum_web.goto(f"{sample_app}/login.html")
+
+    await bubblegum_web.act('Enter "tester" into Username')
+    await bubblegum_web.act('Enter "bubblegum!" into Password')
+    await bubblegum_web.act("Click Sign in")
+
+    assert await bubblegum_web.is_visible("Dashboard")
+    bubblegum_web.assert_all_passed()
+```
+
+Run it:
 
 ```bash
-pytest -q path/to/your/tests
+pytest test_acme.py -v                       # headless
+pytest test_acme.py -v --bubblegum-headed    # watch the browser
 ```
 
-## View reports
-After the run, open your report folder configured in `report_path`.
-Capture and keep:
-- Pass/fail summary
-- Logs
-- Screenshots (if enabled)
+What the fixtures gave you:
 
-Use these as evidence for GO/NO-GO decisions.
+- **`bubblegum_web`** — a launched Chromium page wrapped in a
+  `BubblegumSession`. On failure it automatically saves a screenshot to
+  `artifacts/<test>-final.png` (and one per failed step).
+- **`sample_app`** — a local HTTP server for the Acme Notes pages;
+  yields the base URL. (`widget_lab` does the same for the widget lab
+  pages.)
 
-## Supported features (current)
-| Area | Status | Notes |
+Point your own tests at your own app by replacing `sample_app` with your
+URL — everything else stays the same.
+
+## 4. The session API you'll actually use
+
+| Call | What it does |
+|---|---|
+| `await s.goto(url)` | Navigate and wait for the DOM |
+| `await s.act("Click Sign in")` | Do a step described in plain language |
+| `await s.act('Enter "x" into Field')` | Type into a labelled field |
+| `await s.act("Check Email notifications")` | Check a checkbox (uncheck works too) |
+| `await s.act("Select German from Language")` | Pick from a native select |
+| `await s.act("Set Volume to 75")` | Drive a slider / range input |
+| `await s.is_visible("Dashboard")` | Probe: is this text/element visible? |
+| `await s.is_checked("Email notifications")` | Probe: checkbox/radio state |
+| `await s.selected_value("Language")` | Probe: current select value |
+| `s.assert_all_passed()` | Fail the test if any step failed |
+| `s.summary()` | `{total, passed, failed, ...}` dict |
+
+Phrasing tips: name elements by their **visible label** ("Username",
+"Sign in", "Billing tab"). Add the widget word when two elements share a
+label — "Click the Sign in **link**" vs "Click the Sign in **button**".
+
+## 5. Faster suites: share the browser
+
+`bubblegum_web` launches Chromium per test — simple, fully isolated,
+fine for small suites. For bigger suites, switch to `bubblegum_page`:
+the browser launches **once per session** and each test gets a fresh
+incognito context (cookies/storage still isolated):
+
+```python
+import pytest
+
+pytestmark = [
+    pytest.mark.bubblegum,
+    pytest.mark.asyncio(loop_scope="session"),   # required for bubblegum_page
+]
+
+
+async def test_login_fast(bubblegum_page, sample_app):
+    await bubblegum_page.goto(f"{sample_app}/login.html")
+    await bubblegum_page.act('Enter "tester" into Username')
+    await bubblegum_page.act('Enter "bubblegum!" into Password')
+    await bubblegum_page.act("Click Sign in")
+    assert await bubblegum_page.is_visible("Dashboard")
+    bubblegum_page.assert_all_passed()
+```
+
+The `loop_scope="session"` marker is required because Playwright objects
+are bound to the event loop that created them, and the shared browser
+lives on the session loop.
+
+## 6. Mobile (Appium)
+
+The same session API works against a real device or emulator through the
+`bubblegum_mobile` fixture:
+
+```python
+import pytest
+
+pytestmark = [pytest.mark.bubblegum, pytest.mark.asyncio]
+
+
+async def test_tap_animation(bubblegum_mobile):
+    result = await bubblegum_mobile.act("Tap Animation")
+    assert result.status in ("passed", "recovered")
+    bubblegum_mobile.assert_all_passed()
+```
+
+Run with an Appium server + device available:
+
+```bash
+pip install -e ".[mobile]"
+pytest test_mobile.py --appium \
+  --bubblegum-capabilities '{"platformName":"Android","appium:deviceName":"emulator-5554","appium:appPackage":"io.appium.android.apis","appium:appActivity":".ApiDemos","appium:automationName":"UiAutomator2"}'
+```
+
+The fixture skips (with the reason) when the server is unreachable or
+capabilities are missing, so mobile tests never break a web-only run.
+
+## 7. CLI options reference
+
+| Option | Default | Purpose |
 |---|---|---|
-| Local editable install | Supported | Recommended for current validation |
-| Web test authoring (feature files) | Supported | Good for starter scenarios |
-| Local test execution | Supported | Use local browser setup |
-| Mobile/WebView real switching | Prepared, not fully executed | Planned for next phases |
-| Cloud provider real trials | Prepared, not fully executed | Planned after local web validation |
-| PyPI distribution | Not required now | Keep local install for this phase |
+| `--bubblegum-headed` | off | Show the browser window |
+| `--bubblegum-artifacts DIR` | `artifacts` | Where failure screenshots go |
+| `--bubblegum-report PATH` | — | Write an HTML report at session end |
+| `--bubblegum-report-json PATH` | — | Write a JSON report at session end |
+| `--bubblegum-config PATH` | — | Bubblegum YAML config file |
+| `--bubblegum-appium-url URL` | `http://localhost:4723` | Appium server for `bubblegum_mobile` |
+| `--bubblegum-capabilities JSON_OR_PATH` | — | Appium caps (inline JSON or a .json file) |
 
-## Current limitations
-- This phase is focused on local web validation only.
-- Real Android/iOS/cloud execution is prepared but not the first validation step.
-- Keep scenarios simple (login, navigation, basic assertions) before scaling.
+Repo-checkout test flags: `--playwright` enables the browser-gated
+integration tests, `--appium` the device-gated ones.
 
-## Troubleshooting
-- **Import/module errors**: Re-run `pip install -e .` from repo root.
-- **Browser not launching**: Check local browser/runtime setup and headless mode.
-- **Timeouts**: Increase `timeout` in `bubblegum.yaml`.
-- **Selectors not found**: Re-check page locators in your feature steps.
-- **No report output**: Verify `report_path` exists or can be created.
+## 8. Troubleshooting
 
-## Best practices for testers
-- Start with 1 critical scenario (login).
-- Keep test data simple and stable.
-- Avoid too many assertions in one scenario.
-- Use clear scenario names.
-- Save evidence on each run.
-- Review failures quickly and update selectors when UI changes.
+- **"Playwright is not installed"** — `pip install -e ".[web]"` then
+  `python -m playwright install chromium`.
+- **A step can't find its element** — phrase it by the visible label;
+  add the widget word ("… link", "… button", "… tab") to break ties.
+  Check the page exposes a label (`<label for=…>` or `aria-label`):
+  Bubblegum grounds through the accessibility tree, so what a screen
+  reader can't name, Bubblegum can't either — fixing it helps both.
+- **Step failed and you can't tell why** — look in `artifacts/`: a
+  screenshot is saved per failed step and at test teardown.
+- **`bubblegum_page` errors about event loops** — add
+  `pytest.mark.asyncio(loop_scope="session")` (see §5).
+- **Mobile test skips** — read the skip reason (`pytest -rs`); it names
+  the missing piece (server down, no capabilities, client not installed).

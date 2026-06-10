@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Acme Notes — Settings</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 30em; margin: 0 auto; }
+  nav a { margin-right: 1.2em; }
+  .row { margin: 1em 0; }
+  label { font-weight: 600; }
+  .row label[for="language"] { display: block; margin-bottom: 0.25em; }
+  select { padding: 0.4em; font-size: 1em; min-width: 12em; }
+  button { padding: 0.6em 1.4em; font-size: 1em; cursor: pointer; }
+  #status { color: #205020; }
+</style>
+</head>
+<body>
+<nav aria-label="Main">
+  <a id="nav-dashboard" href="dashboard.html">Dashboard</a>
+  <a id="nav-logout" href="login.html">Log out</a>
+</nav>
+
+<h1>Settings</h1>
+
+<div class="row">
+  <input type="checkbox" id="notify">
+  <label for="notify">Email notifications</label>
+</div>
+
+<div class="row">
+  <label for="language">Language</label>
+  <select id="language">
+    <option value="en" selected>English</option>
+    <option value="de">German</option>
+    <option value="hi">Hindi</option>
+  </select>
+</div>
+
+<button id="save" type="button">Save</button>
+
+<p id="status" role="status"></p>
+
+<script>
+  document.getElementById('save').addEventListener('click', () => {
+    document.getElementById('status').textContent = 'Settings saved.';
+  });
+</script>
+</body>
+</html>

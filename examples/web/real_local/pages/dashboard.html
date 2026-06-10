@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Acme Notes — Dashboard</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 40em; margin: 0 auto; }
+  nav a { margin-right: 1.2em; }
+  .cards { display: flex; gap: 1em; margin-top: 1.5em; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 1em 1.4em; flex: 1; }
+  .card .count { font-size: 1.8em; font-weight: 700; }
+  .card .label { color: #666; }
+</style>
+</head>
+<body>
+<nav aria-label="Main">
+  <a id="nav-settings" href="settings.html">Settings</a>
+  <a id="nav-logout" href="login.html">Log out</a>
+</nav>
+
+<h1>Dashboard</h1>
+<p id="welcome">Welcome back, tester.</p>
+
+<div class="cards">
+  <div class="card"><div class="count" id="count-notes">12</div><div class="label">Notes</div></div>
+  <div class="card"><div class="count" id="count-shared">3</div><div class="label">Shared</div></div>
+  <div class="card"><div class="count" id="count-archived">5</div><div class="label">Archived</div></div>
+</div>
+</body>
+</html>

@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 
 _LABEL_SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
+# Extracts the name component of a role=<role>[name="<name>"] ref (kept in
+# sync with the Playwright adapter's ref grammar).
+_REF_NAME_RE = re.compile(r'\[name="([^"]+)"\]')
+
 
 def _sanitize_label(label: str) -> str:
     """Make a label safe for use as a filename fragment."""
@@ -218,6 +222,22 @@ class BubblegumSession:
         return result
 
     # ------------------------------------------------------------------
+    # Navigation (Phase 22E-7) — web only
+    # ------------------------------------------------------------------
+
+    async def goto(self, url: str, *, wait_until: str = "domcontentloaded") -> None:
+        """Navigate the wrapped Playwright page and wait for the load state.
+
+        Web-only convenience so tests don't reach into ``session.page``:
+
+            await s.goto(f"{widget_lab}/radios.html")
+            await s.act("Click Red radio")
+        """
+        if self._channel != "web" or self._page is None:
+            raise NotImplementedError("goto() is only available on web sessions")
+        await self._page.goto(url, wait_until=wait_until)
+
+    # ------------------------------------------------------------------
     # State probes (Phase 22E-3) — web only
     # ------------------------------------------------------------------
 
@@ -276,7 +296,25 @@ class BubblegumSession:
             )
 
         adapter = sdk._get_adapter("web", page=self._page)
-        return adapter._resolve_locator(result.target.ref)
+        ref = result.target.ref
+        locator = adapter._resolve_locator(ref)
+
+        # 22E-9 fix: roles like paragraph / status / generic expose their
+        # text as snapshot *content*, not as an accessible name, so a
+        # role=...[name="..."] ref built from the snapshot can match zero
+        # elements (and Playwright's is_visible() reports False for zero
+        # matches instead of raising). When the role locator matches
+        # nothing, fall back to an exact text match on the same string.
+        try:
+            if await locator.count() > 0:
+                return locator
+        except Exception:
+            return locator
+
+        name_match = _REF_NAME_RE.search(ref)
+        if name_match:
+            return self._page.get_by_text(name_match.group(1), exact=True)
+        return locator
 
     # ------------------------------------------------------------------
     # Auto-screenshot on failure (Phase 22E-3)
@@ -312,9 +350,11 @@ class BubblegumSession:
         """Capture a screenshot now (used by the pytest fixture finalizer).
 
         Returns the path of the written file, or None if capture is skipped
-        (no page / no label / IO error).
+        (no page/driver / no label / IO error). Works for both web (via the
+        Playwright page) and mobile (via the Appium driver).
         """
-        if self._channel != "web" or self._page is None or not self._label:
+        handle = self._page if self._channel == "web" else self._driver
+        if handle is None or not self._label:
             return None
         try:
             self._artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -322,7 +362,12 @@ class BubblegumSession:
             safe_label = _sanitize_label(self._label)
             tag = suffix if suffix == "final" else f"step{step_idx}"
             path = self._artifacts_dir / f"{safe_label}-{tag}.png"
-            await self._page.screenshot(path=str(path))
+            if self._channel == "web":
+                await self._page.screenshot(path=str(path))
+            else:
+                # Appium's get_screenshot_as_png() is synchronous.
+                png = self._driver.get_screenshot_as_png()
+                path.write_bytes(png)
             self._failure_screenshots.append(path)
             return path
         except Exception as exc:
