@@ -6,6 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# These tests patch `anthropic.AsyncAnthropic` and therefore require the
+# optional `anthropic` SDK to be importable. Skip the whole module when it
+# is not installed rather than failing.
+pytest.importorskip("anthropic")
+
 from bubblegum.core.models.anthropic_provider import AnthropicProvider, _strip_code_fence
 
 

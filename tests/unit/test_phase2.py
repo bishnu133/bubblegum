@@ -254,6 +254,9 @@ class TestOpenAIProvider:
 class TestStubProviders:
     @pytest.mark.asyncio
     async def test_anthropic_raises_without_api_key(self, monkeypatch):
+        # The provider checks for the anthropic SDK before the API key, so this
+        # ANTHROPIC_API_KEY assertion only holds when the SDK is installed.
+        pytest.importorskip("anthropic")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         p = AnthropicProvider(model="claude-sonnet-latest")
         with pytest.raises(Exception, match="ANTHROPIC_API_KEY"):

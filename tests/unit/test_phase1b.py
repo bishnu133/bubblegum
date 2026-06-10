@@ -434,9 +434,11 @@ class TestExtractSDK:
         mock_ui_ctx.screen_signature = "sig:test"
         mock_ui_ctx.hierarchy_xml = None
 
-        # inner_text() async return
+        # inner_text() async return. The extract path reads via
+        # locator.first.inner_text(), so point .first back at the locator.
         mock_locator = AsyncMock()
         mock_locator.inner_text = AsyncMock(return_value="user@example.com")
+        mock_locator.first = mock_locator
         mock_page.get_by_role = MagicMock(return_value=mock_locator)
         mock_page.locator = MagicMock(return_value=mock_locator)
         mock_page.url = "http://test/"
@@ -475,6 +477,7 @@ class TestExtractSDK:
 
         mock_locator = AsyncMock()
         mock_locator.inner_text = AsyncMock(side_effect=Exception("Element not attached"))
+        mock_locator.first = mock_locator
         mock_page.get_by_role = MagicMock(return_value=mock_locator)
         mock_page.locator = MagicMock(return_value=mock_locator)
         mock_page.url = "http://test/"
@@ -557,6 +560,7 @@ class TestSDKSelectorPlumbing:
         mock_page.url = "http://test/"
         mock_locator = AsyncMock()
         mock_locator.inner_text = AsyncMock(return_value="Example Domain")
+        mock_locator.first = mock_locator
         mock_page.locator = MagicMock(return_value=mock_locator)
 
         mock_adapter = MagicMock()

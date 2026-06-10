@@ -35,9 +35,16 @@ class _FakeLocator:
 class _FakePage:
     def __init__(self, locator):
         self._locator = locator
+        # _do_click records the URL before clicking and probes wait_for_url to
+        # detect navigation. The fake reports a static URL and a no-op
+        # wait_for_url (no navigation), which the adapter swallows.
+        self.url = "about:blank"
 
     def locator(self, ref):
         return self._locator
+
+    async def wait_for_url(self, *args, **kwargs):
+        return None
 
 
 def _run(wait_for=None, retry_count=0, failures=None, enabled=True):
