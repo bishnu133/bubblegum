@@ -93,16 +93,17 @@ def _sanitize_retry_reason(exc: Exception) -> str:
 _ARTIFACTS_DIR = Path("artifacts")
 
 
-# Phase 22E-6: roles that toggle in-page state and never trigger a page
-# navigation per ARIA semantics. Clicking one of these skips the post-click
-# wait_for_url probe in _do_click, which otherwise burns its full 5 s timeout
-# on every such click.
+# Phase 22E-6: roles that toggle in-page state (or open a popup) and never
+# trigger a page navigation per ARIA semantics. Clicking one of these skips
+# the post-click wait_for_url probe in _do_click, which otherwise burns its
+# full 5 s timeout on every such click.
 _NON_NAVIGATING_ROLES = {
     "radio",
     "checkbox",
     "switch",
     "option",
     "tab",
+    "combobox",
     "menuitemcheckbox",
     "menuitemradio",
     "slider",

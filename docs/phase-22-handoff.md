@@ -71,8 +71,8 @@ acceptance gate, and queued PR is captured below.
 ### 22E-6 — Nav-wait skip on non-navigating roles (shipped)
 - `_do_click` skips the cosmetic 5 s `wait_for_url` probe when the
   resolved target's ARIA role is in `_NON_NAVIGATING_ROLES` (radio,
-  checkbox, switch, option, tab, menuitemcheckbox, menuitemradio,
-  slider, spinbutton). Role comes from `target.metadata["role"]` with
+  checkbox, switch, option, tab, combobox, menuitemcheckbox,
+  menuitemradio, slider, spinbutton). Role comes from `target.metadata["role"]` with
   a `role=<role>[name=...]` ref-parse fallback (`_target_role`).
 - Action dispatch table + `_execute_action` now thread the
   `ResolvedTarget` through to handlers; only `_do_click` consumes it.
@@ -80,22 +80,23 @@ acceptance gate, and queued PR is captured below.
   `"nav_wait_skipped_role"` set on the skip path. Buttons, links, CSS
   and text refs (unknown role) keep the probe — navigation still
   detected.
-- Saves the full 5 s per click on `radio-group` and `tabs-click` style
-  steps; every toggle click in a suite gets the win.
+- Saves the full 5 s per click on `radio-group` / `tabs-click` /
+  `combobox-select` / `mui-select` style steps; every toggle or
+  popup-trigger click in a suite gets the win. Validated on real
+  Chromium: radio-group 106 ms, tabs-click 66 ms (was ~5 s each).
 
 ### Validation evidence (head of branch)
-- `python -m pytest tests/unit -q` → **1,176 passed**, 17 baseline
+- `python -m pytest tests/unit -q` → **1,177 passed**, 17 baseline
   failures unrelated to this branch (the documented anthropic +
   `AsyncMock`/`_FakePage` issues).
 - `python scripts/run_widget_lab_regression.py --strict` → **10/10**.
 - `python scripts/run_mui_lab_regression.py --strict` → **4/4**.
 - `python -m pytest --playwright -m bubblegum -v` → **15 passed**
   (2 + 3 + 4 + 3 + 3 across 22E-2 / 3 / 4 / 5 / 6).
-- Caveat: the 22E-6 session's sandbox blocked the Playwright CDN, so
-  the lab regressions and `--playwright` integration tests were not
-  re-run there — unit suite (17 new 22E-6 tests) is the shipped
-  evidence. Re-run the browser rows above on a machine with Chromium
-  before relying on the 15-passed number.
+- Browser rows validated locally (macOS, real Chromium, 2026-06-10):
+  10/10 widget lab, 4/4 MUI lab, 15/15 `-m bubblegum`. 22E-6 runtime
+  win confirmed: radio-group 106 ms, tabs-click 66 ms, slider-set
+  63 ms (each was ~5 s before the nav-wait skip).
 
 ---
 
@@ -164,7 +165,7 @@ tests/
 pip install -e ".[web,test]"
 python -m playwright install chromium
 
-# Full unit baseline — expect 1,176 passed, 17 baseline failures
+# Full unit baseline — expect 1,177 passed, 17 baseline failures
 python -m pytest tests/unit -q
 
 # Widget lab regression (strict NL-only)
