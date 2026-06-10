@@ -56,8 +56,16 @@ heal it. It should:
   Follow-up (not blocking): actual upload to PyPI / TestPyPI via `publish-check.yml` is a
   release-time action, not a code change.
 
-## PR 5 — BDD step library
-- pytest-bdd / behave Given/When/Then wrappers over the NL engine for manual-QA personas.
+## PR 5 — BDD step library ✅
+- New `bubblegum.bdd` package. The core is a framework-agnostic async dispatcher
+  (`execute_step(session, text)`) that maps plain-English Gherkin steps onto a
+  BubblegumSession (`act / goto / is_visible / is_checked / selected_value / extract`) —
+  fully unit-tested without a browser or BDD runner (20 tests).
+- `bubblegum.bdd.steps` provides catch-all pytest-bdd **When/Then** bindings (Given is
+  left to the project so custom setup steps never collide). Optional dependency:
+  `pip install "bubblegum-ai[bdd]"` (pytest-bdd >= 7).
+- Self-healed steps (status `recovered`) pass and surface the healing advisory; failed
+  steps raise a `BddStepError`. Added a runnable example (`examples/web/bdd/`) + runbook.
 
 ## PR 6 — Nameless-combobox resolver fallback ✅
 - A dropdown/combobox trigger with no accessible name (MUI / Angular CDK overlays) scored

@@ -33,8 +33,9 @@ test = ["pytest-asyncio"]
 web = ["playwright"]
 mobile = ["Appium-Python-Client"]
 anthropic = ["anthropic>=0.20"]
+bdd = ["pytest-bdd>=7"]
 dev = ["pytest-asyncio", "anthropic>=0.20"]
-all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio"]
+all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio", "pytest-bdd>=7"]
 
 [project.entry-points.pytest11]
 bubblegum = "bubblegum.pytest_plugin"

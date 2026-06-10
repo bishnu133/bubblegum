@@ -1,5 +1,16 @@
 # Unreleased
 
+## BDD step library + nameless-combobox fallback
+
+- Added `bubblegum.bdd`: plain-English Given/When/Then on top of the NL engine
+  for manual-QA personas. Core is a framework-agnostic dispatcher
+  (`execute_step`); `bubblegum.bdd.steps` ships catch-all pytest-bdd When/Then
+  bindings (optional extra `bdd` = `pytest-bdd>=7`). Runnable example under
+  `examples/web/bdd/`.
+- Nameless-combobox resolver fallback: a `role="combobox"` trigger with no
+  accessible name (MUI / Angular CDK overlays) now resolves by role + uniqueness
+  when the step signals a dropdown, instead of failing below the review band.
+
 ## Packaging: bundle quickstart sample pages (v0.0.5a)
 
 - The `widget_lab` and `sample_app` quickstart pages now ship **inside** the
