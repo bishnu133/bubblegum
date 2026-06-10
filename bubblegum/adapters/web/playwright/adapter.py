@@ -93,20 +93,56 @@ def _sanitize_retry_reason(exc: Exception) -> str:
 _ARTIFACTS_DIR = Path("artifacts")
 
 
+# Phase 22E-6: roles that toggle in-page state and never trigger a page
+# navigation per ARIA semantics. Clicking one of these skips the post-click
+# wait_for_url probe in _do_click, which otherwise burns its full 5 s timeout
+# on every such click.
+_NON_NAVIGATING_ROLES = {
+    "radio",
+    "checkbox",
+    "switch",
+    "option",
+    "tab",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "slider",
+    "spinbutton",
+}
+
+
+def _target_role(target: ResolvedTarget | None) -> str | None:
+    """Best-effort ARIA role of the resolved target.
+
+    Prefers the resolver-supplied ``metadata["role"]``; falls back to parsing
+    a ``role=<role>[name="..."]`` ref. Returns None when neither is available
+    (CSS / text refs), in which case callers must assume navigation is
+    possible.
+    """
+    if target is None:
+        return None
+    role = target.metadata.get("role")
+    if role:
+        return str(role).strip().lower()
+    ref = target.ref or ""
+    if ref.startswith("role="):
+        return _NAME_RE.sub("", ref[len("role="):]).strip().lower()
+    return None
+
+
 # Phase 22D-3: action dispatch table. Each handler is bound on the adapter
-# instance and receives (plan, locator, timeout). Keep this table flat and
-# closed — new action types are added explicitly so unsupported plans surface
-# as a clear error rather than a silent no-op.
+# instance and receives (plan, locator, timeout, target). Keep this table flat
+# and closed — new action types are added explicitly so unsupported plans
+# surface as a clear error rather than a silent no-op.
 _ACTION_DISPATCH = {
-    "click":   lambda self, plan, locator, timeout: self._do_click(plan, locator, timeout),
-    "tap":     lambda self, plan, locator, timeout: self._do_click(plan, locator, timeout),
-    "type":    lambda self, plan, locator, timeout: self._do_type(plan, locator, timeout),
-    "select":  lambda self, plan, locator, timeout: self._do_select(plan, locator, timeout),
-    "upload":  lambda self, plan, locator, timeout: self._do_upload(plan, locator, timeout),
-    "check":   lambda self, plan, locator, timeout: self._do_check(plan, locator, timeout),
-    "uncheck": lambda self, plan, locator, timeout: self._do_uncheck(plan, locator, timeout),
-    "scroll":  lambda self, plan, locator, timeout: self._do_scroll(plan, locator, timeout),
-    "set":     lambda self, plan, locator, timeout: self._do_set(plan, locator, timeout),
+    "click":   lambda self, plan, locator, timeout, target: self._do_click(plan, locator, timeout, target),
+    "tap":     lambda self, plan, locator, timeout, target: self._do_click(plan, locator, timeout, target),
+    "type":    lambda self, plan, locator, timeout, target: self._do_type(plan, locator, timeout),
+    "select":  lambda self, plan, locator, timeout, target: self._do_select(plan, locator, timeout),
+    "upload":  lambda self, plan, locator, timeout, target: self._do_upload(plan, locator, timeout),
+    "check":   lambda self, plan, locator, timeout, target: self._do_check(plan, locator, timeout),
+    "uncheck": lambda self, plan, locator, timeout, target: self._do_uncheck(plan, locator, timeout),
+    "scroll":  lambda self, plan, locator, timeout, target: self._do_scroll(plan, locator, timeout),
+    "set":     lambda self, plan, locator, timeout, target: self._do_set(plan, locator, timeout),
 }
 
 
@@ -190,7 +226,7 @@ class PlaywrightAdapter(BaseAdapter):
                     target.metadata["wait_outcome"] = "success"
                     target.metadata["wait_adapter"] = "playwright"
                     target.metadata["wait_duration_ms"] = wait_duration_ms
-                await self._execute_action(plan=plan, locator=locator, timeout=timeout)
+                await self._execute_action(plan=plan, locator=locator, timeout=timeout, target=target)
 
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 target.metadata["retry_attempts"] = max(0, attempts - 1)
@@ -253,16 +289,29 @@ class PlaywrightAdapter(BaseAdapter):
 
         raise ValueError(f"Unsupported wait_for mode for Playwright: {wait_for}")
 
-    async def _execute_action(self, plan: ActionPlan, locator, timeout: int) -> None:
+    async def _execute_action(
+        self, plan: ActionPlan, locator, timeout: int, target: ResolvedTarget | None = None
+    ) -> None:
         handler = _ACTION_DISPATCH.get(plan.action_type)
         if handler is None:
             raise ValueError(f"Unsupported action_type for Playwright execute: {plan.action_type}")
-        await handler(self, plan, locator, timeout)
+        await handler(self, plan, locator, timeout, target)
 
-    async def _do_click(self, plan: ActionPlan, locator, timeout: int) -> None:
+    async def _do_click(
+        self, plan: ActionPlan, locator, timeout: int, target: ResolvedTarget | None = None
+    ) -> None:
         # Record URL before click so we can detect navigation afterwards.
         url_before = self._page.url
         await locator.click(timeout=timeout)
+        # Toggle-style roles (radio, checkbox, tab, ...) flip in-page state
+        # and never navigate, so the URL probe below would always burn its
+        # full 5 s timeout. Skip it for those roles.
+        role = _target_role(target)
+        if role in _NON_NAVIGATING_ROLES:
+            if target is not None:
+                target.metadata["nav_wait_skipped"] = True
+                target.metadata["nav_wait_skipped_role"] = role
+            return
         # If the click triggered a page navigation (form submit, link, etc.)
         # wait_for_url detects the URL change reliably for both same-origin and
         # cross-origin navigations. If no URL change happens within 5 s

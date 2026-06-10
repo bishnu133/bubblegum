@@ -1,6 +1,6 @@
 # Phase 22 — Handoff
 
-Status: Phase 22D + 22E-1 + **22E-2 through 22E-5 shipped end-to-end**.
+Status: Phase 22D + 22E-1 + **22E-2 through 22E-6 shipped end-to-end**.
 The widget lab runs 10/10 scenarios NL-only against real Chromium with
 no `selector=`, `action_type=`, or `input_value=` safety nets. The MUI
 lab adds 4 React-shaped scenarios (select / checkbox / dialog /
@@ -68,14 +68,34 @@ acceptance gate, and queued PR is captured below.
   (was `::after` pseudo-element folded into a11y name); slider runner
   reads `<output>` via `inner_text` (was crashing on `input_value`).
 
+### 22E-6 — Nav-wait skip on non-navigating roles (shipped)
+- `_do_click` skips the cosmetic 5 s `wait_for_url` probe when the
+  resolved target's ARIA role is in `_NON_NAVIGATING_ROLES` (radio,
+  checkbox, switch, option, tab, menuitemcheckbox, menuitemradio,
+  slider, spinbutton). Role comes from `target.metadata["role"]` with
+  a `role=<role>[name=...]` ref-parse fallback (`_target_role`).
+- Action dispatch table + `_execute_action` now thread the
+  `ResolvedTarget` through to handlers; only `_do_click` consumes it.
+- Skips are observable: `target.metadata["nav_wait_skipped"]` /
+  `"nav_wait_skipped_role"` set on the skip path. Buttons, links, CSS
+  and text refs (unknown role) keep the probe — navigation still
+  detected.
+- Saves the full 5 s per click on `radio-group` and `tabs-click` style
+  steps; every toggle click in a suite gets the win.
+
 ### Validation evidence (head of branch)
-- `python -m pytest tests/unit -q` → **1,159 passed**, 17 baseline
+- `python -m pytest tests/unit -q` → **1,176 passed**, 17 baseline
   failures unrelated to this branch (the documented anthropic +
   `AsyncMock`/`_FakePage` issues).
 - `python scripts/run_widget_lab_regression.py --strict` → **10/10**.
 - `python scripts/run_mui_lab_regression.py --strict` → **4/4**.
-- `python -m pytest --playwright -m bubblegum -v` → **12 passed**
-  (2 + 3 + 4 + 3 across 22E-2 / 3 / 4 / 5).
+- `python -m pytest --playwright -m bubblegum -v` → **15 passed**
+  (2 + 3 + 4 + 3 + 3 across 22E-2 / 3 / 4 / 5 / 6).
+- Caveat: the 22E-6 session's sandbox blocked the Playwright CDN, so
+  the lab regressions and `--playwright` integration tests were not
+  re-run there — unit suite (17 new 22E-6 tests) is the shipped
+  evidence. Re-run the browser rows above on a machine with Chromium
+  before relying on the 15-passed number.
 
 ---
 
@@ -86,7 +106,6 @@ library for tests" goal:
 
 | PR | Scope | Estimated size | Why |
 |---|---|---|---|
-| **22E-6** | `_do_click` cosmetic `wait_for_url` skip for known non-navigating roles (radio / checkbox / option). Drops ~5 s per scenario from `radio-group`, `link-vs-button`, `tabs-click`, `accordion-expand`. | S | Visible runtime win for every tester; pure adapter change. |
 | **22E-7** | `BubblegumSession.goto(url)` + session-scoped `bubblegum_browser` / function-scoped `bubblegum_page` fixture split (vs today's everything-per-test). Suites with 50+ tests drop dramatically in wall-clock. | S–M | Most user-visible suite ergonomics improvement. |
 | **22E-8** | `bubblegum_mobile` async fixture: Appium driver + `BubblegumSession.mobile`. CLI options `--bubblegum-appium-url`, `--bubblegum-capabilities`. Mirrors `bubblegum_web` API. | M | First-class mobile parity. Unblocks the mobile side of the "real local script" plan I sketched earlier. |
 | **22E-9** | `examples/web/real_local/` — minimal multi-page sample app (login → dashboard → settings) served by the shared helper, demonstrated through `bubblegum_web` + a `sample_app` fixture. Plus `docs/getting-started-for-testers.md` rewrite. | M | The "first 60 seconds" surface a new user judges the library by. |
@@ -113,7 +132,8 @@ bubblegum/
   pytest_plugin.py                            22E-2/3 fixtures, hookwrapper
   session.py                                  22E-3 probes + auto-screenshot
   testing/widget_lab.py                       shared static-server helper
-  adapters/web/playwright/adapter.py          dispatch table (set added)
+  adapters/web/playwright/adapter.py          dispatch table (set added),
+                                              22E-6 nav-wait skip
   core/
     elements/query.py                         ControlKind (SLIDER added)
     parser/instruction.py                     parser + relational intent
@@ -132,8 +152,8 @@ scripts/
   run_mui_lab_regression.py                   4 rows (+strict)
 
 tests/
-  unit/test_phase22e{2,3,4,5}_*.py            fixture / probe / smoke / parser
-  integration/test_phase22e{2,3,4,5}_*.py     --playwright-gated live tests
+  unit/test_phase22e{2,3,4,5,6}_*.py          fixture / probe / smoke / parser / nav-wait
+  integration/test_phase22e{2,3,4,5,6}_*.py   --playwright-gated live tests
 ```
 
 ---
@@ -144,7 +164,7 @@ tests/
 pip install -e ".[web,test]"
 python -m playwright install chromium
 
-# Full unit baseline — expect 1,159 passed, 17 baseline failures
+# Full unit baseline — expect 1,176 passed, 17 baseline failures
 python -m pytest tests/unit -q
 
 # Widget lab regression (strict NL-only)
@@ -155,7 +175,7 @@ python scripts/run_widget_lab_regression.py --public        # 14/14
 python scripts/run_mui_lab_regression.py --strict           # 4/4
 
 # All bubblegum-marked integration tests
-python -m pytest --playwright -m bubblegum -v               # 12 passed
+python -m pytest --playwright -m bubblegum -v               # 15 passed
 ```
 
 ---
@@ -163,7 +183,7 @@ python -m pytest --playwright -m bubblegum -v               # 12 passed
 ## Resuming in a fresh session
 
 Open the new chat with: **"Continue Phase 22 from
-`docs/phase-22-handoff.md`. Start 22E-6."**
+`docs/phase-22-handoff.md`. Start 22E-7."**
 
 (Or pick any other queued PR from the table above.) That single line
 plus this doc is the full context the next session needs.
