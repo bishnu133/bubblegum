@@ -59,5 +59,12 @@ heal it. It should:
 ## PR 5 — BDD step library
 - pytest-bdd / behave Given/When/Then wrappers over the NL engine for manual-QA personas.
 
-## PR 6 — Nameless-combobox resolver fallback
-- Small queued resolver follow-up; can ride along with any PR.
+## PR 6 — Nameless-combobox resolver fallback ✅
+- A dropdown/combobox trigger with no accessible name (MUI / Angular CDK overlays) scored
+  only 0.60 in the accessibility-tree resolver — below the 0.70 review band — so it was
+  dropped and the step failed. When the instruction signals a dropdown (combobox/select/
+  dropdown kind hint, or a `select` action) and exactly one nameless combobox/listbox is
+  present, it is now lifted into the review band and resolves by role + uniqueness.
+- Named comboboxes still outrank the fallback; multiple nameless comboboxes stay ambiguous
+  (no false grab). Added a real `nameless_combobox.html` widget-lab page (bundled), an
+  opt-in `--playwright` web smoke, and 7 unit tests covering the resolver + engine paths.

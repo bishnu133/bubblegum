@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Nameless combobox</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  #fruit-trigger {
+    display: inline-block;
+    min-width: 14em;
+    padding: 0.5em 1em;
+    background: white;
+    border: 1px solid #999;
+    border-radius: 3px;
+    cursor: pointer;
+    color: #111;
+  }
+  /* Placeholder via ::before so the trigger has NO accessible name from
+     content — this is the whole point of the page: a role="combobox" with no
+     aria-label / aria-labelledby / associated <label>, so it appears as a
+     bare `combobox` in the accessibility tree (the MUI / Angular CDK case). */
+  #fruit-trigger:empty::before {
+    content: attr(data-placeholder);
+    color: #888;
+  }
+  #fruit-listbox {
+    margin: 0.25em 0 0;
+    padding: 0.25em 0;
+    list-style: none;
+    border: 1px solid #999;
+    border-radius: 3px;
+    min-width: 14em;
+    background: white;
+  }
+  #fruit-listbox[hidden] { display: none; }
+  #fruit-listbox [role="option"] { padding: 0.4em 0.8em; cursor: pointer; }
+  #fruit-listbox [role="option"]:hover { background: #f0f0f0; }
+</style>
+</head>
+<body>
+<h1>Nameless combobox (no accessible name)</h1>
+<p>
+  The trigger is <code>role="combobox"</code> with <strong>no</strong>
+  <code>aria-label</code>, <code>aria-labelledby</code>, or associated
+  <code>&lt;label&gt;</code>. Per ARIA, a combobox does not take its name from
+  content, so it surfaces as a bare <code>combobox</code> in the accessibility
+  tree. Bubblegum's nameless-combobox fallback resolves it by role + uniqueness
+  when the step signals a dropdown (e.g. "Open the fruit dropdown").
+</p>
+
+<div
+  id="fruit-trigger"
+  role="combobox"
+  tabindex="0"
+  aria-controls="fruit-listbox"
+  aria-expanded="false"
+  aria-haspopup="listbox"
+  data-placeholder="Select a fruit"
+></div>
+
+<ul id="fruit-listbox" role="listbox" hidden>
+  <li role="option" data-value="apple">Apple</li>
+  <li role="option" data-value="banana">Banana</li>
+  <li role="option" data-value="cherry">Cherry</li>
+</ul>
+
+<p id="result"></p>
+
+<script>
+  const trigger = document.getElementById('fruit-trigger');
+  const listbox = document.getElementById('fruit-listbox');
+  const result = document.getElementById('result');
+
+  function toggle(open) {
+    listbox.hidden = !open;
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  trigger.addEventListener('click', () => toggle(listbox.hidden));
+  trigger.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(listbox.hidden); }
+  });
+
+  listbox.addEventListener('click', (e) => {
+    const opt = e.target.closest('[role="option"]');
+    if (!opt) return;
+    trigger.textContent = opt.textContent;
+    trigger.dataset.value = opt.dataset.value;
+    toggle(false);
+    result.textContent = 'Selected: ' + opt.textContent;
+  });
+</script>
+</body>
+</html>

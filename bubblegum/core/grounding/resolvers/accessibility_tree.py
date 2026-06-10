@@ -144,6 +144,14 @@ _KIND_ROLE_ALIGNMENT: dict[str, frozenset[str]] = {
 }
 _KIND_BIAS = 0.03  # < 0.05 so it cannot cross the ambiguity_gap threshold.
 
+# Nameless-combobox fallback: a dropdown/select/combobox trigger with no
+# accessible name (common with MUI / Angular CDK overlays) scores only 0.60 in
+# _score (role fits, but there is no name to match), which is below the engine's
+# review_threshold of 0.70 and would be dropped. When the instruction clearly
+# means "the dropdown" and exactly one nameless combobox is present, lift it
+# into the review band so it resolves instead of failing.
+_NAMELESS_COMBOBOX_CONF = 0.72
+
 
 def _kind_role_aligned(kind: str, role: str) -> bool:
     if not kind or kind == "none":
@@ -260,6 +268,32 @@ class AccessibilityTreeResolver(Resolver):
                     biased.append(cand)
             candidates = biased
 
+        # Nameless-combobox fallback. The instruction signals a dropdown when it
+        # carries a combobox/select/dropdown kind hint, or the action is a
+        # select. If exactly one nameless combobox/listbox candidate exists,
+        # promote it into the review band so "open the country dropdown" /
+        # "select India from the dropdown" resolves even with no accessible name.
+        dropdown_intent = (
+            kind_hint in {"combobox", "select", "dropdown"}
+            or intent.action_type == "select"
+        )
+        if dropdown_intent:
+            nameless_idxs = [
+                i
+                for i, c in enumerate(candidates)
+                if str(c.metadata.get("role", "")) in {"combobox", "listbox"}
+                and not str(c.metadata.get("name", "")).strip()
+            ]
+            if len(nameless_idxs) == 1:
+                i = nameless_idxs[0]
+                cand = candidates[i]
+                if cand.confidence < _NAMELESS_COMBOBOX_CONF:
+                    meta = dict(cand.metadata)
+                    meta["nameless_combobox_fallback"] = True
+                    candidates[i] = cand.model_copy(
+                        update={"confidence": _NAMELESS_COMBOBOX_CONF, "metadata": meta}
+                    )
+
         enriched: list[ResolvedTarget] = []
         for target in candidates:
             row = next((r for r in signal_rows if r[0] == target.ref), None)
@@ -315,6 +349,12 @@ class AccessibilityTreeResolver(Resolver):
                 proximity=boosted_prox,
                 memory=0.0,
             )
+            # The nameless-combobox fallback is matched by role + uniqueness, not
+            # text. The signal-weighted score caps no-text matches below the
+            # review threshold, so drop signals here and let the deliberate
+            # review-band confidence set above pass through the ranker unchanged.
+            if meta.get("nameless_combobox_fallback"):
+                meta.pop("signals", None)
             enriched.append(target.model_copy(update={"metadata": meta}))
 
         return enriched
