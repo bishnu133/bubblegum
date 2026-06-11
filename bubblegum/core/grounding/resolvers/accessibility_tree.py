@@ -269,13 +269,21 @@ class AccessibilityTreeResolver(Resolver):
             candidates = biased
 
         # Nameless-combobox fallback. The instruction signals a dropdown when it
-        # carries a combobox/select/dropdown kind hint, or the action is a
-        # select. If exactly one nameless combobox/listbox candidate exists,
-        # promote it into the review band so "open the country dropdown" /
-        # "select India from the dropdown" resolves even with no accessible name.
+        # carries a combobox/select/dropdown kind hint, the action is a select,
+        # or the instruction text itself names a dropdown-style control (the
+        # parser only emits a "dropdown" kind hint for "...from/in the X
+        # dropdown" / "select ... from", so "Open the fruit dropdown" needs the
+        # keyword check). If exactly one nameless combobox/listbox candidate
+        # exists, promote it into the review band so it resolves even with no
+        # accessible name.
+        instruction_l = (intent.instruction or "").lower()
         dropdown_intent = (
             kind_hint in {"combobox", "select", "dropdown"}
             or intent.action_type == "select"
+            or any(
+                kw in instruction_l
+                for kw in ("dropdown", "combobox", "combo box", "picker", "selector")
+            )
         )
         if dropdown_intent:
             nameless_idxs = [

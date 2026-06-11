@@ -72,6 +72,22 @@ def test_resolver_promotes_on_select_action_without_kind_hint():
     assert combo and combo[0].confidence >= 0.70
 
 
+def test_resolver_promotes_on_dropdown_keyword_in_instruction():
+    # Real path: "Open the fruit dropdown" parses to action=click with NO
+    # relational kind hint, so promotion must come from the instruction keyword.
+    resolver = AccessibilityTreeResolver()
+    intent = _intent(
+        instruction="Open the fruit dropdown",
+        action_type="click",
+        target_phrase="fruit",
+        snapshot="- combobox",
+    )
+    combo = [c for c in resolver.resolve(intent) if c.ref == "role=combobox"]
+    assert combo, "nameless combobox produced no candidate"
+    assert combo[0].confidence >= 0.70
+    assert combo[0].metadata.get("nameless_combobox_fallback") is True
+
+
 def test_resolver_does_not_promote_without_dropdown_intent():
     # action=click, no dropdown kind hint → a bare combobox stays at its low
     # base score and is not promoted (we don't grab arbitrary nameless widgets).
@@ -125,6 +141,21 @@ def test_engine_resolves_nameless_combobox():
         target_phrase="country dropdown",
         snapshot="- combobox",
         kind_hint="dropdown",
+    )
+    target, _ = asyncio.run(engine.ground(intent))
+    assert target.ref == "role=combobox"
+    assert target.metadata.get("nameless_combobox_fallback") is True
+
+
+def test_engine_resolves_nameless_combobox_via_instruction_keyword():
+    # End-to-end mirror of the real failure: action=click, no kind hint set in
+    # context, promotion driven only by the "dropdown" keyword in the text.
+    engine = GroundingEngine(registry=ResolverRegistry())
+    intent = _intent(
+        instruction="Open the fruit dropdown",
+        action_type="click",
+        target_phrase="fruit",
+        snapshot="- combobox",
     )
     target, _ = asyncio.run(engine.ground(intent))
     assert target.ref == "role=combobox"
