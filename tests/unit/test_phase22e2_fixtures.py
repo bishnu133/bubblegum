@@ -68,9 +68,20 @@ def test_find_pages_dir_walks_up_from_nested_subdir(tmp_path: Path, monkeypatch)
     assert found.resolve() == pages.resolve()
 
 
-def test_find_pages_dir_raises_when_missing(tmp_path: Path):
-    with pytest.raises(FileNotFoundError, match="widget_lab/pages"):
-        find_pages_dir(tmp_path)
+def test_find_pages_dir_falls_back_to_packaged_when_no_checkout(tmp_path: Path):
+    # No repo layout under tmp_path, but the widget_lab pages ship inside the
+    # package, so resolution falls back to the bundled copy instead of raising.
+    from bubblegum.testing.widget_lab import packaged_pages_dir
+
+    found = find_pages_dir(tmp_path)
+    assert found == packaged_pages_dir("widget_lab")
+    assert (found / "modal.html").exists()
+
+
+def test_find_pages_dir_raises_for_unknown_pageset(tmp_path: Path):
+    # An unknown page set is neither in a checkout nor bundled — still raises.
+    with pytest.raises(FileNotFoundError, match="does_not_exist"):
+        find_pages_dir(tmp_path, rel="examples/web/widgets/does_not_exist/pages")
 
 
 # ---------------------------------------------------------------------------

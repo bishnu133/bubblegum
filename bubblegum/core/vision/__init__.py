@@ -1,6 +1,6 @@
 """Vision abstraction primitives (Phase 11B/11F)."""
 
-from .backends import CallableVisionProvider
+from .backends import AnthropicVisionProvider, CallableVisionProvider, OpenAIVisionProvider
 from .engine import (
     FakeVisionProvider,
     VisionCandidate,
@@ -10,7 +10,9 @@ from .engine import (
 )
 
 __all__ = [
+    "AnthropicVisionProvider",
     "CallableVisionProvider",
+    "OpenAIVisionProvider",
     "VisionCandidate",
     "VisionProvider",
     "FakeVisionProvider",

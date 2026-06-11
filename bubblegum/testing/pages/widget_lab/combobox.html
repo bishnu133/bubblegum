@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Custom combobox</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  #portal-root { position: relative; }
+  #country-trigger {
+    padding: 0.5em 1em;
+    min-width: 14em;
+    text-align: left;
+    background: white;
+    border: 1px solid #999;
+    border-radius: 3px;
+  }
+  #country-listbox {
+    position: absolute;
+    top: 0;
+    left: 0;
+    margin-top: 0.25em;
+    background: white;
+    border: 1px solid #999;
+    border-radius: 3px;
+    min-width: 14em;
+    list-style: none;
+    padding: 0.25em 0;
+    z-index: 100;
+  }
+  #country-listbox[hidden] { display: none; }
+  #country-listbox [role="option"] {
+    padding: 0.4em 0.8em;
+    cursor: pointer;
+  }
+  #country-listbox [role="option"]:hover {
+    background: #f0f0f0;
+  }
+</style>
+</head>
+<body>
+<h1>Custom combobox (portal-rendered listbox)</h1>
+<p>The trigger lives inline; the listbox is appended to <code>document.body</code> at first open, mirroring the MUI / Angular Material CDK overlay pattern. <code>aria-controls</code> ties them together so <code>follow_aria_controls</code> can resolve the listbox from the trigger.</p>
+
+<button
+  id="country-trigger"
+  type="button"
+  role="combobox"
+  aria-controls="country-listbox"
+  aria-expanded="false"
+  aria-haspopup="listbox"
+  aria-label="Select country"
+>
+  Select country
+</button>
+
+<p id="result"></p>
+
+<!-- Listbox is moved into document.body on first open to exercise the
+     portal pattern (out-of-tree from the trigger). -->
+<template id="listbox-template">
+  <ul id="country-listbox" role="listbox" aria-label="Country">
+    <li role="option" data-value="US">United States</li>
+    <li role="option" data-value="IN">India</li>
+    <li role="option" data-value="UK">United Kingdom</li>
+    <li role="option" data-value="SG">Singapore</li>
+  </ul>
+</template>
+
+<script>
+  const trigger = document.getElementById('country-trigger');
+  const result = document.getElementById('result');
+  let listbox = null;
+
+  function ensureListbox() {
+    if (listbox) return listbox;
+    const tmpl = document.getElementById('listbox-template');
+    const frag = tmpl.content.cloneNode(true);
+    document.body.appendChild(frag);
+    listbox = document.getElementById('country-listbox');
+    listbox.hidden = true;
+    listbox.addEventListener('click', (e) => {
+      const opt = e.target.closest('[role="option"]');
+      if (!opt) return;
+      trigger.textContent = opt.textContent;
+      trigger.dataset.value = opt.dataset.value;
+      listbox.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      result.textContent = 'Selected: ' + opt.textContent;
+    });
+    return listbox;
+  }
+
+  trigger.addEventListener('click', () => {
+    const lb = ensureListbox();
+    const opening = lb.hidden;
+    lb.hidden = !opening;
+    trigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    if (opening) {
+      const rect = trigger.getBoundingClientRect();
+      lb.style.top = (rect.bottom + window.scrollY) + 'px';
+      lb.style.left = (rect.left + window.scrollX) + 'px';
+    }
+  });
+</script>
+</body>
+</html>

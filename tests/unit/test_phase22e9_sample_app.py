@@ -77,9 +77,19 @@ def test_find_pages_dir_locates_sample_app_via_rel():
     assert found == SAMPLE_PAGES
 
 
-def test_find_pages_dir_rel_missing_raises(tmp_path: Path):
-    with pytest.raises(FileNotFoundError, match="real_local"):
-        find_pages_dir(tmp_path, rel="examples/web/real_local/pages")
+def test_find_pages_dir_sample_app_falls_back_to_packaged(tmp_path: Path):
+    # With no checkout under tmp_path, the sample_app pages still resolve to the
+    # copy bundled in the package (pip install bubblegum-ai).
+    from bubblegum.testing.widget_lab import packaged_pages_dir
+
+    found = find_pages_dir(tmp_path, rel="examples/web/real_local/pages")
+    assert found == packaged_pages_dir("sample_app")
+    assert (found / "login.html").exists()
+
+
+def test_find_pages_dir_unknown_rel_raises(tmp_path: Path):
+    with pytest.raises(FileNotFoundError, match="real_local_missing"):
+        find_pages_dir(tmp_path, rel="examples/web/real_local_missing/pages")
 
 
 # ---------------------------------------------------------------------------

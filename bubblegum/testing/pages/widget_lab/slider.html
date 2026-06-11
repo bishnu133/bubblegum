@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Slider</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  .slider-row { display: flex; align-items: center; gap: 1em; margin: 1em 0; }
+  .slider-row label { min-width: 6em; font-weight: 600; }
+  .slider-row input[type="range"] { flex: 1; }
+  .slider-row output { min-width: 3em; font-variant-numeric: tabular-nums; }
+  #result { margin-top: 1.5em; padding: 0.5em; background: #f5f5f5; border-radius: 4px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>Sliders (native input[type=range])</h1>
+<p>Native HTML5 range inputs surface as <code>role="slider"</code> in the
+accessibility tree with <code>aria-valuenow</code> reflecting the current
+value. Bubblegum's <code>set</code> action drives the value via JS so the
+range responds the way it would to user input — and React-style listeners
+on <code>input</code>/<code>change</code> still fire.</p>
+
+<div class="slider-row">
+  <label for="volume-slider">Volume</label>
+  <input id="volume-slider" type="range" min="0" max="100" value="20" aria-label="Volume">
+  <output id="volume-output" for="volume-slider">20</output>
+</div>
+
+<div class="slider-row">
+  <label for="brightness-slider">Brightness</label>
+  <input id="brightness-slider" type="range" min="0" max="100" value="50" aria-label="Brightness">
+  <output id="brightness-output" for="brightness-slider">50</output>
+</div>
+
+<p id="result"></p>
+
+<script>
+  function bind(id, outputId) {
+    const input = document.getElementById(id);
+    const out = document.getElementById(outputId);
+    input.addEventListener('input', () => {
+      out.value = input.value;
+      document.getElementById('result').textContent =
+        input.getAttribute('aria-label') + ' is ' + input.value;
+    });
+  }
+  bind('volume-slider', 'volume-output');
+  bind('brightness-slider', 'brightness-output');
+</script>
+</body>
+</html>

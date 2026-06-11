@@ -33,8 +33,9 @@ test = ["pytest-asyncio"]
 web = ["playwright"]
 mobile = ["Appium-Python-Client"]
 anthropic = ["anthropic>=0.20"]
+bdd = ["pytest-bdd>=7"]
 dev = ["pytest-asyncio", "anthropic>=0.20"]
-all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio"]
+all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio", "pytest-bdd>=7"]
 
 [project.entry-points.pytest11]
 bubblegum = "bubblegum.pytest_plugin"
@@ -42,6 +43,11 @@ bubblegum = "bubblegum.pytest_plugin"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["bubblegum*"]
+
+[tool.setuptools.package-data]
+# Ship the quickstart sample pages inside the wheel so pip-installed users get
+# the widget_lab / sample_app fixtures without a repository checkout.
+"bubblegum.testing" = ["pages/**/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

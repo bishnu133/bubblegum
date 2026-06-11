@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Checkboxes</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  fieldset { border: 1px solid #ccc; padding: 1em; }
+  legend { font-weight: 600; padding: 0 0.5em; }
+  .row { margin: 0.4em 0; }
+  label { margin-left: 0.4em; }
+</style>
+</head>
+<body>
+<h1>Checkboxes</h1>
+<p>Each checkbox uses an explicit <code>&lt;label for=…&gt;</code> association so a labeled NL instruction like <em>"Check Newsletter"</em> resolves deterministically.</p>
+
+<fieldset>
+  <legend>Preferences</legend>
+
+  <div class="row">
+    <input type="checkbox" id="cb_newsletter" name="newsletter">
+    <label for="cb_newsletter">Newsletter</label>
+  </div>
+
+  <div class="row">
+    <input type="checkbox" id="cb_terms" name="terms">
+    <label for="cb_terms">Terms and Conditions</label>
+  </div>
+
+  <div class="row">
+    <input type="checkbox" id="cb_marketing" name="marketing" checked>
+    <label for="cb_marketing">Marketing emails</label>
+  </div>
+</fieldset>
+</body>
+</html>

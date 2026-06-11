@@ -1,5 +1,38 @@
 # Unreleased
 
+## BDD step library + nameless-combobox fallback
+
+- Added `bubblegum.bdd`: plain-English Given/When/Then on top of the NL engine
+  for manual-QA personas. Core is a framework-agnostic dispatcher
+  (`execute_step`); `bubblegum.bdd.steps` ships catch-all pytest-bdd When/Then
+  bindings (optional extra `bdd` = `pytest-bdd>=7`). Runnable example under
+  `examples/web/bdd/`.
+- Nameless-combobox resolver fallback: a `role="combobox"` trigger with no
+  accessible name (MUI / Angular CDK overlays) now resolves by role + uniqueness
+  when the step signals a dropdown, instead of failing below the review band.
+
+## Packaging: bundle quickstart sample pages (v0.0.5a)
+
+- The `widget_lab` and `sample_app` quickstart pages now ship **inside** the
+  package (`bubblegum/testing/pages/`), so `pip install bubblegum-ai` users get
+  the fixtures without a repository checkout. `find_pages_dir()` resolves a repo
+  checkout first (dev) and falls back to the bundled copies (pip install).
+- Added `[tool.setuptools.package-data]` so the HTML pages are included in the
+  wheel, and a drift guard (`tests/unit/test_packaged_sample_pages.py`) that
+  keeps the bundled copies byte-for-byte in sync with the example sources.
+
+## CI + self-healing + AI-first object recognition
+
+- CI now runs the full unit suite on every PR (`.[test,anthropic]`); fixed the
+  17 stale baseline test failures so the gate is meaningful.
+- Self-healing is no longer silent: a fuzzy/synonym substitution (e.g. a step
+  written for "login" that resolves to "Sign In") marks the step `recovered`,
+  attaches a `healing` advisory, and is highlighted in the HTML/JSON reports as
+  a possible defect to revisit.
+- Added an Anthropic (Claude) vision backend for element grounding from
+  screenshots and an opt-in `grounding.ai_first` strategy that runs the AI tier
+  before the deterministic tiers (cost-gated, with deterministic fallback).
+
 ## Phase 19G-E1 (release checklist baseline sync)
 
 - Phase 19G-E1 docs/checklist-only cleanup: updated `RELEASE_CHECKLIST.md` collect-only baseline references from 643 to 654 to match the current mainline pytest collection baseline. No runtime/parser/planner/schema/resolver/ranker/confidence/API/dependency/version changes.

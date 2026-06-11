@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Modal dialog</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  .backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+  }
+  .backdrop[hidden] { display: none; }
+  #settings-dialog {
+    background: white; padding: 1.5em; border-radius: 6px;
+    min-width: 22em;
+  }
+  #settings-dialog h2 { margin-top: 0; }
+  #settings-dialog .row { margin: 0.6em 0; }
+  #settings-dialog label { display: block; font-weight: 600; }
+  #settings-dialog input { width: 100%; padding: 0.4em; box-sizing: border-box; }
+  .actions { margin-top: 1em; display: flex; gap: 0.5em; justify-content: flex-end; }
+  #result { margin-top: 1em; color: #205020; }
+</style>
+</head>
+<body>
+<h1>Modal dialog</h1>
+<p>Clicking <em>Open Settings</em> shows a <code>role="dialog"</code> with <code>aria-modal="true"</code>, containing labeled inputs and a Close affordance. Bubblegum's <code>close_dialog()</code> helper should drive the Close button or fall back to Escape.</p>
+
+<button id="open-settings" type="button">Open Settings</button>
+
+<div id="backdrop" class="backdrop" hidden>
+  <div
+    id="settings-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="dialog-title"
+  >
+    <h2 id="dialog-title">Settings</h2>
+
+    <div class="row">
+      <label for="dialog-name">Name</label>
+      <input type="text" id="dialog-name" />
+    </div>
+
+    <div class="actions">
+      <button type="button" id="dialog-cancel">Cancel</button>
+      <button type="button" id="dialog-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<p id="result"></p>
+
+<script>
+  const openBtn = document.getElementById('open-settings');
+  const backdrop = document.getElementById('backdrop');
+  const dialog = document.getElementById('settings-dialog');
+  const closeBtn = document.getElementById('dialog-close');
+  const cancelBtn = document.getElementById('dialog-cancel');
+  const nameInput = document.getElementById('dialog-name');
+  const result = document.getElementById('result');
+
+  function open() {
+    backdrop.hidden = false;
+    dialog.setAttribute('aria-modal', 'true');
+    nameInput.focus();
+  }
+
+  function close(saved) {
+    backdrop.hidden = true;
+    // Mark the dialog as no longer modal so find_open_dialog probes do not
+    // match a hidden node. The element stays in the DOM (a real component
+    // library typically tears it down on close).
+    dialog.removeAttribute('aria-modal');
+    if (saved && nameInput.value) {
+      result.textContent = 'Saved name: ' + nameInput.value;
+    } else {
+      result.textContent = 'Cancelled';
+    }
+  }
+
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', () => close(true));
+  cancelBtn.addEventListener('click', () => close(false));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !backdrop.hidden) {
+      close(true);
+    }
+  });
+</script>
+</body>
+</html>

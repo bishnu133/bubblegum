@@ -35,6 +35,7 @@ class GroundingConfig(BaseModel):
     max_cost_level:     str   = "medium"   # "low" | "medium" | "high"
     enable_vision:      bool  = False
     enable_ocr:         bool  = True
+    ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
     memory_ttl_days:    int   = 7
     memory_max_failures: int  = 3
 
@@ -221,6 +222,7 @@ grounding:
   max_cost_level: medium   # low | medium | high
   enable_vision: false
   enable_ocr: true
+  ai_first: false          # true = try AI (vision/LLM) before deterministic resolvers
   memory_ttl_days: 7
   memory_max_failures: 3
 
