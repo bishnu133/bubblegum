@@ -25,6 +25,7 @@ class ContextRequest(BaseModel):
     include_accessibility: bool = True    # a11y tree (web) / hierarchy XML (mobile)
     include_dom:           bool = False   # full raw DOM — expensive, off by default
     include_hierarchy:     bool = True
+    include_frames:        bool = True    # merge child <iframe> a11y snapshots (web)
     redact_sensitive_data: bool = True    # always redact passwords/PII before capture
 
 
@@ -44,6 +45,15 @@ class ExecutionOptions(BaseModel):
     memory_ttl_days: int      = 7
     memory_max_failures: int  = 3
     dry_run:        bool      = False     # resolve only — do not execute the action
+    # Web: max time to wait for a post-click navigation to commit before
+    # concluding the click was an in-page (AJAX/SPA) action. Bounds the cost of
+    # the navigation probe on non-navigating clicks. Set to 0 to skip the probe.
+    nav_wait_ms:    int       = 1_000
+    # Re-ground retries when the first resolution attempt finds nothing (or only
+    # low-confidence candidates). Re-collects context between attempts so
+    # late-rendered SPA elements resolve instead of failing immediately.
+    resolve_retries: int            = 2
+    resolve_retry_interval_ms: int  = 300
 
 
 # ---------------------------------------------------------------------------

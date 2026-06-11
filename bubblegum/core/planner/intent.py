@@ -6,7 +6,16 @@ from bubblegum.core.parser.instruction import parse_relational_intent
 from bubblegum.core.schemas import ContextRequest, ExecutionOptions, StepIntent, ValidationPlan
 
 
-def build_options(kwargs: dict, *, ai_enabled: bool, max_cost_level: str, memory_ttl_days: int, memory_max_failures: int) -> ExecutionOptions:
+def build_options(
+    kwargs: dict,
+    *,
+    ai_enabled: bool,
+    max_cost_level: str,
+    memory_ttl_days: int,
+    memory_max_failures: int,
+    resolve_retries: int | None = None,
+    resolve_retry_interval_ms: int | None = None,
+) -> ExecutionOptions:
     known = {
         "timeout_ms",
         "retry_count",
@@ -16,12 +25,19 @@ def build_options(kwargs: dict, *, ai_enabled: bool, max_cost_level: str, memory
         "memory_ttl_days",
         "memory_max_failures",
         "dry_run",
+        "nav_wait_ms",
+        "resolve_retries",
+        "resolve_retry_interval_ms",
     }
     opts = {k: v for k, v in kwargs.items() if k in known}
     opts.setdefault("use_ai", ai_enabled)
     opts.setdefault("max_cost_level", max_cost_level)
     opts.setdefault("memory_ttl_days", memory_ttl_days)
     opts.setdefault("memory_max_failures", memory_max_failures)
+    if resolve_retries is not None:
+        opts.setdefault("resolve_retries", resolve_retries)
+    if resolve_retry_interval_ms is not None:
+        opts.setdefault("resolve_retry_interval_ms", resolve_retry_interval_ms)
     return ExecutionOptions(**opts)
 
 

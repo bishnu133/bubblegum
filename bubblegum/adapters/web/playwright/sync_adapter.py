@@ -87,7 +87,11 @@ class SyncPlaywrightAdapter:
             elif plan.action_type == "type":
                 locator.fill(plan.input_value or "", timeout=timeout)
             elif plan.action_type == "select":
-                locator.select_option(plan.input_value or "", timeout=timeout)
+                value = plan.input_value or ""
+                try:
+                    locator.select_option(value, timeout=timeout)
+                except Exception:
+                    locator.select_option(label=value, timeout=timeout)
             elif plan.action_type == "scroll":
                 locator.scroll_into_view_if_needed(timeout=timeout)
 

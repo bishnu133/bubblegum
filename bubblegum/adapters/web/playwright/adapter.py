@@ -59,10 +59,20 @@ _MAX_RETRY_CAP = 1
 _RETRY_DELAY_SECONDS = 0.05
 _WAIT_STATES = {"visible", "attached"}
 
+# Fallback used when ExecutionOptions.nav_wait_ms is unavailable (e.g. an older
+# ActionPlan). Bounds how long a non-navigating click waits before concluding
+# the click was an in-page action rather than a navigation.
+_DEFAULT_NAV_WAIT_MS = 1_000
+
 
 def _is_transient_execution_error(exc: Exception) -> bool:
     text = str(exc).lower()
     return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _is_strict_mode_violation(exc: Exception) -> bool:
+    """True when Playwright refused to act because a locator matched >1 element."""
+    return "strict mode violation" in str(exc).lower()
 
 
 def _retry_budget(retry_count: int | None) -> int:
@@ -177,6 +187,14 @@ class PlaywrightAdapter(BaseAdapter):
             if request.include_accessibility:
                 # ✅ Modern API — locator.aria_snapshot() — NOT page.accessibility.snapshot()
                 a11y_snapshot = await self._page.locator("body").aria_snapshot()
+                # Cross-document content (iframes) is invisible to the main
+                # frame's snapshot, so append each child frame's snapshot. This
+                # only makes elements *discoverable* by the resolvers; execution
+                # routes into the owning frame (see _resolve_action_locator).
+                if request.include_frames:
+                    frame_snapshots = await self._collect_frame_snapshots()
+                    if frame_snapshots:
+                        a11y_snapshot = "\n".join([a11y_snapshot or "", *frame_snapshots]).strip()
         except Exception as exc:
             logger.warning("aria_snapshot() failed: %s", exc)
 
@@ -217,7 +235,7 @@ class PlaywrightAdapter(BaseAdapter):
         while True:
             attempts += 1
             try:
-                locator = self._resolve_locator(ref)
+                locator = await self._resolve_action_locator(ref)
                 wait_start = time.monotonic()
                 await self._wait_for_mode(locator, wait_for, timeout)
                 wait_duration_ms = int((time.monotonic() - wait_start) * 1000)
@@ -296,7 +314,22 @@ class PlaywrightAdapter(BaseAdapter):
         handler = _ACTION_DISPATCH.get(plan.action_type)
         if handler is None:
             raise ValueError(f"Unsupported action_type for Playwright execute: {plan.action_type}")
-        await handler(self, plan, locator, timeout, target)
+        try:
+            await handler(self, plan, locator, timeout, target)
+        except Exception as exc:
+            # A resolved ref can still match more than one DOM node (e.g.
+            # text="Login" on a page with a heading and a button). Reading
+            # already takes .first; mirror that for actions instead of failing
+            # the whole step on a strict-mode violation.
+            if not _is_strict_mode_violation(exc):
+                raise
+            logger.info(
+                "Strict-mode violation on %s — retrying against the first match",
+                plan.action_type,
+            )
+            await handler(self, plan, locator.first, timeout, target)
+            if target is not None:
+                target.metadata["strict_mode_fallback_first"] = True
 
     async def _do_click(
         self, plan: ActionPlan, locator, timeout: int, target: ResolvedTarget | None = None
@@ -313,18 +346,30 @@ class PlaywrightAdapter(BaseAdapter):
                 target.metadata["nav_wait_skipped"] = True
                 target.metadata["nav_wait_skipped_role"] = role
             return
-        # If the click triggered a page navigation (form submit, link, etc.)
-        # wait_for_url detects the URL change reliably for both same-origin and
-        # cross-origin navigations. If no URL change happens within 5 s
-        # (SPA button, checkbox, modal toggle) the timeout is swallowed.
+
+        nav_wait_ms = int(getattr(plan.options, "nav_wait_ms", _DEFAULT_NAV_WAIT_MS) or 0)
+        if nav_wait_ms <= 0:
+            return
+
+        # Two-phase wait. Phase 1: cheaply detect whether a navigation *commits*
+        # within nav_wait_ms — the common AJAX/SPA click that never navigates
+        # pays at most this bounded cost instead of the full action timeout.
+        # Phase 2: only when a navigation did start, wait for the new document
+        # to be ready (using the full action timeout) so the next step doesn't
+        # race a half-loaded page.
         try:
             await self._page.wait_for_url(
                 lambda url: url != url_before,
-                wait_until="domcontentloaded",
-                timeout=5000,
+                wait_until="commit",
+                timeout=nav_wait_ms,
             )
         except Exception:
-            pass  # No navigation — in-page click, nothing to wait for
+            return  # No navigation committed — in-page click, nothing to wait for
+
+        try:
+            await self._page.wait_for_load_state("domcontentloaded", timeout=timeout)
+        except Exception:
+            pass  # Document settle is best-effort; the URL already changed.
 
     async def _do_type(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
@@ -332,7 +377,14 @@ class PlaywrightAdapter(BaseAdapter):
 
     async def _do_select(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
-        await locator.select_option(value, timeout=timeout)
+        # Testers write the *visible* option ("France"), but a <select> often
+        # carries a different value attribute (<option value="FR">France</option>).
+        # Try value-match first (fast path / backward compatible), then fall back
+        # to label-match so natural-language selection works either way.
+        try:
+            await locator.select_option(value, timeout=timeout)
+        except Exception:
+            await locator.select_option(label=value, timeout=timeout)
 
     async def _do_upload(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value
@@ -427,16 +479,22 @@ class PlaywrightAdapter(BaseAdapter):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _resolve_locator(self, ref: str):
+    def _resolve_locator(self, ref: str, root=None):
         """
         Convert a ref string into a Playwright Locator.
 
+        ``root`` is the search context: the page by default, or a child Frame
+        when routing into an iframe (Frame exposes the same get_by_role /
+        get_by_text / locator API as Page).
+
         Supported ref formats:
-          role=button[name="Login"]    → page.get_by_role("button", name="Login")
-          text="Login"                 → page.get_by_text("Login", exact=True)
-          #id / .class / [attr]        → page.locator(ref)  (CSS / XPath pass-through)
-          role=button                  → page.get_by_role("button")
+          role=button[name="Login"]    → root.get_by_role("button", name="Login")
+          text="Login"                 → root.get_by_text("Login", exact=True)
+          #id / .class / [attr]        → root.locator(ref)  (CSS / XPath pass-through)
+          role=button                  → root.get_by_role("button")
         """
+        root = root if root is not None else self._page
+
         # Semantic role locator: role=<role>[name="<name>"]
         if ref.startswith("role="):
             role_part = ref[len("role="):]
@@ -444,20 +502,87 @@ class PlaywrightAdapter(BaseAdapter):
             role = _NAME_RE.sub("", role_part).strip()
             if name_match:
                 name = name_match.group(1)
-                return self._page.get_by_role(role, name=name)
-            return self._page.get_by_role(role)
+                return root.get_by_role(role, name=name)
+            return root.get_by_role(role)
 
         # Exact text locator: text="Login"
         if ref.startswith('text="') and ref.endswith('"'):
             label = ref[6:-1]
-            return self._page.get_by_text(label, exact=True)
+            return root.get_by_text(label, exact=True)
 
         if ref.startswith("text="):
             label = ref[5:]
-            return self._page.get_by_text(label, exact=True)
+            return root.get_by_text(label, exact=True)
 
         # CSS / XPath / id pass-through
-        return self._page.locator(ref)
+        return root.locator(ref)
+
+    def _child_frames(self) -> list:
+        """Return the page's child frames (excluding the main frame).
+
+        Guarded so it is a no-op for frameless pages and for the lightweight
+        fake pages used in unit tests (which expose no ``frames`` attribute).
+        """
+        page = self._page
+        frames = getattr(page, "frames", None)
+        if not frames:
+            return []
+        main = getattr(page, "main_frame", None)
+        try:
+            return [f for f in frames if f is not main]
+        except Exception:
+            return []
+
+    async def _collect_frame_snapshots(self) -> list[str]:
+        """Capture the aria snapshot of each child frame's body."""
+        snapshots: list[str] = []
+        for frame in self._child_frames():
+            try:
+                snap = await frame.locator("body").aria_snapshot()
+            except Exception as exc:
+                logger.debug("frame aria_snapshot() skipped: %s", exc)
+                continue
+            if snap:
+                snapshots.append(snap)
+        return snapshots
+
+    async def _resolve_action_locator(self, ref: str):
+        """Resolve ``ref`` against the main frame, falling back to child frames.
+
+        The main frame is preferred (and returned directly when the page has no
+        child frames, which keeps the frameless fast-path identical to before).
+        Otherwise the locator is routed into the first child frame that actually
+        contains a match — this is how an iframe element resolved from the
+        merged snapshot becomes executable.
+        """
+        main = self._resolve_locator(ref)
+        frames = self._child_frames()
+        if not frames:
+            return main
+
+        try:
+            if await main.count() > 0:
+                return main
+        except Exception:
+            return main
+
+        for frame in frames:
+            try:
+                candidate = self._resolve_locator(ref, root=frame)
+                if await candidate.count() > 0:
+                    return candidate
+            except Exception:
+                continue
+        return main
+
+    async def extract_text(self, ref: str, timeout_ms: int = 10_000) -> str:
+        """Read the inner text of the element identified by ``ref``.
+
+        Frame-aware (routes into the owning iframe when needed) and uses
+        ``.first`` so a ref matching multiple nodes does not raise.
+        """
+        locator = await self._resolve_action_locator(ref)
+        return await locator.first.inner_text(timeout=timeout_ms)
 
     async def _run_assertion(self, plan: ValidationPlan) -> tuple[bool, str]:
         """Run the appropriate Playwright assertion. Returns (passed, actual_value)."""

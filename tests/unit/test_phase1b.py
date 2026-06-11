@@ -565,6 +565,8 @@ class TestSDKSelectorPlumbing:
 
         mock_adapter = MagicMock()
         mock_adapter.collect_context = AsyncMock(return_value=MagicMock(a11y_snapshot='- heading "Example Domain"', screenshot=None, screen_signature="sig:e", hierarchy_xml=None))
+        # Web extraction now delegates to the adapter (parity with mobile).
+        mock_adapter.extract_text = AsyncMock(return_value="Example Domain")
 
         captured = {}
 

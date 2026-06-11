@@ -35,6 +35,7 @@ Phase 3 — record_success() / record_failure() wired into act() and recover()
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import inspect
 import logging
@@ -44,7 +45,11 @@ from typing import Any
 
 from bubblegum.core.config import BubblegumConfig
 from bubblegum.core.grounding.engine import GroundingEngine
-from bubblegum.core.grounding.errors import BubblegumError
+from bubblegum.core.grounding.errors import (
+    BubblegumError,
+    LowConfidenceError,
+    ResolutionFailedError,
+)
 from bubblegum.core.grounding.hydrator import VisualRefHydrator, is_visual_ref
 from bubblegum.core.grounding.registry import ResolverRegistry
 from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
@@ -240,7 +245,7 @@ async def act(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     # 1. Build StepIntent
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     intent  = make_intent(
         instruction=instruction,
@@ -262,7 +267,7 @@ async def act(
 
     # 3. Ground
     try:
-        target, traces = await _engine.ground(intent)
+        target, traces = await _ground_with_wait(adapter, intent)
     except BubblegumError as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         return _failed_result(instruction, exc, duration_ms)
@@ -371,7 +376,7 @@ async def verify(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -390,7 +395,7 @@ async def verify(
     _maybe_inject_vision_candidates(intent)
 
     try:
-        target, traces = await _engine.ground(intent)
+        target, traces = await _ground_with_wait(adapter, intent)
     except BubblegumError as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         return _failed_result(instruction, exc, duration_ms)
@@ -439,7 +444,7 @@ async def extract(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="extract")
     intent  = make_intent(
         instruction=instruction,
@@ -460,7 +465,7 @@ async def extract(
 
     # Ground — find the target element
     try:
-        target, traces = await _engine.ground(intent)
+        target, traces = await _ground_with_wait(adapter, intent)
     except BubblegumError as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         return _failed_result(instruction, exc, duration_ms)
@@ -481,14 +486,11 @@ async def extract(
     # Extract text content from the resolved element ref
     timeout_ms = options.timeout_ms
     try:
-        if channel == "mobile":
-            if not hasattr(adapter, "extract_text"):
-                raise NotImplementedError(
-                    "Mobile extract is not supported by the active adapter."
-                )
-            extracted_value = await adapter.extract_text(target.ref, timeout_ms=timeout_ms)
-        else:
-            extracted_value = await _extract_inner_text(page, target.ref, timeout_ms)
+        if not hasattr(adapter, "extract_text"):
+            raise NotImplementedError(
+                "Text extraction is not supported by the active adapter."
+            )
+        extracted_value = await adapter.extract_text(target.ref, timeout_ms=timeout_ms)
     except Exception as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         logger.error("inner_text() failed for ref=%r: %s", target.ref, exc)
@@ -559,7 +561,7 @@ async def recover(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     step_intent = make_intent(
         instruction=instruction,
@@ -775,6 +777,47 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
     intent.context.setdefault("config_vision_enabled", _config.vision_enabled)
 
 
+# Resolution failures worth retrying: the element may simply not be in the DOM
+# yet (SPA late render). Ambiguity / cost-policy blocks are NOT retried — more
+# attempts cannot change those outcomes.
+_RETRYABLE_GROUND_ERRORS = (ResolutionFailedError, LowConfidenceError)
+
+
+async def _ground_with_wait(adapter, intent: StepIntent):
+    """Ground the intent, re-collecting context and retrying when nothing
+    resolves yet.
+
+    Playwright auto-waits on a *known* locator, but Bubblegum resolves from a
+    one-shot accessibility snapshot — so an element rendered a moment after the
+    snapshot would otherwise fail immediately. Between attempts we sleep a short
+    interval and re-collect context so the next snapshot can see it. Only
+    retryable resolution errors trigger this; everything else propagates at
+    once. Behaviour is unchanged whenever the first attempt succeeds.
+    """
+    retries = max(0, int(getattr(intent.options, "resolve_retries", 0)))
+    interval_ms = max(0, int(getattr(intent.options, "resolve_retry_interval_ms", 0)))
+
+    attempt = 0
+    while True:
+        try:
+            return await _engine.ground(intent)
+        except _RETRYABLE_GROUND_ERRORS:
+            if attempt >= retries:
+                raise
+            attempt += 1
+            if interval_ms:
+                await asyncio.sleep(interval_ms / 1000.0)
+            ctx_request = context_request()
+            ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
+            ui_ctx = await adapter.collect_context(ctx_request)
+            _merge_context(intent, ui_ctx)
+            _maybe_inject_vision_candidates(intent)
+            logger.debug(
+                "Re-grounding '%s' after no/low-confidence match (attempt %d/%d)",
+                intent.instruction, attempt, retries,
+            )
+
+
 def _should_request_vision_screenshot(intent: StepIntent) -> bool:
     if "vision_candidates" in intent.context:
         return False
@@ -833,39 +876,6 @@ def _failed_result(instruction: str, exc: BubblegumError, duration_ms: int) -> S
             candidates=exc.candidates,
         ),
     )
-
-
-async def _extract_inner_text(page, ref: str, timeout_ms: int) -> str:
-    """
-    Read the inner text of the element identified by ref.
-
-    Uses _resolve_locator() logic inline (mirrors PlaywrightAdapter._resolve_locator)
-    so we can call inner_text() without a full ActionPlan/execute cycle.
-    """
-    import re as _re
-
-    _NAME_RE = _re.compile(r'\[name="([^"]+)"\]')
-
-    if ref.startswith("role="):
-        role_part  = ref[len("role="):]
-        name_match = _NAME_RE.search(role_part)
-        role       = _NAME_RE.sub("", role_part).strip()
-        if name_match:
-            locator = page.get_by_role(role, name=name_match.group(1))
-        else:
-            locator = page.get_by_role(role)
-    elif ref.startswith('text="') and ref.endswith('"'):
-        locator = page.get_by_text(ref[6:-1], exact=True)
-    elif ref.startswith("text="):
-        locator = page.get_by_text(ref[5:], exact=True)
-    else:
-        locator = page.locator(ref)
-
-    # Use .first to avoid strict-mode violations when multiple elements share a
-    # name (e.g. heading "Secure Area" matches both <h2> and a subheading that
-    # contains "Secure Area"). The resolved ref is already the best candidate
-    # from the grounding engine, so taking the first DOM match is correct.
-    return await locator.first.inner_text(timeout=timeout_ms)
 
 
 async def _capture_screenshot(adapter, label: str) -> list[ArtifactRef]:

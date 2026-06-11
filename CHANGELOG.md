@@ -1,5 +1,34 @@
 # Unreleased
 
+## Web reliability: iframes, bounded nav-wait, select-by-label, strict-mode + re-grounding
+
+Five web-channel improvements to the Playwright adapter and SDK resolution loop:
+
+- **iframe support.** `collect_context()` now merges child-frame accessibility
+  snapshots, so elements inside same-origin `<iframe>`s are discoverable by the
+  resolvers. Execution and text extraction route into the owning frame
+  (`_resolve_action_locator`). Gated by `ContextRequest.include_frames`
+  (default on); a no-op for frameless pages.
+- **Bounded, configurable post-click navigation wait.** A non-navigating
+  (AJAX/SPA) click previously burned a fixed 5 s on the `wait_for_url` probe.
+  It is now two-phase — cheaply detect whether a navigation commits within
+  `ExecutionOptions.nav_wait_ms` (default 1 s), and only then wait for the new
+  document to settle using the full action timeout. Set `nav_wait_ms=0` to skip.
+- **`<select>` by visible label.** `select` now tries the option value, then
+  falls back to the visible label, so `Select "United States" from Country`
+  works even when the option value differs (`value="US"`).
+- **Strict-mode retry.** An action whose ref matches more than one DOM node
+  retries on `.first` (mirroring the read path) instead of failing the step.
+- **Re-grounding for late-rendered elements.** `act()/verify()/extract()`
+  re-collect context and retry resolution (`grounding.resolve_retries`,
+  default 2 × `resolve_retry_interval_ms` 300 ms) when the first attempt finds
+  nothing, so SPA elements that render a beat late resolve instead of failing.
+
+Web text extraction now delegates to `PlaywrightAdapter.extract_text()` (parity
+with the mobile channel). New fixtures: `widget_lab/iframe.html` +
+`iframe_inner.html`. Coverage: `tests/unit/test_web_resilience.py` (browser-free)
+and `tests/integration/test_web_resilience_e2e.py` (live, `--playwright`).
+
 ## BDD step library + nameless-combobox fallback
 
 - Added `bubblegum.bdd`: plain-English Given/When/Then on top of the NL engine

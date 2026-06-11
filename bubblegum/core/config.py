@@ -38,6 +38,9 @@ class GroundingConfig(BaseModel):
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
     memory_ttl_days:    int   = 7
     memory_max_failures: int  = 3
+    # Re-ground retries for late-rendered (SPA) elements — see ExecutionOptions.
+    resolve_retries:    int   = 2
+    resolve_retry_interval_ms: int = 300
 
 
 class AIConfig(BaseModel):
@@ -225,6 +228,8 @@ grounding:
   ai_first: false          # true = try AI (vision/LLM) before deterministic resolvers
   memory_ttl_days: 7
   memory_max_failures: 3
+  resolve_retries: 2               # re-ground attempts for late-rendered SPA elements
+  resolve_retry_interval_ms: 300   # delay between re-ground attempts
 
 ai:
   enabled: true

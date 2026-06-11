@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — iframe</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 40em; }
+  iframe { border: 1px solid #ccc; width: 24em; height: 10em; }
+</style>
+</head>
+<body>
+<h1>Iframe Lab</h1>
+<p>The "Pay Now" button lives inside a same-origin iframe. Bubblegum should
+   discover it from the merged accessibility snapshot and route the click into
+   the owning frame.</p>
+
+<iframe id="payment" src="iframe_inner.html" title="Payment"></iframe>
+</body>
+</html>
