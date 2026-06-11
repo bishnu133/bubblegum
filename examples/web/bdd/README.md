@@ -15,17 +15,26 @@ python -m playwright install chromium
 ## Run
 
 ```bash
-pytest examples/web/bdd/ --playwright
+pytest examples/web/bdd/
+# watch it in a visible browser:
+BUBBLEGUM_BDD_HEADED=1 pytest examples/web/bdd/ -s
 ```
+
+No `--playwright` flag is needed — the BDD fixtures own their own headless
+Chromium (`bubblegum.bdd.fixtures`), independent of pytest-playwright.
 
 ## How it works
 
 - `from bubblegum.bdd.steps import *` registers catch-all **When** and **Then**
-  steps. Each routes the full step text through
+  steps. `import *` is required so pytest-bdd's generated step-definition
+  fixtures are collected. Each step routes the full text through
   `bubblegum.bdd.dispatcher.execute_step`, which maps the phrasing onto
   `session.act / is_visible / is_checked / selected_value / extract`.
-- You write the **Given** with the `bubblegum_web` + `sample_app` fixtures (see
-  `test_login_bdd.py`).
+- pytest-bdd runs steps **synchronously**, so the bindings drive the async
+  session on a dedicated event loop (`bubblegum_bdd_loop`); the `bubblegum_web`
+  fixture creates the Playwright page on that same loop.
+- You write the **Given** (navigation) with the `bubblegum_bdd_loop` +
+  `sample_app` fixtures — see `test_login_bdd.py`.
 
 ## Supported step phrasings
 
@@ -56,8 +65,12 @@ Anything else fails with a helpful message. Use the raw passthrough
   healing advisory is surfaced in the Bubblegum report — so a "click login" that
   resolved to a "Sign In" button is flagged for review rather than silently
   passing or failing.
-- Requires `pytest-bdd >= 7` and `pytest-asyncio` (async steps). Only **When**
-  and **Then** are catch-alls, so your custom **Given** steps never collide.
+- Requires `pytest-bdd >= 7`. The step bindings are synchronous and drive the
+  async session on the `bubblegum_bdd_loop` fixture (pytest-bdd does not await
+  coroutine steps), so no pytest-asyncio is needed for the BDD run. Only
+  **When** and **Then** are catch-alls, so your custom **Given** steps never
+  collide. Use `from bubblegum.bdd.steps import *` (the `*` is required so
+  pytest-bdd's generated step fixtures are collected).
 - Programmatic use without pytest-bdd:
 
   ```python

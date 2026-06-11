@@ -5,9 +5,10 @@
 <title>Widget Lab — Nameless combobox</title>
 <style>
   body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  #fruit-field { position: relative; display: inline-block; }
   #fruit-trigger {
-    display: inline-block;
     min-width: 14em;
+    min-height: 1.4em;
     padding: 0.5em 1em;
     background: white;
     border: 1px solid #999;
@@ -15,14 +16,19 @@
     cursor: pointer;
     color: #111;
   }
-  /* Placeholder via ::before so the trigger has NO accessible name from
-     content — this is the whole point of the page: a role="combobox" with no
-     aria-label / aria-labelledby / associated <label>, so it appears as a
-     bare `combobox` in the accessibility tree (the MUI / Angular CDK case). */
-  #fruit-trigger:empty::before {
-    content: attr(data-placeholder);
+  /* Placeholder is a SEPARATE, aria-hidden element overlaid on the empty
+     trigger. The trigger itself has no text and no aria-label, so the
+     role="combobox" has NO accessible name — it surfaces as a bare
+     `combobox` in the accessibility tree (the MUI / Angular CDK case).
+     aria-hidden keeps the placeholder out of the accessibility name. */
+  #fruit-placeholder {
+    position: absolute;
+    left: 1em;
+    top: 0.5em;
     color: #888;
+    pointer-events: none;
   }
+  #fruit-trigger:not(:empty) + #fruit-placeholder { display: none; }
   #fruit-listbox {
     margin: 0.25em 0 0;
     padding: 0.25em 0;
@@ -40,23 +46,26 @@
 <body>
 <h1>Nameless combobox (no accessible name)</h1>
 <p>
-  The trigger is <code>role="combobox"</code> with <strong>no</strong>
+  The trigger is an empty <code>role="combobox"</code> with <strong>no</strong>
   <code>aria-label</code>, <code>aria-labelledby</code>, or associated
-  <code>&lt;label&gt;</code>. Per ARIA, a combobox does not take its name from
-  content, so it surfaces as a bare <code>combobox</code> in the accessibility
-  tree. Bubblegum's nameless-combobox fallback resolves it by role + uniqueness
-  when the step signals a dropdown (e.g. "Open the fruit dropdown").
+  <code>&lt;label&gt;</code>; the placeholder is a separate
+  <code>aria-hidden</code> element. Per ARIA, a combobox does not take its name
+  from content, so it surfaces as a bare <code>combobox</code>. Bubblegum's
+  nameless-combobox fallback resolves it by role + uniqueness when the step
+  signals a dropdown (e.g. "Open the fruit dropdown").
 </p>
 
-<div
-  id="fruit-trigger"
-  role="combobox"
-  tabindex="0"
-  aria-controls="fruit-listbox"
-  aria-expanded="false"
-  aria-haspopup="listbox"
-  data-placeholder="Select a fruit"
-></div>
+<div id="fruit-field">
+  <div
+    id="fruit-trigger"
+    role="combobox"
+    tabindex="0"
+    aria-controls="fruit-listbox"
+    aria-expanded="false"
+    aria-haspopup="listbox"
+  ></div>
+  <span id="fruit-placeholder" aria-hidden="true">Select a fruit</span>
+</div>
 
 <ul id="fruit-listbox" role="listbox" hidden>
   <li role="option" data-value="apple">Apple</li>

@@ -96,18 +96,23 @@ async def main():
         await s.goto(f"{base}/login.html")
         r = await s.act("Click the Sign in button")
         print("status:", r.status, "resolver:", r.target.resolver_name if r.target else None)
+        # Observe whether the vision tier actually ran and what it returned:
+        for t in r.traces:
+            print(f"  trace: {t.resolver_name} -> {len(t.candidates)} candidate(s)")
         await browser.close()
     server.shutdown()
     sdk.clear_vision_provider()
 asyncio.run(main())
 PY
 ```
-Expect a successful click. Note: AI-first only reorders when the AI tier can
-run; if the deterministic tier already nails it, that's fine — the point is the
-vision provider wiring works without error and the screenshot path is exercised.
-Watch for any provider diagnostic (the backend is fail-safe and returns no
-candidates on error, so check `AnthropicVisionProvider().get_last_diagnostic()`
-if vision never contributes).
+Expect a successful click. The `trace:` lines show which resolvers ran — with
+AI-first you should see `vision_model` run first. On a page where the target has
+a clean accessible name ("Sign in"), the deterministic tier may still win even
+though vision ran; that's expected. The bar for this check is: **the vision
+provider wiring runs without error and `vision_model` appears in the traces**.
+To see the vision tier actually *win*, point it at a deterministic-hard target
+(an icon/image button with no text). If vision never returns candidates, the
+backend is fail-safe — inspect `provider.get_last_diagnostic()` for the reason.
 
 ## 5. BDD (PR5) — plain-English Given/When/Then
 

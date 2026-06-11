@@ -3,29 +3,30 @@ bubblegum/bdd/steps.py
 ======================
 Ready-made pytest-bdd step definitions for the Bubblegum BDD layer.
 
-Import this module from your pytest-bdd test (or a conftest) to register
-catch-all When / Then steps that route the entire step text through
-`bubblegum.bdd.dispatcher.execute_step`. The dispatcher does all of the phrase
-parsing, so a single binding per keyword covers the whole grammar:
+pytest-bdd executes steps synchronously and does NOT await coroutine step
+functions, so these bindings are synchronous and drive the async
+BubblegumSession on a dedicated event loop provided by the `bubblegum_bdd_loop`
+fixture (see `bubblegum.bdd.fixtures`). The session's page must be created on
+that same loop — the bundled `bubblegum_web` fixture in `bubblegum.bdd.fixtures`
+does exactly that.
+
+Usage:
 
     # test_login_bdd.py
     from pytest_bdd import scenarios, given
-    from bubblegum.bdd.steps import *          # registers When + Then steps
+    from bubblegum.bdd.steps import *                 # When + Then steps
+    from bubblegum.bdd.fixtures import bubblegum_web, bubblegum_bdd_loop  # noqa: F401
+
     scenarios("login.feature")
 
-    # You provide the Given (setup/navigation) — URLs are environment-specific:
     @given("I am on the login page")
-    async def _open(bubblegum_web, sample_app):
-        await bubblegum_web.goto(f"{sample_app}/login.html")
+    def _open(bubblegum_web, bubblegum_bdd_loop, sample_app):
+        bubblegum_bdd_loop.run_until_complete(
+            bubblegum_web.goto(f"{sample_app}/login.html")
+        )
 
-Only When and Then are registered as catch-alls — deliberately not Given — so
-your project-specific Given steps never collide with a `.+` catch-all. (For a
-fully self-contained feature you can still navigate with a When, e.g.
-`When I go to "http://127.0.0.1:8000/login.html"`.)
-
-The steps depend on a `bubblegum_web` fixture (provided by Bubblegum's pytest
-plugin) that yields an async BubblegumSession, and on `pytest-asyncio` for async
-step execution.
+Only When and Then are registered as catch-alls (the dispatcher parses the
+actual phrasing); Given is left to the project so custom setup never collides.
 
 Requires the optional dependency: pip install "bubblegum-ai[bdd]"
 """
@@ -42,18 +43,28 @@ except ImportError as exc:  # pragma: no cover - exercised only without the extr
 
 from bubblegum.bdd.dispatcher import execute_step
 
-__all__ = ["when_step", "then_step"]
+# NOTE: no __all__ on purpose. pytest-bdd's @when/@then inject step-definition
+# fixtures named `pytestbdd_stepdef_*` into this module's globals. Users register
+# the steps with `from bubblegum.bdd.steps import *`, which must carry those
+# generated fixtures across — an __all__ that omitted them would silently break
+# step discovery (StepDefinitionNotFoundError).
 
 # A single catch-all per keyword — the dispatcher matches the actual phrasing.
 # Given is intentionally NOT registered so project setup steps don't collide.
 _ANY = parsers.re(r"(?P<step_text>.+)")
 
 
+def _drive(bubblegum_web, bubblegum_bdd_loop, step_text):
+    return bubblegum_bdd_loop.run_until_complete(
+        execute_step(bubblegum_web, step_text)
+    )
+
+
 @when(_ANY)
-async def when_step(bubblegum_web, step_text):
-    return await execute_step(bubblegum_web, step_text)
+def when_step(bubblegum_web, bubblegum_bdd_loop, step_text):
+    return _drive(bubblegum_web, bubblegum_bdd_loop, step_text)
 
 
 @then(_ANY)
-async def then_step(bubblegum_web, step_text):
-    return await execute_step(bubblegum_web, step_text)
+def then_step(bubblegum_web, bubblegum_bdd_loop, step_text):
+    return _drive(bubblegum_web, bubblegum_bdd_loop, step_text)

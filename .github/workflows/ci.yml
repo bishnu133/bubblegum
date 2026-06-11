@@ -22,11 +22,12 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install package with test + anthropic extras
-        # anthropic is installed so the provider tests run instead of skipping.
-        # Playwright/Appium unit tests use in-process fakes and need no browser
-        # or device, so their packages are intentionally not installed here.
-        run: pip install -e ".[test,anthropic]"
+      - name: Install package with test + anthropic + bdd extras
+        # anthropic is installed so the provider tests run instead of skipping;
+        # pytest-bdd so the BDD wiring test runs (it uses a fake session via
+        # pytester, no browser). Playwright/Appium unit tests use in-process
+        # fakes and need no browser or device, so those packages are not here.
+        run: pip install -e ".[test,anthropic,bdd]"
 
       - name: Run unit + integration test suite
         run: pytest -q
