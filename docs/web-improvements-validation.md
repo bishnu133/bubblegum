@@ -77,7 +77,7 @@ python -m pip install -e ".[web]"
 python -m playwright install chromium
 
 # iframe routing + select-by-label, driven through the public NL flow:
-python -m pytest tests/integration/test_web_resilience_e2e.py -v --playwright
+python -m pytest tests/integration/test_phase22e10_web_resilience_e2e.py -v --playwright
 
 # Existing widget-lab regression (tabs/accordion/slider/select/combobox):
 python -m pytest tests/integration -v --playwright

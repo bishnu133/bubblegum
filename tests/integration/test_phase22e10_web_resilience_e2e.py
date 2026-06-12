@@ -9,6 +9,14 @@ Drives the new web improvements through the public ``bubblegum_web`` +
 Browser-free logic for these features is covered in
 tests/unit/test_web_resilience.py; this module proves the production NL flow
 against a real Chromium page.
+
+NOTE ON THE FILENAME: the ``test_phase22e*`` prefix is load-bearing, not
+cosmetic. The async ``bubblegum_web`` fixture (pytest-asyncio) cannot be set up
+after pytest-playwright's *sync* ``page`` fixture has run in the same session —
+doing so raises "Runner.run() cannot be called from a running event loop". All
+``bubblegum_web`` suites are therefore named to sort before
+``test_playwright_adapter.py`` (the only module using the sync ``page``
+fixture). Keep this file inside that ``phase22e`` block.
 """
 
 from __future__ import annotations

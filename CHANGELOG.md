@@ -27,7 +27,7 @@ Five web-channel improvements to the Playwright adapter and SDK resolution loop:
 Web text extraction now delegates to `PlaywrightAdapter.extract_text()` (parity
 with the mobile channel). New fixtures: `widget_lab/iframe.html` +
 `iframe_inner.html`. Coverage: `tests/unit/test_web_resilience.py` (browser-free)
-and `tests/integration/test_web_resilience_e2e.py` (live, `--playwright`).
+and `tests/integration/test_phase22e10_web_resilience_e2e.py` (live, `--playwright`).
 
 ## Self-healing advisory survives memory-cache replays
 
