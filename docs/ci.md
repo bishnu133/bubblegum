@@ -34,7 +34,8 @@ jobs:
             --bubblegum-config bubblegum.yaml \
             --bubblegum-artifacts artifacts \
             --bubblegum-report artifacts/bubblegum-report.html \
-            --bubblegum-report-json artifacts/bubblegum-report.json
+            --bubblegum-report-json artifacts/bubblegum-report.json \
+            --bubblegum-report-junit artifacts/bubblegum-report.xml
 
       - name: Upload Bubblegum artifacts
         if: always()
@@ -42,7 +43,19 @@ jobs:
         with:
           name: bubblegum-artifacts
           path: artifacts/
+
+      - name: Publish test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          junit_files: artifacts/bubblegum-report.xml
 ```
+
+`--bubblegum-report-junit` writes standard JUnit XML that Jenkins, GitLab CI,
+Azure DevOps and CircleCI consume natively for their pass/fail test tabs and
+history. `passed`/`recovered` steps map to passing test cases (a heal is
+surfaced in `<system-out>` so it never fails the build), `failed` maps to
+`<failure>`, and `skipped`/`dry_run` map to `<skipped>`.
 
 ## Publishing posture note
 

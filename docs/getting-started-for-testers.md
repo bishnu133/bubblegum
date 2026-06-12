@@ -172,6 +172,7 @@ capabilities are missing, so mobile tests never break a web-only run.
 | `--bubblegum-artifacts DIR` | `artifacts` | Where failure screenshots go |
 | `--bubblegum-report PATH` | — | Write an HTML report at session end |
 | `--bubblegum-report-json PATH` | — | Write a JSON report at session end |
+| `--bubblegum-report-junit PATH` | — | Write a JUnit XML report at session end (Jenkins/GitLab/Azure/CircleCI) |
 | `--bubblegum-config PATH` | — | Bubblegum YAML config file |
 | `--bubblegum-appium-url URL` | `http://localhost:4723` | Appium server for `bubblegum_mobile` |
 | `--bubblegum-capabilities JSON_OR_PATH` | — | Appium caps (inline JSON or a .json file) |

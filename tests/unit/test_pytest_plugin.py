@@ -46,6 +46,7 @@ def test_cli_options_registered():
     assert opts.bubblegum_config is None
     assert opts.bubblegum_report is None
     assert opts.bubblegum_report_json is None
+    assert opts.bubblegum_report_junit is None
     assert opts.bubblegum_artifacts == "out"
     assert opts.bubblegum_ai is True
     assert opts.bubblegum_memory is False
@@ -311,6 +312,52 @@ def test_json_report_emitted_with_flag_and_no_results(tmp_path):
 
     assert json_report_path.exists()
     assert "\"results\": []" in json_report_path.read_text(encoding="utf-8")
+
+
+def test_junit_report_emitted_with_flag_and_results(tmp_path):
+    from xml.etree import ElementTree as ET
+
+    from bubblegum import pytest_plugin as plugin
+
+    junit_path = tmp_path / "bubblegum_report.xml"
+    cfg = _Cfg({
+        "--bubblegum-report": None,
+        "--bubblegum-report-json": None,
+        "--bubblegum-report-junit": str(junit_path),
+        "--bubblegum-benchmark": False,
+    })
+    reporter = plugin.bubblegum_reporter.__wrapped__(cfg)
+    reporter.add(_step_result(action="Click Login", status="passed"))
+    reporter.add(_step_result(action="Submit order", status="failed"))
+
+    session = _Session(cfg, exitstatus=0)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert junit_path.exists()
+    root = ET.parse(junit_path).getroot()
+    assert root.tag == "testsuites"
+    suite = root.find("testsuite")
+    assert suite.attrib["tests"] == "2"
+    assert suite.attrib["failures"] == "1"
+    names = {tc.attrib["name"] for tc in suite.findall("testcase")}
+    assert names == {"Click Login", "Submit order"}
+
+
+def test_no_junit_report_emitted_without_flag(tmp_path):
+    from bubblegum import pytest_plugin as plugin
+
+    junit_path = tmp_path / "bubblegum_report.xml"
+
+    class _NoFlagSession:
+        def __init__(self):
+            self.config = _Cfg({
+                "--bubblegum-report": None,
+                "--bubblegum-report-json": None,
+                "--bubblegum-report-junit": None,
+            })
+
+    plugin.pytest_sessionfinish(_NoFlagSession(), 0)
+    assert not junit_path.exists()
 
 
 def test_html_and_json_report_can_coexist(tmp_path):
