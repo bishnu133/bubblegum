@@ -95,6 +95,49 @@ class TestHealingAdvisory:
 
 
 # ---------------------------------------------------------------------------
+# _resolve_healing_advisory — live heal + cache replay
+# ---------------------------------------------------------------------------
+
+class TestResolveHealingAdvisory:
+    def test_delegates_to_live_fuzzy_heal(self):
+        advisory = sdk._resolve_healing_advisory(_intent("login"), _fuzzy_target("Sign In"))
+        assert advisory is not None
+        assert advisory["matched"] == "Sign In"
+        # A live heal is not tagged as a replay.
+        assert "replayed_from_cache" not in advisory
+
+    def test_resurfaces_persisted_advisory_on_cache_replay(self):
+        cached_target = ResolvedTarget(
+            ref='role=button[name="Sign In"]',
+            confidence=0.78,
+            resolver_name="memory_cache",
+            metadata={
+                "healing": {
+                    "applied": True,
+                    "requested": "login",
+                    "matched": "Sign In",
+                    "severity": "review",
+                    "match_kind": "synonym",
+                }
+            },
+        )
+        advisory = sdk._resolve_healing_advisory(_intent("login"), cached_target)
+        assert advisory is not None
+        assert advisory["replayed_from_cache"] is True
+        assert advisory["severity"] == "review"
+        assert advisory["matched"] == "Sign In"
+
+    def test_cache_hit_without_healing_returns_none(self):
+        clean_cached = ResolvedTarget(
+            ref='role=button[name="Login"]',
+            confidence=0.96,
+            resolver_name="memory_cache",
+            metadata={"element_name": "Login"},
+        )
+        assert sdk._resolve_healing_advisory(_intent("Login"), clean_cached) is None
+
+
+# ---------------------------------------------------------------------------
 # act() status wiring
 # ---------------------------------------------------------------------------
 
@@ -148,6 +191,57 @@ def test_act_keeps_exact_match_passed(_isolated_memory, monkeypatch):
 
     assert result.status == "passed"
     assert "healing" not in (result.target.metadata if result.target else {})
+
+
+# ---------------------------------------------------------------------------
+# Healing advisory survives a memory-cache replay
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _shared_isolated_memory(tmp_path, monkeypatch):
+    """Point BOTH the SDK write-side cache and the registry read-side resolver
+    at one throwaway DB, so a second act() of the same step replays from it."""
+    res = MemoryCacheResolver(db_path=tmp_path / "mem.db")
+    monkeypatch.setattr(sdk, "_memory_cache", res)
+    original = sdk._registry.get("memory_cache")
+    sdk._registry.register(res)  # replaces the built-in by name
+    try:
+        yield res
+    finally:
+        if original is not None:
+            sdk._registry.register(original)
+
+
+def test_healing_advisory_is_persisted_and_replays_from_cache(_shared_isolated_memory, monkeypatch):
+    res = _shared_isolated_memory
+    adapter = _FakeAdapter('- button "Sign In"')
+    adapter._sig = "sig-replay"  # fixed signature → stable cache key across runs
+    monkeypatch.setattr(sdk, "_get_adapter", lambda *a, **k: adapter)
+
+    # First run: synonym heal, marked recovered and persisted to the cache.
+    first = asyncio.run(sdk.act("Click login", channel="web", page=object()))
+    assert first.status == "recovered"
+    assert first.target.metadata["healing"]["matched"] == "Sign In"
+
+    # The advisory was written into the cached metadata (the core of the fix):
+    # a direct cache lookup of the same step returns it.
+    lookup = _intent("login", instruction="Click login")
+    lookup.context["screen_signature"] = "sig-replay"
+    cached = res.resolve(lookup)
+    assert cached, "expected a memory-cache hit on replay"
+    assert cached[0].resolver_name == "memory_cache"
+    assert cached[0].metadata.get("healing", {}).get("matched") == "Sign In"
+
+    # Re-surfacing tags it as a replay.
+    replayed = sdk._resolve_healing_advisory(lookup, cached[0])
+    assert replayed is not None
+    assert replayed["replayed_from_cache"] is True
+
+    # End-to-end invariant: the replayed step stays "recovered", never silently
+    # downgraded to "passed", and still carries the advisory.
+    second = asyncio.run(sdk.act("Click login", channel="web", page=object()))
+    assert second.status == "recovered"
+    assert second.target.metadata.get("healing") is not None
 
 
 # ---------------------------------------------------------------------------

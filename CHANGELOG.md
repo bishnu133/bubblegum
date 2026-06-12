@@ -29,6 +29,36 @@ with the mobile channel). New fixtures: `widget_lab/iframe.html` +
 `iframe_inner.html`. Coverage: `tests/unit/test_web_resilience.py` (browser-free)
 and `tests/integration/test_web_resilience_e2e.py` (live, `--playwright`).
 
+## Self-healing advisory survives memory-cache replays
+
+- A self-healing substitution (e.g. a step written for "login" that resolves to
+  "Sign In") was flagged on the first run but went silent on every subsequent
+  run, because the step then replayed from the memory cache (`memory_cache`
+  resolver) rather than `fuzzy_text`. The advisory is now built **before** the
+  resolution is persisted, so it is stored in the cached metadata and
+  re-surfaced on replay (tagged `replayed_from_cache`). A replayed healed step
+  stays `recovered` instead of being silently downgraded to `passed`.
+  Coverage: `tests/unit/test_self_healing_advisory.py`.
+
+## Vision tier validation on deterministic-hard targets
+
+- Added `tests/unit/test_vision_deterministic_hard.py`: proves the AI (vision)
+  tier wins grounding on an icon/image control with **no** accessible name (where
+  the text/role resolvers cannot match), that it does **not** displace a clean
+  deterministic match, and that the same target fails to resolve when vision is
+  unavailable or cost-blocked. No API key required (candidates are injected
+  exactly as the screenshot→provider pipeline injects them).
+- Note: web *execution* of a vision win still relies on the deterministic
+  hydrator mapping the candidate to a role/text ref — coordinate (bbox) clicking
+  for truly nameless controls remains a future enhancement.
+
+## Mobile re-grounding parity
+
+- The SDK re-grounding loop is channel-agnostic, so the late-render retry now
+  benefits mobile too. Coverage: `tests/unit/test_mobile_reground.py` (fake
+  Appium adapter; full on-device e2e runs via the env-gated
+  `tests/real_env/android|ios` suites).
+
 ## BDD step library + nameless-combobox fallback
 
 - Added `bubblegum.bdd`: plain-English Given/When/Then on top of the NL engine

@@ -217,6 +217,29 @@ def _build_healing_advisory(intent: StepIntent, target: ResolvedTarget) -> dict 
     }
 
 
+def _resolve_healing_advisory(intent: StepIntent, target: ResolvedTarget) -> dict | None:
+    """Return the healing advisory for this step, whether freshly healed or
+    replayed from the memory cache.
+
+    A live fuzzy/synonym win is detected by ``_build_healing_advisory``. On a
+    subsequent run the same step resolves from the memory cache (resolver_name
+    ``memory_cache``), so the live detector no longer fires — but the original
+    advisory was persisted into the cached metadata, so we re-surface it and
+    tag it as a replay.
+    """
+    advisory = _build_healing_advisory(intent, target)
+    if advisory is not None:
+        return advisory
+
+    if target is not None and target.resolver_name == "memory_cache":
+        cached = target.metadata.get("healing")
+        if isinstance(cached, dict) and cached.get("applied"):
+            replayed = dict(cached)
+            replayed["replayed_from_cache"] = True
+            return replayed
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -322,18 +345,21 @@ async def act(
             ),
         )
 
-    # Phase 3 — persist the winning resolution for self-healing replay
-    _memory_cache.record_success(intent, target)
-
     # Self-healing advisory: a fuzzy/synonym match means the literal step did
     # not match the page. Surface it so a tester can confirm the substitution
-    # is intended and not masking a real defect.
-    advisory = _build_healing_advisory(intent, target)
+    # is intended and not masking a real defect. Built BEFORE record_success so
+    # the advisory is persisted in the cached metadata and survives replays.
+    advisory = _resolve_healing_advisory(intent, target)
     status = "passed"
     if advisory is not None:
         target.metadata["healing"] = advisory
         if advisory["severity"] == "review":
             status = "recovered"
+
+    # Phase 3 — persist the winning resolution for self-healing replay. The
+    # metadata now carries any healing advisory, so a future memory-cache replay
+    # of this step keeps surfacing the substitution warning.
+    _memory_cache.record_success(intent, target)
 
     # 5. Capture screenshot artifact after successful execution
     artifacts: list[ArtifactRef] = []
