@@ -1,5 +1,15 @@
 # Unreleased
 
+## Documentation: end-to-end user guide
+
+- Added `docs/USER_GUIDE.md` — a single, example-driven reference covering every
+  Bubblegum capability with **separate Web and Mobile sections**: the four
+  primitives, `BubblegumSession`, the natural-language grammar, all action types,
+  iframes, nav-wait, select-by-label, state probes, dialogs/scopes, re-grounding,
+  `recover()`, self-healing, memory cache, vision/OCR, BDD, the pytest plugin,
+  and the full config reference. Intended as the copy-paste starting point for
+  teams adopting Bubblegum in their automation.
+
 ## Web reliability: iframes, bounded nav-wait, select-by-label, strict-mode + re-grounding
 
 Five web-channel improvements to the Playwright adapter and SDK resolution loop:

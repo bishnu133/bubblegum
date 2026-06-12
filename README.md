@@ -21,6 +21,9 @@
 > **Bubblegum is NOT a replacement for Playwright or Appium.**  
 > It is an intelligent layer that attaches to your existing test framework, heals broken locators using a deterministic-first strategy, and lets you write new steps in plain English.
 
+> 📘 **New here?** The [**User Guide**](docs/USER_GUIDE.md) is the example-driven,
+> copy-paste reference for every feature, with separate **Web** and **Mobile** sections.
+
 ---
 
 ## Table of Contents
