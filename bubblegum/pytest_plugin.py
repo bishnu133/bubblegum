@@ -88,6 +88,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "(optional). Consumed natively by Jenkins/GitLab/Azure/CircleCI.",
     )
     group.addoption(
+        "--bubblegum-report-allure",
+        action="store",
+        default=None,
+        metavar="DIR",
+        help="Write Bubblegum Allure result files to this directory at session "
+        "end (optional). View with `allure serve <DIR>`.",
+    )
+    group.addoption(
         "--bubblegum-artifacts",
         action="store",
         default="artifacts",
@@ -190,8 +198,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     report_path = session.config.getoption("--bubblegum-report")
     report_json_path = session.config.getoption("--bubblegum-report-json")
     report_junit_path = session.config.getoption("--bubblegum-report-junit")
+    report_allure_dir = session.config.getoption("--bubblegum-report-allure")
 
-    if report_path or report_json_path or report_junit_path:
+    if report_path or report_json_path or report_junit_path or report_allure_dir:
         reporter = getattr(session.config, "_bubblegum_reporter", None)
         results = getattr(reporter, "results", []) if reporter is not None else []
 
@@ -209,6 +218,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             from bubblegum.reporting.junit_report import write_junit_report
 
             write_junit_report(results, path=report_junit_path)
+
+        if report_allure_dir:
+            from bubblegum.reporting.allure_report import write_allure_results
+
+            write_allure_results(results, output_dir=report_allure_dir)
 
     if not session.config.getoption("--bubblegum-benchmark"):
         return

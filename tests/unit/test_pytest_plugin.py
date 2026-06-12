@@ -47,6 +47,7 @@ def test_cli_options_registered():
     assert opts.bubblegum_report is None
     assert opts.bubblegum_report_json is None
     assert opts.bubblegum_report_junit is None
+    assert opts.bubblegum_report_allure is None
     assert opts.bubblegum_artifacts == "out"
     assert opts.bubblegum_ai is True
     assert opts.bubblegum_memory is False
@@ -358,6 +359,50 @@ def test_no_junit_report_emitted_without_flag(tmp_path):
 
     plugin.pytest_sessionfinish(_NoFlagSession(), 0)
     assert not junit_path.exists()
+
+
+def test_allure_results_emitted_with_flag_and_results(tmp_path):
+    import json
+
+    from bubblegum import pytest_plugin as plugin
+
+    allure_dir = tmp_path / "allure-results"
+    cfg = _Cfg({
+        "--bubblegum-report": None,
+        "--bubblegum-report-json": None,
+        "--bubblegum-report-junit": None,
+        "--bubblegum-report-allure": str(allure_dir),
+        "--bubblegum-benchmark": False,
+    })
+    reporter = plugin.bubblegum_reporter.__wrapped__(cfg)
+    reporter.add(_step_result(action="Click Login", status="passed"))
+
+    session = _Session(cfg, exitstatus=0)
+    plugin.pytest_sessionfinish(session, 0)
+
+    files = list(allure_dir.glob("*-result.json"))
+    assert len(files) == 1
+    payload = json.loads(files[0].read_text())
+    assert payload["name"] == "Click Login"
+    assert payload["status"] == "passed"
+
+
+def test_no_allure_results_emitted_without_flag(tmp_path):
+    from bubblegum import pytest_plugin as plugin
+
+    allure_dir = tmp_path / "allure-results"
+
+    class _NoFlagSession:
+        def __init__(self):
+            self.config = _Cfg({
+                "--bubblegum-report": None,
+                "--bubblegum-report-json": None,
+                "--bubblegum-report-junit": None,
+                "--bubblegum-report-allure": None,
+            })
+
+    plugin.pytest_sessionfinish(_NoFlagSession(), 0)
+    assert not allure_dir.exists()
 
 
 def test_html_and_json_report_can_coexist(tmp_path):

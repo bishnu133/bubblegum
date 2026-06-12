@@ -35,7 +35,8 @@ jobs:
             --bubblegum-artifacts artifacts \
             --bubblegum-report artifacts/bubblegum-report.html \
             --bubblegum-report-json artifacts/bubblegum-report.json \
-            --bubblegum-report-junit artifacts/bubblegum-report.xml
+            --bubblegum-report-junit artifacts/bubblegum-report.xml \
+            --bubblegum-report-allure artifacts/allure-results
 
       - name: Upload Bubblegum artifacts
         if: always()
@@ -56,6 +57,15 @@ Azure DevOps and CircleCI consume natively for their pass/fail test tabs and
 history. `passed`/`recovered` steps map to passing test cases (a heal is
 surfaced in `<system-out>` so it never fails the build), `failed` maps to
 `<failure>`, and `skipped`/`dry_run` map to `<skipped>`.
+
+`--bubblegum-report-allure` writes Allure 2 result files (resolver, confidence,
+self-healing steps and screenshot attachments per step). Bubblegum produces
+these with the standard library alone — no extra Python package is needed to
+generate them. View them with the Allure command-line tool:
+
+```bash
+allure serve artifacts/allure-results
+```
 
 ## Publishing posture note
 

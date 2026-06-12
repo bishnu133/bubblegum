@@ -34,6 +34,10 @@ web = ["playwright"]
 mobile = ["Appium-Python-Client"]
 anthropic = ["anthropic>=0.20"]
 bdd = ["pytest-bdd>=7"]
+# Bubblegum writes Allure result files with the standard library alone; this
+# extra only pulls allure-pytest for teams who also want its native fixtures.
+# Viewing results needs the `allure` command-line tool (installed separately).
+allure = ["allure-pytest>=2.13"]
 dev = ["pytest-asyncio", "anthropic>=0.20"]
 all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio", "pytest-bdd>=7"]
 
