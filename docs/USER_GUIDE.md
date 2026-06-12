@@ -235,6 +235,25 @@ await s.verify("Save button", assertion_type="element_state", expected_value="#s
 `assertion_type` options (web): `text_visible` (default), `element_state`
 (a CSS selector is visible), `page_transition` (URL contains a fragment).
 
+#### Soft assertions
+
+A failing `verify` is recorded and surfaced together at
+`assert_all_passed()` — it does not stop the test on the spot. To check a
+batch of expectations and report **every** failure in one run, wrap them in a
+soft-assertions block (or pass `soft=True` per call):
+
+```python
+with s.soft_assertions():
+    await s.verify("Total is $42")
+    await s.verify("Cart shows 3 items")
+    await s.verify("Discount applied")
+s.assert_all_passed()   # raises once, listing all soft failures
+```
+
+Soft failures are tagged `target.metadata["soft"] = True`, so they are
+distinguishable in the JSON/HTML/JUnit reports. `s.soft_failures()` returns
+just the soft-failed steps.
+
 ### Extract (read text)
 
 ```python

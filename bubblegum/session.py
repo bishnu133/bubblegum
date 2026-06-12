@@ -34,8 +34,9 @@ from __future__ import annotations
 
 import logging
 import re
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from bubblegum.core import sdk
 from bubblegum.core.schemas import StepResult
@@ -98,6 +99,11 @@ class BubblegumSession:
         self._label: str | None = None
         self._artifacts_dir: Path = Path("artifacts")
         self._failure_screenshots: list[Path] = []
+        # Soft assertions (W3): when a verify is soft, a failure is recorded
+        # but never surfaces until assert_all_passed() aggregates them. The
+        # default is flipped on inside a `with s.soft_assertions():` block.
+        self._soft_default: bool = False
+        self._soft_ids: set[int] = set()
 
     # ------------------------------------------------------------------
     # Factory class methods
@@ -173,8 +179,17 @@ class BubblegumSession:
         await self._maybe_screenshot_on_failure(result)
         return result
 
-    async def verify(self, instruction: str, **kwargs) -> StepResult:
-        """Assert an expected state in natural language."""
+    async def verify(self, instruction: str, *, soft: bool | None = None, **kwargs) -> StepResult:
+        """Assert an expected state in natural language.
+
+        By default a failing ``verify`` is recorded in the session results and
+        surfaced together at :meth:`assert_all_passed` — it does not raise on
+        the spot. Pass ``soft=True`` (or run inside ``with
+        s.soft_assertions():``) to explicitly mark the failure as soft; the
+        failed StepResult is tagged ``target.metadata["soft"] = True`` so
+        reports can distinguish soft expectations from hard ones.
+        """
+        effective_soft = self._soft_default if soft is None else soft
         result = await sdk.verify(
             instruction,
             channel=self._channel,
@@ -182,6 +197,8 @@ class BubblegumSession:
             driver=self._driver,
             **self._merged(kwargs),
         )
+        if effective_soft and result.status == "failed":
+            self._mark_soft(result)
         self._results.append(result)
         self._log(instruction, result)
         await self._maybe_screenshot_on_failure(result)
@@ -444,16 +461,65 @@ class BubblegumSession:
             "duration_ms": total_ms,
         }
 
+    @contextmanager
+    def soft_assertions(self) -> Iterator["BubblegumSession"]:
+        """Treat every ``verify`` inside the block as a soft assertion.
+
+        Soft failures are collected rather than surfaced one at a time, so a
+        single run reports *all* failing expectations instead of stopping at
+        the first. Call :meth:`assert_all_passed` afterwards to raise an
+        aggregated error:
+
+            with s.soft_assertions():
+                await s.verify("Total is $42")
+                await s.verify("Cart shows 3 items")
+                await s.verify("Discount applied")
+            s.assert_all_passed()   # raises listing every failure
+
+        Re-entrant: the prior default is restored on exit.
+        """
+        previous = self._soft_default
+        self._soft_default = True
+        try:
+            yield self
+        finally:
+            self._soft_default = previous
+
+    def _mark_soft(self, result: StepResult) -> None:
+        """Tag a failed StepResult as a soft assertion failure.
+
+        Records the result identity for :meth:`assert_all_passed` messaging and
+        sets ``target.metadata["soft"] = True`` when a target is present so the
+        flag flows into JSON/HTML/JUnit reports.
+        """
+        self._soft_ids.add(id(result))
+        if result.target is not None and isinstance(result.target.metadata, dict):
+            result.target.metadata["soft"] = True
+
+    def soft_failures(self) -> list[StepResult]:
+        """All failed steps recorded as soft assertions in this session."""
+        return [r for r in self._results if id(r) in self._soft_ids and r.status == "failed"]
+
     def assert_all_passed(self) -> None:
         """Raise AssertionError if any step has status 'failed'.
 
-        Recovered and dry_run steps are not considered failures.
+        Aggregates every failure — hard and soft alike — into one error so a
+        soft-assertion run surfaces all problems at once. Recovered and dry_run
+        steps are not considered failures.
         """
         failures = [r for r in self._results if r.status == "failed"]
         if not failures:
             return
-        msgs = [f"  [{i+1}] {r.action!r}: {r.error.message if r.error else 'failed'}" for i, r in enumerate(failures)]
-        raise AssertionError(f"{len(failures)} step(s) failed:\n" + "\n".join(msgs))
+        soft_count = sum(1 for r in failures if id(r) in self._soft_ids)
+        msgs = []
+        for i, r in enumerate(failures):
+            tag = " [soft]" if id(r) in self._soft_ids else ""
+            detail = r.error.message if r.error else "failed"
+            msgs.append(f"  [{i+1}]{tag} {r.action!r}: {detail}")
+        header = f"{len(failures)} step(s) failed"
+        if soft_count:
+            header += f" ({soft_count} soft)"
+        raise AssertionError(f"{header}:\n" + "\n".join(msgs))
 
     def print_plan(self) -> None:
         """Print a dry-run resolution plan — what each step would act on."""
