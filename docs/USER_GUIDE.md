@@ -103,7 +103,8 @@ async with BubblegumSession.mobile(driver) as s:
 ```
 
 Session extras: `s.goto(url)` (web), `s.results()`, `s.summary()`,
-`s.assert_all_passed()`, `s.print_plan()` (dry‑run), and state probes
+`s.assert_all_passed()`, `s.print_plan()` (dry‑run), `s.explain(step)`
+(why a step resolved the way it did), and state probes
 (`s.is_checked`, `s.selected_value`, `s.is_visible`) — see the Web section.
 
 ### How resolution works (the grounding tiers)
@@ -118,6 +119,16 @@ Bubblegum tries resolvers in cost order and stops as soon as one is confident:
 
 You normally never think about tiers — but `r.target.resolver_name` tells you
 which one won, and the `max_cost_level` setting controls whether Tier 3 may run.
+
+When Bubblegum picks the *wrong* element, `s.explain(step)` shows the full
+rationale — the ranked candidates, each one's per‑signal score breakdown
+(text/role/visibility/uniqueness/proximity/memory) against the confidence‑formula
+weights, the tier it stopped at, and how far the winner beat the runner‑up. It
+runs a dry‑run resolution (no execution) and prints the report:
+
+```python
+await s.explain("Click Login")
+```
 
 ### Self‑healing (built in)
 

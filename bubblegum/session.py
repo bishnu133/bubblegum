@@ -521,6 +521,32 @@ class BubblegumSession:
             header += f" ({soft_count} soft)"
         raise AssertionError(f"{header}:\n" + "\n".join(msgs))
 
+    async def explain(self, instruction: str, *, print_output: bool = True, **kwargs) -> str:
+        """Explain how a step resolves — ranked candidates, per-signal scores,
+        the tier it stops at, and why the winner won.
+
+        Runs a dry-run resolution (no execution; nothing is appended to the
+        session results) and renders the decision from the captured traces.
+        Returns the explanation string and, by default, prints it:
+
+            await s.explain("Click Login")
+        """
+        from bubblegum.reporting.explain import format_explanation
+
+        merged = self._merged(kwargs)
+        merged["dry_run"] = True
+        result = await sdk.act(
+            instruction,
+            channel=self._channel,
+            page=self._page,
+            driver=self._driver,
+            **merged,
+        )
+        text = format_explanation(result)
+        if print_output:
+            print(text)
+        return text
+
     def print_plan(self) -> None:
         """Print a dry-run resolution plan — what each step would act on."""
         print(f"\n── Bubblegum Dry-Run Plan ({len(self._results)} steps) ─────────────")
