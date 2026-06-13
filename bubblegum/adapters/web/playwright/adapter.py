@@ -455,6 +455,55 @@ class PlaywrightAdapter(BaseAdapter):
                 duration_ms=duration_ms,
             )
 
+    async def wait_until_stable(
+        self,
+        *,
+        quiet_ms: int = 400,
+        timeout_ms: int = 5_000,
+        spinner_selectors: list[str] | None = None,
+    ) -> dict:
+        """Wait until the page settles before resolution (W2).
+
+        Settled means: no in-flight network (Playwright ``networkidle``), no DOM
+        mutations for ``quiet_ms``, and no visible loading indicator from
+        ``spinner_selectors`` — bounded by ``timeout_ms``. Best-effort: returns a
+        diagnostic dict and never raises for timeouts.
+        """
+        spinner_selectors = spinner_selectors or []
+        diag: dict = {
+            "adapter": "playwright",
+            "quiet_ms": quiet_ms,
+            "timeout_ms": timeout_ms,
+        }
+
+        # 1) Network idle (best-effort; a long-poll/websocket page may never idle).
+        network_idle = True
+        try:
+            await self._page.wait_for_load_state("networkidle", timeout=timeout_ms)
+        except Exception:
+            network_idle = False
+
+        # 2) DOM-quiet + spinner-gone via an in-page MutationObserver loop.
+        try:
+            result = await self._page.evaluate(
+                _STABILITY_JS,
+                {"quietMs": quiet_ms, "timeoutMs": timeout_ms, "spinnerSelectors": spinner_selectors},
+            )
+        except Exception as exc:
+            diag.update({"outcome": "error", "network_idle": network_idle, "error": str(exc)})
+            return diag
+
+        diag.update(
+            {
+                "outcome": "stable" if result.get("stable") else "timeout",
+                "network_idle": network_idle,
+                "dom_quiet": bool(result.get("domQuiet")),
+                "spinner_gone": bool(result.get("spinnerGone")),
+                "waited_ms": int(result.get("waitedMs", 0)),
+            }
+        )
+        return diag
+
     async def run_axe(
         self,
         *,
@@ -650,3 +699,48 @@ class PlaywrightAdapter(BaseAdapter):
 import re  # noqa: E402
 
 _NAME_RE = re.compile(r'\[name="([^"]+)"\]')
+
+# In-page quiescence probe (W2): resolves once the DOM has been mutation-free
+# for quietMs AND no spinner selector is visible, or when timeoutMs elapses.
+_STABILITY_JS = """
+(opts) => new Promise((resolve) => {
+  const quietMs = opts.quietMs, timeoutMs = opts.timeoutMs;
+  const spinnerSelectors = opts.spinnerSelectors || [];
+  const start = Date.now();
+  let lastMutation = Date.now();
+  let observer;
+  try {
+    observer = new MutationObserver(() => { lastMutation = Date.now(); });
+    observer.observe(document.documentElement || document, {
+      subtree: true, childList: true, attributes: true, characterData: true
+    });
+  } catch (e) { observer = null; }
+  function spinnerVisible() {
+    for (const sel of spinnerSelectors) {
+      let els;
+      try { els = document.querySelectorAll(sel); } catch (e) { continue; }
+      for (const el of els) {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        if (style && style.display !== 'none' && style.visibility !== 'hidden'
+            && style.opacity !== '0' && rect.width > 0 && rect.height > 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  function finish(stable, domQuiet, spinnerGone) {
+    if (observer) { try { observer.disconnect(); } catch (e) {} }
+    resolve({ stable, domQuiet, spinnerGone, waitedMs: Date.now() - start });
+  }
+  (function check() {
+    const now = Date.now();
+    const domQuiet = (now - lastMutation) >= quietMs;
+    const spinnerGone = !spinnerVisible();
+    if (domQuiet && spinnerGone) return finish(true, true, true);
+    if (now - start >= timeoutMs) return finish(false, domQuiet, spinnerGone);
+    setTimeout(check, 50);
+  })();
+})
+"""

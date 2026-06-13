@@ -130,6 +130,27 @@ runs a dry‑run resolution (no execution) and prints the report:
 await s.explain("Click Login")
 ```
 
+### Stability wait (anti‑flake, built in)
+
+Before resolving each step, Bubblegum waits for the page to **settle** — no
+in‑flight network, no DOM mutations for a short quiet window, and no visible
+loading spinner — so it never acts mid‑render. This is on by default and bounded
+by a timeout (it proceeds anyway if the page never settles). A 1.5 s
+spinner‑gated button resolves without any `sleep()` in your test. Tune or disable
+it in `bubblegum.yaml`:
+
+```yaml
+grounding:
+  stability_wait_enabled: true   # set false to restore old timing
+  stability_quiet_ms: 400        # required quiet window
+  stability_timeout_ms: 5000     # give up settling after this long
+  # stability_spinner_selectors: ["[role='progressbar']", ".spinner"]
+```
+
+Per call: `await s.act("Click Continue", stability_wait=False)` or
+`stability_quiet_ms=200`. On mobile, "settled" means the Appium UI hierarchy
+stopped changing for the quiet window.
+
 ### Self‑healing (built in)
 
 If your step says `"Login"` but the page now says `"Sign In"`, the fuzzy tier

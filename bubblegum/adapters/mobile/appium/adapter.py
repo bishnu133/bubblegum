@@ -31,6 +31,7 @@ Phase 4 — fully implemented.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import datetime, timezone
@@ -194,6 +195,48 @@ class AppiumAdapter(BaseAdapter):
     # ------------------------------------------------------------------
     # BaseAdapter implementation
     # ------------------------------------------------------------------
+
+    async def wait_until_stable(
+        self,
+        *,
+        quiet_ms: int = 400,
+        timeout_ms: int = 5_000,
+        spinner_selectors: list[str] | None = None,
+    ) -> dict:
+        """Wait until the UI hierarchy settles before resolution (W2).
+
+        Re-polls ``driver.page_source`` until it stops changing for ``quiet_ms``
+        (i.e. consecutive dumps are identical across that window), bounded by
+        ``timeout_ms``. ``spinner_selectors`` is accepted for signature parity
+        with the web adapter but not used on mobile. Best-effort: returns a
+        diagnostic dict and never raises.
+        """
+        diag: dict = {"adapter": "appium", "quiet_ms": quiet_ms, "timeout_ms": timeout_ms}
+        start = time.monotonic()
+        deadline = start + max(timeout_ms, 0) / 1000.0
+        poll_s = min(0.1, max(quiet_ms, 1) / 1000.0)
+        last_dump: str | None = None
+        last_change = start
+        polls = 0
+
+        while time.monotonic() < deadline:
+            try:
+                dump = self._driver.page_source
+            except Exception as exc:
+                diag.update({"outcome": "error", "polls": polls, "error": str(exc)})
+                return diag
+            polls += 1
+            now = time.monotonic()
+            if dump != last_dump:
+                last_dump = dump
+                last_change = now
+            elif (now - last_change) * 1000.0 >= quiet_ms:
+                diag.update({"outcome": "stable", "polls": polls, "waited_ms": int((now - start) * 1000)})
+                return diag
+            await asyncio.sleep(poll_s)
+
+        diag.update({"outcome": "timeout", "polls": polls, "waited_ms": int((time.monotonic() - start) * 1000)})
+        return diag
 
     async def collect_context(self, request: ContextRequest) -> UIContext:
         """

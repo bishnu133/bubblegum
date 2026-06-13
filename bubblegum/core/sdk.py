@@ -269,7 +269,7 @@ async def act(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     # 1. Build StepIntent
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     intent  = make_intent(
         instruction=instruction,
@@ -283,6 +283,7 @@ async def act(
     )
 
     # 2. Collect context
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -403,7 +404,7 @@ async def verify(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
 
     # Accessibility assertions are page-scoped — there is no element to ground,
     # so they branch out before resolution and run an axe-core audit instead.
@@ -421,6 +422,7 @@ async def verify(
         options=options,
     )
 
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -541,7 +543,7 @@ async def extract(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="extract")
     intent  = make_intent(
         instruction=instruction,
@@ -554,6 +556,7 @@ async def extract(
     )
 
     # Collect context (no screenshot needed for extract)
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -658,7 +661,7 @@ async def recover(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     step_intent = make_intent(
         instruction=instruction,
@@ -671,6 +674,7 @@ async def recover(
         options=options,
     )
 
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(step_intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -768,7 +772,40 @@ def _build_options(kwargs: dict):
         max_cost_level=_config.grounding.max_cost_level,
         memory_ttl_days=_config.grounding.memory_ttl_days,
         memory_max_failures=_config.grounding.memory_max_failures,
+        resolve_retries=_config.grounding.resolve_retries,
+        resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms,
+        stability_wait_enabled=_config.grounding.stability_wait_enabled,
+        stability_quiet_ms=_config.grounding.stability_quiet_ms,
+        stability_timeout_ms=_config.grounding.stability_timeout_ms,
+        stability_spinner_selectors=_config.grounding.stability_spinner_selectors,
     )
+
+
+async def _maybe_wait_until_stable(adapter, options) -> dict | None:
+    """Settle the page/app before resolving (W2), when enabled.
+
+    No-op when stability waiting is disabled, the adapter does not implement
+    ``wait_until_stable``, or the wait raises (resolution then proceeds as
+    before — the wait is best-effort and must never break a step). Returns the
+    adapter's diagnostic dict, or None when skipped.
+    """
+    if not getattr(options, "stability_wait", True):
+        return None
+    wait = getattr(adapter, "wait_until_stable", None)
+    if wait is None:
+        return None
+    spinner_selectors = getattr(options, "stability_spinner_selectors", None)
+    if spinner_selectors is None:
+        spinner_selectors = _config.grounding.stability_spinner_selectors
+    try:
+        return await wait(
+            quiet_ms=options.stability_quiet_ms,
+            timeout_ms=options.stability_timeout_ms,
+            spinner_selectors=spinner_selectors,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort; never fail the step
+        logger.debug("wait_until_stable skipped after error: %s", exc)
+        return None
 
 
 def _infer_action_type(instruction: str, kwargs: dict) -> str:
