@@ -1,0 +1,31 @@
+Bubblegum vendored third-party component
+========================================
+
+This directory contains a vendored copy of axe-core, used by Bubblegum's
+accessibility assertions (`verify(..., assertion_type="a11y")`).
+
+Component : axe-core
+Version   : 4.11.0   (pinned)
+Source    : https://github.com/dequelabs/axe-core
+Copyright : Copyright (c) 2015 - 2025 Deque Systems, Inc.
+License   : Mozilla Public License, Version 2.0 (MPL-2.0)
+            https://www.mozilla.org/MPL/2.0/
+
+axe-core is distributed under the MPL-2.0. The full license notice is retained
+verbatim in the header of `axe.min.js`, which is the operative notice required
+by the MPL. axe-core is NOT part of Bubblegum and is not covered by Bubblegum's
+own MIT license; it remains under the MPL-2.0.
+
+This file is the unmodified minified distribution of axe-core as published by
+Deque Systems. No changes have been made to its source.
+
+Updating the vendored version
+-----------------------------
+1. Choose the target axe-core release (https://github.com/dequelabs/axe-core/releases).
+2. Replace `axe.min.js` with the official minified build for that version, e.g.
+   from the npm package `axe-core` (`node_modules/axe-core/axe.min.js`) or a
+   trusted mirror. Keep the MPL header intact.
+3. Update the "Version" line above to match.
+4. Run `python -m pytest tests/unit/test_a11y.py` and the a11y integration
+   smoke to confirm the new build loads and reports as expected.
+5. Commit the version bump on its own so the dependency change is auditable.

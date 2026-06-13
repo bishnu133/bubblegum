@@ -244,7 +244,34 @@ await s.verify("Save button", assertion_type="element_state", expected_value="#s
 ```
 
 `assertion_type` options (web): `text_visible` (default), `element_state`
-(a CSS selector is visible), `page_transition` (URL contains a fragment).
+(a CSS selector is visible), `page_transition` (URL contains a fragment),
+`a11y` (accessibility audit — see below).
+
+#### Accessibility (a11y) assertions
+
+```python
+await s.verify("page has no critical a11y violations", assertion_type="a11y")
+```
+
+Bubblegum injects [axe-core](https://github.com/dequelabs/axe-core) and audits
+the whole page (no element grounding needed). The failing severity is read from
+the instruction (`critical`/`serious`/`moderate`/`minor`) or set explicitly with
+`expected_value="serious"`; any violation at or above it fails the step, and the
+error message lists each rule. The failed step carries the structured
+violations under `result.target.metadata["a11y_violations"]`.
+
+axe-core ships **vendored** with Bubblegum (offline, zero-config). Override the
+source in `bubblegum.yaml` if needed:
+
+```yaml
+a11y:
+  impact_threshold: critical      # default failing severity
+  # axe_script_path: path/to/axe.min.js   # use your own pinned build
+  # axe_url: https://cdn.example.com/axe.min.js   # load from a URL instead
+```
+
+Install with the `[a11y]` extra (it pulls the web/browser stack):
+`pip install "bubblegum-ai[a11y]"`.
 
 #### Soft assertions
 

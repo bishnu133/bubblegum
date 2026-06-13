@@ -455,6 +455,28 @@ class PlaywrightAdapter(BaseAdapter):
                 duration_ms=duration_ms,
             )
 
+    async def run_axe(
+        self,
+        *,
+        axe_script: str | None = None,
+        axe_url: str | None = None,
+    ) -> dict:
+        """Inject axe-core and run an accessibility audit against the page.
+
+        Provide either ``axe_script`` (inline JS, the vendored default) or
+        ``axe_url`` (a remote build). Returns the raw ``axe.run()`` result dict
+        (with ``violations``, ``passes`` etc.). Browser-only; parsing/filtering
+        of the result happens in ``bubblegum.core.a11y``.
+        """
+        if axe_url:
+            await self._page.add_script_tag(url=axe_url)
+        elif axe_script:
+            await self._page.add_script_tag(content=axe_script)
+        else:
+            raise ValueError("run_axe requires axe_script or axe_url")
+        # axe.run() returns a Promise; Playwright awaits it and returns the value.
+        return await self._page.evaluate("() => axe.run(document)")
+
     async def screenshot(self) -> ArtifactRef:
         """
         Capture a screenshot and save it to artifacts/<timestamp>.png.

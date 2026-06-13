@@ -64,6 +64,7 @@ from bubblegum.core.schemas import (
     ResolvedTarget,
     StepIntent,
     StepResult,
+    ValidationResult,
 )
 from bubblegum.core.validation import make_verification_result, verification_error, verification_status
 from bubblegum.core.vision.engine import VisionProvider, build_vision_candidates_from_screenshot
@@ -403,6 +404,12 @@ async def verify(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+
+    # Accessibility assertions are page-scoped — there is no element to ground,
+    # so they branch out before resolution and run an axe-core audit instead.
+    if kwargs.get("assertion_type") == "a11y":
+        return await _verify_a11y(adapter, channel, instruction, kwargs, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -437,6 +444,70 @@ async def verify(
     status = verification_status(v_result)
     error = verification_error(expected_value, v_result)
     return make_verification_result(status=status, instruction=instruction, target=target, traces=traces, duration_ms=duration_ms, result=v_result, error=error)
+
+
+def _a11y_result(
+    *, instruction: str, t0: float, passed: bool, message: str,
+    error: ErrorInfo | None, metadata: dict[str, Any] | None = None,
+) -> StepResult:
+    """Build a StepResult for a page-scoped a11y check (synthetic 'page' target)."""
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref="page", confidence=1.0, resolver_name="a11y", metadata=metadata or {}
+    )
+    v_result = ValidationResult(passed=passed, actual_value=message, duration_ms=duration_ms)
+    return make_verification_result(
+        status="passed" if passed else "failed",
+        instruction=instruction, target=target, traces=[],
+        duration_ms=duration_ms, result=v_result, error=error,
+    )
+
+
+async def _verify_a11y(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Run an axe-core accessibility audit and turn it into a StepResult.
+
+    Page-scoped: skips element grounding entirely. axe-core is injected by the
+    web adapter; result parsing/filtering lives in bubblegum.core.a11y.
+    """
+    from bubblegum.core import a11y as a11y_mod
+
+    if channel != "web":
+        return _a11y_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="a11y assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="assertion_type='a11y' is only supported on the web channel"),
+        )
+
+    cfg = _config.a11y
+    axe_url = kwargs.get("axe_url") or cfg.axe_url
+    axe_script_path = kwargs.get("axe_script_path") or cfg.axe_script_path
+    threshold = kwargs.get("expected_value") or a11y_mod.impact_from_instruction(instruction, cfg.impact_threshold)
+
+    try:
+        if axe_url:
+            raw = await adapter.run_axe(axe_url=axe_url)
+        else:
+            script = a11y_mod.load_axe_script(axe_script_path)
+            raw = await adapter.run_axe(axe_script=script)
+    except Exception as exc:  # noqa: BLE001 — surface any axe/browser failure as a failed step
+        return _a11y_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"axe-core run failed: {exc}",
+            error=ErrorInfo(error_type="A11yCheckError", message=str(exc)),
+        )
+
+    passed, message, violations = a11y_mod.evaluate_axe_results(raw, threshold)
+    metadata = {
+        "a11y_violations": violations,
+        "a11y_violation_count": len(violations),
+        "a11y_impact_threshold": a11y_mod.normalize_impact(threshold),
+    }
+    error = None if passed else ErrorInfo(error_type="A11yViolationError", message=message)
+    return _a11y_result(
+        instruction=instruction, t0=t0, passed=passed, message=message,
+        error=error, metadata=metadata,
+    )
 
 
 async def extract(
