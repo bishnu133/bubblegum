@@ -73,3 +73,18 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_playwright)
         if "e2e" in item.keywords and not config.getoption("--e2e"):
             item.add_marker(skip_e2e)
+
+    # Ordering guard: the sync pytest-playwright tests (test_playwright_adapter,
+    # parametrized [chromium]) drive Playwright's sync API, which leaves an event
+    # loop running. Any pytest-asyncio test that runs *after* them fails its async
+    # fixture setup with "Runner.run() cannot be called from a running event
+    # loop". Previously this was avoided only by filename alphabetical order;
+    # make it robust by pushing the sync-playwright module to the very end so all
+    # async tests always run first, regardless of how new test files are named.
+    def _is_sync_playwright(item) -> bool:
+        return "test_playwright_adapter.py" in str(getattr(item, "nodeid", ""))
+
+    sync_pw = [i for i in items if _is_sync_playwright(i)]
+    if sync_pw:
+        items[:] = [i for i in items if not _is_sync_playwright(i)] + sync_pw
+
