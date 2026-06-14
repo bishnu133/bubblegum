@@ -116,6 +116,18 @@ class VisualConfig(BaseModel):
         return i
 
 
+class MobileConfig(BaseModel):
+    """Mobile channel behavior (M2)."""
+
+    # Best-effort: hide the soft keyboard before a tap/click. Off by default;
+    # enable when keyboard occlusion makes taps below the keyboard flaky. The
+    # soft keyboard is a top Appium flakiness source (IME state).
+    auto_hide_keyboard: bool = False
+    # Default seconds to keep the app backgrounded for "background app" before
+    # it auto-foregrounds.
+    background_app_seconds: int = 3
+
+
 class AIConfig(BaseModel):
     enabled:  bool        = True
     provider: str         = "anthropic"    # anthropic | openai | gemini | local
@@ -193,6 +205,7 @@ class BubblegumConfig(BaseModel):
     grounding: GroundingConfig = Field(default_factory=GroundingConfig)
     a11y:      A11yConfig       = Field(default_factory=A11yConfig)
     visual:    VisualConfig     = Field(default_factory=VisualConfig)
+    mobile:    MobileConfig      = Field(default_factory=MobileConfig)
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
@@ -321,6 +334,10 @@ visual:
   channel_threshold: 0             # per-channel 0–255 delta ignored (anti-aliasing noise)
   full_page: false                 # capture full scrollable page vs viewport
   update_baselines: false          # or pass --bubblegum-update-baselines
+
+mobile:
+  auto_hide_keyboard: false        # hide the soft keyboard before a tap/click
+  background_app_seconds: 3        # default duration for "background app"
 
 ai:
   enabled: true

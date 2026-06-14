@@ -83,6 +83,23 @@ _RETRY_DELAY_SECONDS = 0.05
 # Default press-and-hold duration for the long_press gesture (M1).
 _LONG_PRESS_DEFAULT_MS = 1_000
 
+# Default seconds the app stays backgrounded for "background app" (M2).
+_BACKGROUND_APP_DEFAULT_S = 3
+
+
+def _xpath_literal(value: str) -> str:
+    """Quote a string for safe embedding in an XPath expression.
+
+    Uses concat() when the value contains both quote characters; otherwise wraps
+    in whichever quote it does not contain.
+    """
+    if '"' not in value:
+        return f'"{value}"'
+    if "'" not in value:
+        return f"'{value}'"
+    parts = value.split('"')
+    return "concat(" + ", '\"', ".join(f'"{p}"' for p in parts) + ")"
+
 
 def _is_transient_execution_error(exc: Exception) -> bool:
     text = str(exc).lower()
@@ -1130,6 +1147,92 @@ class AppiumAdapter(BaseAdapter):
                 "mobile: dragGesture",
                 {"elementId": element.id, "endX": end_x, "endY": end_y},
             )
+
+    # ------------------------------------------------------------------
+    # Mobile system / hardware actions (M2)
+    # ------------------------------------------------------------------
+
+    async def execute_system_action(self, kind: str, arg: dict | None = None) -> dict:
+        """Perform a device-level system action (no element grounding).
+
+        kind: press_back | rotate | hide_keyboard | deep_link | background_app |
+              accept_biometric | open_notification. Returns a small dict with a
+              human-readable ``detail`` (and any extra metadata). Driver/SDK
+              errors propagate to the caller (sdk.act turns them into a failed
+              step).
+        """
+        arg = arg or {}
+
+        if kind == "press_back":
+            if self._is_ios():
+                self._driver.back()
+            else:
+                self._driver.press_keycode(4)  # Android KEYCODE_BACK
+            return {"detail": "pressed back"}
+
+        if kind == "rotate":
+            orientation = str(arg.get("orientation") or "landscape").upper()
+            self._driver.orientation = orientation
+            return {"detail": f"orientation set to {orientation}", "orientation": orientation}
+
+        if kind == "hide_keyboard":
+            self._driver.hide_keyboard()
+            return {"detail": "keyboard hidden"}
+
+        if kind == "deep_link":
+            url = arg.get("url")
+            if not url:
+                raise ValueError("deep_link requires a url")
+            self._driver.get(url)
+            return {"detail": f"opened deep link {url}", "url": url}
+
+        if kind == "background_app":
+            seconds = int(arg.get("seconds", _BACKGROUND_APP_DEFAULT_S))
+            self._driver.background_app(seconds)
+            return {"detail": f"backgrounded app for {seconds}s", "seconds": seconds}
+
+        if kind == "accept_biometric":
+            if self._is_ios():
+                self._driver.execute_script(
+                    "mobile: sendBiometricMatch", {"type": "touchId", "match": True}
+                )
+            else:
+                finger_id = int(arg.get("finger_id", 1))
+                self._driver.execute_script("mobile: fingerprint", {"fingerprintId": finger_id})
+            return {"detail": "biometric accepted"}
+
+        if kind == "open_notification":
+            self._driver.open_notifications()
+            text = arg.get("text")
+            tapped = False
+            if text:
+                tapped = self._tap_notification_by_text(str(text))
+            detail = f"opened notifications" + (f", tapped {text!r}" if tapped else "")
+            return {"detail": detail, "text": text, "tapped": tapped}
+
+        raise ValueError(f"unknown system action: {kind}")
+
+    def _tap_notification_by_text(self, text: str) -> bool:
+        """Best-effort: tap a notification whose text contains ``text`` (Android).
+
+        Returns True when a matching node was clicked. Swallows lookup errors so
+        opening the shade still succeeds even if the specific item is absent.
+        """
+        try:
+            from appium.webdriver.common.appiumby import AppiumBy  # type: ignore
+            by = AppiumBy.XPATH
+        except ImportError:
+            by = "xpath"
+        xpath = f"//*[contains(@text, {_xpath_literal(text)})]"
+        try:
+            element = self._driver.find_element(by, xpath)
+        except Exception:
+            return False
+        try:
+            element.click()
+            return True
+        except Exception:
+            return False
 
     def _run_assertion(self, plan: ValidationPlan) -> tuple[bool, str]:
         """Run the appropriate Appium assertion. Returns (passed, actual_value)."""

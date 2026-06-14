@@ -11,7 +11,7 @@ the handoff for continuing with Sprint 3+.
 | 1 — Reporting / quick wins | C0, R1, W3, R2, A3, V2 | ✅ done |
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
 | 3 — Authoring + verify depth | A1, A2, V1 | ✅ done |
-| 4 — Mobile depth | M1, M2, M4 | 🔄 in progress (M1 done) |
+| 4 — Mobile depth | M1, M2, M4 | 🔄 in progress (M1, M2 done) |
 | 5 — Scale & governance | X1, X2, M5, X3, M6 | ⏳ |
 
 ### What shipped (Sprint 1 & 2)
@@ -81,7 +81,19 @@ the handoff for continuing with Sprint 3+.
   `--appium`-gated device test in `tests/integration/test_mobile_gestures_appium.py` (env-var driven,
   skips without a device — mobile items verify primarily via the unit dispatch tests).
 
-### Sprint 3 complete. Sprint 4 next items: M2 → M4.
+- **M2** — mobile system / hardware actions. NL verbs `press back` / `go back`, `rotate to
+  landscape|portrait`, `hide keyboard`, `open deep link <url>` / `open url <url>`, `background app
+  [for N seconds]`, `accept biometric`, `open notification [<text>]`. Parsed by
+  `core/mobile/system_actions.parse_system_action` (start-anchored so a real "Back" control isn't
+  hijacked). Device-level — routed in `sdk.act` *before* grounding (mobile channel, no
+  selector/action_type override) to `AppiumAdapter.execute_system_action`: per-platform driver calls
+  (Android `press_keycode(4)` / iOS `back()`; `orientation=`; `hide_keyboard()`; `get(url)`;
+  `background_app(s)`; `mobile: fingerprint` / `mobile: sendBiometricMatch`; `open_notifications()` +
+  best-effort text tap). New `MobileConfig` (`auto_hide_keyboard` — best-effort soft-keyboard hide
+  before a mobile tap/click; `background_app_seconds`). Unit-tested (parser + per-platform dispatch +
+  sdk routing, no device); `--appium`-gated device test runs the rotate/hide-keyboard/back flow.
+
+### Sprint 3 complete. Sprint 4 next item: M4 (FrameworkDetector — Compose/Flutter/RN/SwiftUI; L-effort).
 
 **Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
 so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform
