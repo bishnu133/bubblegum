@@ -11,7 +11,7 @@ the handoff for continuing with Sprint 3+.
 | 1 — Reporting / quick wins | C0, R1, W3, R2, A3, V2 | ✅ done |
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
 | 3 — Authoring + verify depth | A1, A2, V1 | ✅ done |
-| 4 — Mobile depth | M1, M2, M4 | ⏳ |
+| 4 — Mobile depth | M1, M2, M4 | 🔄 in progress (M1 done) |
 | 5 — Scale & governance | X1, X2, M5, X3, M6 | ⏳ |
 
 ### What shipped (Sprint 1 & 2)
@@ -67,7 +67,25 @@ the handoff for continuing with Sprint 3+.
   Adapter gains `screenshot_bytes(full_page=...)`. Real-browser test in
   `tests/integration/test_visual_web.py`.
 
-### Sprint 3 complete — next: Sprint 4 (mobile depth): M1 → M2 → M4.
+### What shipped (Sprint 4, in progress)
+
+- **M1** — mobile gesture vocabulary. Adds `long_press`, `double_tap`, `pinch`, `zoom`, `drag` to the
+  mobile action set. Parsed from NL by `parser.match_gesture` ("Long press the message", "Double tap
+  the image", "Pinch/Zoom the map", "Drag the slider right") — gesture verbs are anchored at the start
+  so a button named "Long press" is still clicked, and bare "press"/"double click" stay web-safe.
+  `ActionPlan.action_type` literal extended. Dispatch in `AppiumAdapter._execute_action` →
+  per-platform `mobile:` gestures: Android `longClickGesture`/`doubleClickGesture`/`pinchOpen|Close
+  Gesture`/`dragGesture`, iOS `touchAndHold`/`doubleTap`/`pinch`(scale)/`dragFromToForDuration`.
+  Long-press duration overridable via numeric `input_value`; drag direction (up/down/left/right) parsed
+  into `input_value`. Unit-tested (parser + per-platform dispatch via a fake driver, no device);
+  `--appium`-gated device test in `tests/integration/test_mobile_gestures_appium.py` (env-var driven,
+  skips without a device — mobile items verify primarily via the unit dispatch tests).
+
+### Sprint 3 complete. Sprint 4 next items: M2 → M4.
+
+**Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
+so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform
+via a fake driver. Real-device tests are `--appium`-gated and run only where an emulator/device exists.
 
 ## Conventions established (follow these in Sprint 3+)
 

@@ -80,6 +80,9 @@ _TRANSIENT_ERROR_MARKERS = (
 _MAX_RETRY_CAP = 1
 _RETRY_DELAY_SECONDS = 0.05
 
+# Default press-and-hold duration for the long_press gesture (M1).
+_LONG_PRESS_DEFAULT_MS = 1_000
+
 
 def _is_transient_execution_error(exc: Exception) -> bool:
     text = str(exc).lower()
@@ -500,6 +503,21 @@ class AppiumAdapter(BaseAdapter):
         elif plan.action_type == "swipe":
             direction = (plan.input_value or "up").lower()
             self._swipe_from_element(element, direction)
+
+        elif plan.action_type == "long_press":
+            self._long_press(element, plan)
+
+        elif plan.action_type == "double_tap":
+            self._double_tap(element)
+
+        elif plan.action_type == "pinch":
+            self._pinch(element, zoom_in=False)
+
+        elif plan.action_type == "zoom":
+            self._pinch(element, zoom_in=True)
+
+        elif plan.action_type == "drag":
+            self._drag(element, plan)
 
         else:
             logger.warning(
@@ -1028,6 +1046,90 @@ class AppiumAdapter(BaseAdapter):
             self._driver.swipe(start_x, start_y, end_x, end_y, duration=500)
         except Exception as exc:
             logger.warning("swipe_from_element failed direction=%s: %s", direction, exc)
+
+    # ------------------------------------------------------------------
+    # Mobile gesture vocabulary (M1)
+    # ------------------------------------------------------------------
+
+    def _is_ios(self) -> bool:
+        return str(self.platform).lower().startswith("ios")
+
+    def _gesture_duration_ms(self, plan: ActionPlan, default_ms: int) -> int:
+        """Optional duration override via a numeric input_value (milliseconds)."""
+        try:
+            value = int(str(plan.input_value).strip())
+            return value if value > 0 else default_ms
+        except (TypeError, ValueError):
+            return default_ms
+
+    def _long_press(self, element, plan: ActionPlan) -> None:
+        """Press and hold an element to open its context menu.
+
+        Android → ``mobile: longClickGesture`` (duration in ms); iOS →
+        ``mobile: touchAndHold`` (duration in seconds). Default hold ≈ 1 s.
+        """
+        duration_ms = self._gesture_duration_ms(plan, _LONG_PRESS_DEFAULT_MS)
+        if self._is_ios():
+            self._driver.execute_script(
+                "mobile: touchAndHold", {"elementId": element.id, "duration": duration_ms / 1000.0}
+            )
+        else:
+            self._driver.execute_script(
+                "mobile: longClickGesture", {"elementId": element.id, "duration": duration_ms}
+            )
+
+    def _double_tap(self, element) -> None:
+        """Double-tap an element. Android → ``mobile: doubleClickGesture``;
+        iOS → ``mobile: doubleTap``."""
+        if self._is_ios():
+            self._driver.execute_script("mobile: doubleTap", {"elementId": element.id})
+        else:
+            self._driver.execute_script("mobile: doubleClickGesture", {"elementId": element.id})
+
+    def _pinch(self, element, *, zoom_in: bool) -> None:
+        """Pinch-to-zoom on an element.
+
+        ``zoom_in`` True spreads (zoom in), False pinches closed (zoom out).
+        Android → ``mobile: pinchOpenGesture`` / ``pinchCloseGesture`` (percent);
+        iOS → ``mobile: pinch`` (scale >1 to zoom in, <1 to zoom out).
+        """
+        if self._is_ios():
+            scale = 2.0 if zoom_in else 0.5
+            self._driver.execute_script(
+                "mobile: pinch", {"elementId": element.id, "scale": scale, "velocity": 1.0}
+            )
+        else:
+            name = "mobile: pinchOpenGesture" if zoom_in else "mobile: pinchCloseGesture"
+            self._driver.execute_script(name, {"elementId": element.id, "percent": 0.75})
+
+    def _drag(self, element, plan: ActionPlan) -> None:
+        """Drag an element by a directional offset from its centre.
+
+        Direction comes from ``input_value`` (up/down/left/right, default up).
+        Android → ``mobile: dragGesture`` (elementId + endX/endY); iOS →
+        ``mobile: dragFromToForDuration`` (from/to coordinates).
+        """
+        location = element.location
+        size = element.size
+        start_x = location["x"] + size["width"] // 2
+        start_y = location["y"] + size["height"] // 2
+
+        direction = (plan.input_value or "up").lower()
+        offsets = {"up": (0, -300), "down": (0, 300), "left": (-300, 0), "right": (300, 0)}
+        dx, dy = offsets.get(direction, (0, -300))
+        end_x = max(0, start_x + dx)
+        end_y = max(0, start_y + dy)
+
+        if self._is_ios():
+            self._driver.execute_script(
+                "mobile: dragFromToForDuration",
+                {"duration": 1.0, "fromX": start_x, "fromY": start_y, "toX": end_x, "toY": end_y},
+            )
+        else:
+            self._driver.execute_script(
+                "mobile: dragGesture",
+                {"elementId": element.id, "endX": end_x, "endY": end_y},
+            )
 
     def _run_assertion(self, plan: ValidationPlan) -> tuple[bool, str]:
         """Run the appropriate Appium assertion. Returns (passed, actual_value)."""
