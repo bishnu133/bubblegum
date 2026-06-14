@@ -42,6 +42,7 @@ import json
 from bubblegum.adapters.base import BaseAdapter
 from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+from bubblegum.core.mobile.ui_framework_detector import detect_ui_framework
 from bubblegum.core.mobile.system_dialog import detect_system_dialog
 from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
 from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
@@ -295,6 +296,13 @@ class AppiumAdapter(BaseAdapter):
             platform=self.platform,
             capabilities=self._safe_capabilities(),
             app_state=app_state,
+            hierarchy_xml=hierarchy_xml,
+        )
+        # M4: classify the app's UI toolkit (Compose/Flutter/RN/SwiftUI vs.
+        # native) so the hierarchy resolver can tune matching per framework.
+        app_state["ui_framework"] = detect_ui_framework(
+            platform=self.platform,
+            capabilities=self._safe_capabilities(),
             hierarchy_xml=hierarchy_xml,
         )
         app_state["webview_switch_diagnostics"] = build_webview_switch_diagnostics(

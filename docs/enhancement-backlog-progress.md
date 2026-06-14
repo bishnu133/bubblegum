@@ -11,7 +11,7 @@ the handoff for continuing with Sprint 3+.
 | 1 — Reporting / quick wins | C0, R1, W3, R2, A3, V2 | ✅ done |
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
 | 3 — Authoring + verify depth | A1, A2, V1 | ✅ done |
-| 4 — Mobile depth | M1, M2, M4 | 🔄 in progress (M1, M2 done) |
+| 4 — Mobile depth | M1, M2, M4 | ✅ done |
 | 5 — Scale & governance | X1, X2, M5, X3, M6 | ⏳ |
 
 ### What shipped (Sprint 1 & 2)
@@ -93,7 +93,20 @@ the handoff for continuing with Sprint 3+.
   before a mobile tap/click; `background_app_seconds`). Unit-tested (parser + per-platform dispatch +
   sdk routing, no device); `--appium`-gated device test runs the rotate/hide-keyboard/back flow.
 
-### Sprint 3 complete. Sprint 4 next item: M4 (FrameworkDetector — Compose/Flutter/RN/SwiftUI; L-effort).
+- **M4** — UI FrameworkDetector (Compose / Flutter / RN / SwiftUI). New
+  `core/mobile/ui_framework_detector.detect_ui_framework` — heuristic, signature-based (class/package
+  tokens + platform), distinct from the existing `detect_mobile_surface` (which classifies the
+  automation surface, not the UI toolkit). Wired into `AppiumAdapter.collect_context` as
+  `app_state["ui_framework"]`; threaded into resolvers via `intent.context["app_state"]`.
+  `AppiumHierarchyResolver` applies a **conservative, additive** tweak: Compose/RN tappable controls
+  render as generic clickable `View`/`ViewGroup` nodes, so a clickable generic node scores as a real
+  control for tap/click (role 0.9 vs default 0.4); native scoring is unchanged. Framework + limits are
+  stamped onto each candidate's metadata. Flutter's opacity (semantics/Flutter-driver required) and
+  SwiftUI-vs-UIKit ambiguity are reported honestly, not worked around — see `docs/mobile-frameworks.md`.
+  Unit-tested (detection across Compose/Flutter/RN/SwiftUI/native hierarchies + resolver gating, no
+  device); `--appium`-gated device test confirms the adapter populates `ui_framework`.
+
+### Sprint 4 complete. Next: Sprint 5 (scale & governance): X1 → X2 → M5 → X3 → M6.
 
 **Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
 so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform
