@@ -110,9 +110,18 @@ async def _run_web(url: str | None, *, headless: bool, dry_run: bool) -> None:
             context = await browser.new_context()
             page = await context.new_page()
             page.set_default_timeout(5_000)
+            nav_error: str | None = None
             if url:
-                await page.goto(url)
+                try:
+                    await page.goto(url)
+                except Exception as exc:  # noqa: BLE001 — keep the REPL alive
+                    nav_error = str(exc).splitlines()[0]
             async with BubblegumSession.web(page) as session:
+                if nav_error:
+                    print(
+                        f"Could not open {url}: {nav_error}\n"
+                        "Starting the REPL anyway — use ':open <url>' to navigate."
+                    )
                 await repl_loop(session, dry_run=dry_run)
         finally:
             await browser.close()
