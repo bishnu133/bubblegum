@@ -28,6 +28,15 @@ async def test_long_press_opens_context_menu(bubblegum_mobile):
 
     s = bubblegum_mobile
     result = await s.act(f"Long press {target}")
+    # If the target isn't on the current screen it won't resolve — that's a
+    # setup/label issue, not a gesture bug, so skip with guidance rather than
+    # failing this optional bonus check.
+    if result.status == "failed" and result.error and "no resolver" in (result.error.message or "").lower():
+        pytest.skip(
+            f"{target!r} did not resolve on the current screen. Pick a label that "
+            "is actually visible — e.g. preview with the REPL: "
+            'bubblegum repl --appium-url ... --caps caps.json  then  dry("Long press <label>")'
+        )
     assert result.status in ("passed", "recovered"), result.error
 
     menu_text = os.environ.get("BUBBLEGUM_GESTURE_MENU_TEXT")
