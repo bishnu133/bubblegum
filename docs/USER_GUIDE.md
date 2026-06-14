@@ -107,6 +107,30 @@ Session extras: `s.goto(url)` (web), `s.results()`, `s.summary()`,
 (why a step resolved the way it did), and state probes
 (`s.is_checked`, `s.selected_value`, `s.is_visible`) — see the Web section.
 
+### Skip the UI login (API auth bootstrap)
+
+Logging in through the UI on every test is the single biggest source of both
+slowness and flakiness. Pass an async (or sync) `bootstrap` callable that
+establishes authenticated state via API — inject cookies/`localStorage`/token on
+web, or deep‑link/inject a token on mobile — and start each test already
+authenticated, with zero UI login steps. It runs once on session entry and
+receives the wrapped handle (`page` for web, `driver` for mobile):
+
+```python
+async def login(page):
+    token = await get_token_via_api("tester", "pw!")     # your API call
+    await page.context.add_cookies(
+        [{"name": "session", "value": token, "url": "https://your-app.test"}]
+    )
+
+async with BubblegumSession.web(page, bootstrap=login) as s:
+    await s.goto("https://your-app.test/dashboard")       # already authed
+    await s.verify("Dashboard is visible")
+```
+
+Bubblegum stays provider‑agnostic — you supply the API call. See
+`examples/web/auth_bootstrap/`.
+
 ### How resolution works (the grounding tiers)
 
 Bubblegum tries resolvers in cost order and stops as soon as one is confident:

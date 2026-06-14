@@ -32,11 +32,12 @@ Usage
 
 from __future__ import annotations
 
+import inspect
 import logging
 import re
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Awaitable, Callable, Iterator
 
 from bubblegum.core import sdk
 from bubblegum.core.schemas import StepResult
@@ -79,6 +80,7 @@ class BubblegumSession:
         page=None,
         driver=None,
         dry_run: bool = False,
+        bootstrap: Callable[[Any], Any] | None = None,
         **defaults: Any,
     ) -> None:
         if channel == "web" and page is None:
@@ -91,6 +93,13 @@ class BubblegumSession:
         self._driver = driver
         self._dry_run = dry_run
         self._defaults = defaults          # forwarded to every SDK call
+        # W1: optional API/auth bootstrap. An (async or sync) callable run once
+        # on session entry to establish authenticated/seeded state — inject
+        # cookies/localStorage/token (web) or deep-link/token (mobile) — so the
+        # test skips the slow, flaky UI login entirely. Receives the wrapped
+        # handle (page for web, driver for mobile).
+        self._bootstrap = bootstrap
+        self._bootstrapped = False
         self._results: list[StepResult] = []
         self._scope_stack = ScopeStack()
         # 22E-3: optional label used to name auto-screenshots on failure.
@@ -110,14 +119,41 @@ class BubblegumSession:
     # ------------------------------------------------------------------
 
     @classmethod
-    def web(cls, page, *, dry_run: bool = False, **kwargs) -> "BubblegumSession":
-        """Create a web session wrapping a Playwright Page."""
-        return cls(channel="web", page=page, dry_run=dry_run, **kwargs)
+    def web(
+        cls,
+        page,
+        *,
+        dry_run: bool = False,
+        bootstrap: Callable[[Any], Any] | None = None,
+        **kwargs,
+    ) -> "BubblegumSession":
+        """Create a web session wrapping a Playwright Page.
+
+        ``bootstrap`` is an optional (async or sync) callable, run once when the
+        session is entered, that receives the ``page`` and establishes
+        authenticated/seeded state via API instead of the UI — e.g. inject
+        cookies/``localStorage`` or transplant a login token. See
+        :meth:`_run_bootstrap`.
+        """
+        return cls(channel="web", page=page, dry_run=dry_run, bootstrap=bootstrap, **kwargs)
 
     @classmethod
-    def mobile(cls, driver, *, dry_run: bool = False, **kwargs) -> "BubblegumSession":
-        """Create a mobile session wrapping an Appium WebDriver."""
-        return cls(channel="mobile", driver=driver, dry_run=dry_run, **kwargs)
+    def mobile(
+        cls,
+        driver,
+        *,
+        dry_run: bool = False,
+        bootstrap: Callable[[Any], Any] | None = None,
+        **kwargs,
+    ) -> "BubblegumSession":
+        """Create a mobile session wrapping an Appium WebDriver.
+
+        ``bootstrap`` is an optional (async or sync) callable, run once when the
+        session is entered, that receives the ``driver`` and establishes state
+        without the UI — e.g. deep-link into an authenticated screen or inject a
+        token.
+        """
+        return cls(channel="mobile", driver=driver, dry_run=dry_run, bootstrap=bootstrap, **kwargs)
 
     # ------------------------------------------------------------------
     # Wrapped runtime handles
@@ -564,7 +600,33 @@ class BubblegumSession:
     # ------------------------------------------------------------------
 
     async def __aenter__(self) -> "BubblegumSession":
+        await self._run_bootstrap()
         return self
+
+    async def _run_bootstrap(self) -> None:
+        """Run the auth/setup bootstrap once, before any steps.
+
+        Invoked automatically on ``async with`` entry. Idempotent: a second
+        call is a no-op. Supports both async and sync callables. The wrapped
+        handle is passed in — ``page`` for web, ``driver`` for mobile — so the
+        callable can inject cookies/localStorage/token or deep-link directly:
+
+            async def login(page):
+                token = await get_token_via_api("tester", "pw!")
+                await page.context.add_cookies([
+                    {"name": "session", "value": token, "url": "https://app.test"}
+                ])
+
+            async with BubblegumSession.web(page, bootstrap=login) as s:
+                await s.goto("https://app.test/dashboard")  # already authed
+        """
+        if self._bootstrap is None or self._bootstrapped:
+            return
+        handle = self._page if self._channel == "web" else self._driver
+        result = self._bootstrap(handle)
+        if inspect.isawaitable(result):
+            await result
+        self._bootstrapped = True
 
     async def __aexit__(self, *_) -> None:
         s = self.summary()
