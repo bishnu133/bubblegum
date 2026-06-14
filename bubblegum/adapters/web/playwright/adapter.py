@@ -167,6 +167,9 @@ class PlaywrightAdapter(BaseAdapter):
 
     def __init__(self, page) -> None:  # page: playwright.async_api.Page
         self._page = page
+        # W4: start recording responses on this page (idempotent per page) so a
+        # later network assertion can confirm a backend call happened.
+        _ensure_response_recorder(page)
 
     # ------------------------------------------------------------------
     # BaseAdapter implementation
@@ -504,6 +507,42 @@ class PlaywrightAdapter(BaseAdapter):
         )
         return diag
 
+    async def assert_network(self, matcher: dict, *, timeout_ms: int = 5_000) -> tuple[bool, str]:
+        """Assert a backend response matching ``matcher`` occurred (W4).
+
+        Checks responses already recorded on this page (since the first Bubblegum
+        step); if none match yet, waits up to ``timeout_ms`` for a future one.
+        Returns (passed, human-readable detail).
+        """
+        from bubblegum.core.network import (
+            describe_matcher,
+            describe_record,
+            find_matching_response,
+            response_matches,
+        )
+
+        log = _ensure_response_recorder(self._page)
+        found = find_matching_response(log, matcher)
+        if found is not None:
+            return True, f"matched {describe_record(found)}"
+
+        # Not seen yet — wait for a future matching response within the timeout.
+        try:
+            resp = await self._page.wait_for_response(
+                lambda r: response_matches(
+                    {"method": r.request.method, "url": r.url, "status": r.status}, matcher
+                ),
+                timeout=timeout_ms,
+            )
+            return True, (
+                f"matched {resp.request.method} {resp.url} {resp.status}"
+            )
+        except Exception:
+            return False, (
+                f"no response matching '{describe_matcher(matcher)}' "
+                f"({len(log)} response(s) seen)"
+            )
+
     async def run_axe(
         self,
         *,
@@ -697,8 +736,49 @@ class PlaywrightAdapter(BaseAdapter):
 # ---------------------------------------------------------------------------
 
 import re  # noqa: E402
+import weakref  # noqa: E402
 
 _NAME_RE = re.compile(r'\[name="([^"]+)"\]')
+
+# W4: per-page response logs. Keyed weakly so logs are GC'd with their page.
+_RESPONSE_LOGS: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+def _ensure_response_recorder(page) -> list[dict]:
+    """Attach a one-time response listener to ``page`` and return its log.
+
+    Idempotent per page. Defensive: returns an empty list (and skips wiring) if
+    the page is not hashable/weak-referenceable or has no ``.on`` — so fake test
+    pages and non-Playwright handles never break adapter construction.
+    """
+    try:
+        existing = _RESPONSE_LOGS.get(page)
+        if existing is not None:
+            return existing
+        log: list[dict] = []
+        _RESPONSE_LOGS[page] = log
+    except TypeError:
+        return []
+
+    on = getattr(page, "on", None)
+    if callable(on):
+        def _on_response(response) -> None:
+            try:
+                log.append(
+                    {
+                        "method": response.request.method,
+                        "url": response.url,
+                        "status": int(response.status),
+                    }
+                )
+            except Exception:  # noqa: BLE001 — never let logging break the page
+                pass
+
+        try:
+            on("response", _on_response)
+        except Exception:  # noqa: BLE001
+            pass
+    return log
 
 # In-page quiescence probe (W2): resolves once the DOM has been mutation-free
 # for quietMs AND no spinner selector is visible, or when timeoutMs elapses.

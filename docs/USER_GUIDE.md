@@ -298,7 +298,24 @@ await s.verify("Save button", assertion_type="element_state", expected_value="#s
 
 `assertion_type` options (web): `text_visible` (default), `element_state`
 (a CSS selector is visible), `page_transition` (URL contains a fragment),
-`a11y` (accessibility audit — see below).
+`a11y` (accessibility audit — see below), `network` (a backend call happened —
+see below).
+
+#### Network assertions
+
+UI text alone can't prove the backend actually did the thing. Assert on the
+network call instead — method + URL + status (any part may be omitted):
+
+```python
+await s.act("Click Sign in")
+await s.verify("login call succeeded",
+               assertion_type="network", expected_value="POST /api/login 200")
+```
+
+Bubblegum records responses from the first step onward, so this matches a call
+that already happened during the action (and waits up to `timeout_ms` for one
+still in flight). The URL part is a substring or glob (`/api/users/*`); it fails
+with a clear message listing how many responses were seen.
 
 #### Accessibility (a11y) assertions
 

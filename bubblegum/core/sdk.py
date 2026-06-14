@@ -418,6 +418,11 @@ async def verify(
     if kwargs.get("assertion_type") == "a11y":
         return await _verify_a11y(adapter, channel, instruction, kwargs, t0)
 
+    # Network assertions are also page-scoped: assert a backend call happened
+    # (method + URL + status) rather than grounding a UI element.
+    if kwargs.get("assertion_type") == "network":
+        return await _verify_network(adapter, channel, instruction, kwargs, options, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -455,20 +460,32 @@ async def verify(
     return make_verification_result(status=status, instruction=instruction, target=target, traces=traces, duration_ms=duration_ms, result=v_result, error=error)
 
 
-def _a11y_result(
+def _page_scoped_result(
     *, instruction: str, t0: float, passed: bool, message: str,
     error: ErrorInfo | None, metadata: dict[str, Any] | None = None,
+    ref: str = "page", resolver_name: str = "page",
 ) -> StepResult:
-    """Build a StepResult for a page-scoped a11y check (synthetic 'page' target)."""
+    """Build a StepResult for a page-scoped check (synthetic target, no grounding)."""
     duration_ms = int((time.monotonic() - t0) * 1000)
     target = ResolvedTarget(
-        ref="page", confidence=1.0, resolver_name="a11y", metadata=metadata or {}
+        ref=ref, confidence=1.0, resolver_name=resolver_name, metadata=metadata or {}
     )
     v_result = ValidationResult(passed=passed, actual_value=message, duration_ms=duration_ms)
     return make_verification_result(
         status="passed" if passed else "failed",
         instruction=instruction, target=target, traces=[],
         duration_ms=duration_ms, result=v_result, error=error,
+    )
+
+
+def _a11y_result(
+    *, instruction: str, t0: float, passed: bool, message: str,
+    error: ErrorInfo | None, metadata: dict[str, Any] | None = None,
+) -> StepResult:
+    """Build a StepResult for a page-scoped a11y check (synthetic 'page' target)."""
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=message,
+        error=error, metadata=metadata, ref="page", resolver_name="a11y",
     )
 
 
@@ -516,6 +533,54 @@ async def _verify_a11y(adapter, channel: str, instruction: str, kwargs: dict, t0
     return _a11y_result(
         instruction=instruction, t0=t0, passed=passed, message=message,
         error=error, metadata=metadata,
+    )
+
+
+async def _verify_network(adapter, channel: str, instruction: str, kwargs: dict, options, t0: float) -> StepResult:
+    """Assert a backend call occurred (method + URL + status), not a UI element.
+
+    Page-scoped: skips grounding. The web adapter records responses from the
+    first Bubblegum step onward; matching/parsing lives in bubblegum.core.network.
+    """
+    from bubblegum.core import network as net
+
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="network assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="assertion_type='network' is only supported on the web channel"),
+            ref="network", resolver_name="network",
+        )
+
+    expected = kwargs.get("expected_value") or net.extract_network_spec(instruction)
+    matcher = net.parse_network_matcher(expected)
+    if matcher is None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="network assertion needs expected_value like 'POST /api/login 200'",
+            error=ErrorInfo(error_type="NetworkAssertionError",
+                            message="provide expected_value, e.g. 'POST /api/login 200'"),
+            ref="network", resolver_name="network",
+        )
+
+    timeout_ms = kwargs.get("timeout_ms", options.timeout_ms)
+    try:
+        passed, actual = await adapter.assert_network(matcher, timeout_ms=timeout_ms)
+    except Exception as exc:  # noqa: BLE001 — surface adapter/browser errors as a failed step
+        passed, actual = False, f"network assertion error: {exc}"
+
+    error = None if passed else ErrorInfo(error_type="NetworkAssertionError", message=actual)
+    metadata = {
+        "network_assertion": {
+            "matcher": net.describe_matcher(matcher),
+            "actual": actual,
+            "passed": passed,
+        }
+    }
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=actual,
+        error=error, metadata=metadata, ref="network", resolver_name="network",
     )
 
 
