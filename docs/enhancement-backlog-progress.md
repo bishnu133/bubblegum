@@ -10,7 +10,7 @@ the handoff for continuing with Sprint 3+.
 | --- | --- | --- |
 | 1 — Reporting / quick wins | C0, R1, W3, R2, A3, V2 | ✅ done |
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
-| 3 — Authoring + verify depth | A1, A2, V1 | ⏳ next |
+| 3 — Authoring + verify depth | A1, A2, V1 | 🔄 in progress (A1 done) |
 | 4 — Mobile depth | M1, M2, M4 | ⏳ |
 | 5 — Scale & governance | X1, X2, M5, X3, M6 | ⏳ |
 
@@ -33,6 +33,18 @@ the handoff for continuing with Sprint 3+.
   (proven under real `pytest -n 4`). Docs in `docs/ci.md`.
 - **W4** — network assertions `verify(assertion_type="network", expected_value="POST /api/login 200")`,
   `core/network.py` matcher + per-page response recorder in the Playwright adapter.
+
+### What shipped (Sprint 3, in progress)
+
+- **A1** — recorder / codegen + first CLI. New `bubblegum record --url ... --out flow.py`
+  (`bubblegum/cli/`, `[project.scripts] bubblegum = "bubblegum.cli:main"`). Captures a manual
+  click-through via an injected JS recorder (`add_init_script` + `expose_binding`, **not** a
+  codegen subprocess) and emits runnable NL steps (`act("Click Login")`, `act('Enter "tom" into
+  Username')`) with the resolved selector as a `# fallback:` comment. Browser-free core in
+  `bubblegum/core/recorder/`: `RECORDER_JS` (capture script), `ActionRecorder` (binding side +
+  `attach`), `normalize_event`/`coalesce_actions` (capture→action), `derive_steps` (action→NL,
+  round-trips through the parser), `emit_script` (runnable `*_recorded.py`). Real-browser replay
+  test in `tests/integration/test_recorder_web.py`.
 
 ## Conventions established (follow these in Sprint 3+)
 

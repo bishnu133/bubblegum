@@ -48,6 +48,9 @@ all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio"
 [project.entry-points.pytest11]
 bubblegum = "bubblegum.pytest_plugin"
 
+[project.scripts]
+bubblegum = "bubblegum.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["bubblegum*"]
