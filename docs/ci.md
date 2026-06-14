@@ -67,6 +67,31 @@ generate them. View them with the Allure command-line tool:
 allure serve artifacts/allure-results
 ```
 
+## Parallel runs (pytest-xdist)
+
+Bubblegum's memory cache (`.bubblegum/memory.db`) is safe to share across
+`pytest-xdist` workers. The SQLite connection is opened in **WAL journal mode**
+with a **busy-timeout**, so multiple worker processes can read and write
+concurrently without "database is locked" errors, and cache hits are shared
+across workers (a resolution recorded by one worker is replayed by the others):
+
+```bash
+pytest -n auto \
+    --bubblegum-config bubblegum.yaml \
+    --bubblegum-report-junit artifacts/bubblegum-report.xml
+```
+
+Cache semantics under parallelism:
+
+- **Shared DB (default):** all workers use the same `.bubblegum/memory.db`. WAL +
+  busy-timeout serialize contended writes; reads never block writes. This keeps
+  cross-worker cache hits, which is usually what you want.
+- **Isolated per-worker caches (optional):** if you prefer no sharing, point each
+  worker at `.bubblegum/memory.<worker>.db` (e.g. keyed on the
+  `PYTEST_XDIST_WORKER` env var) and merge afterwards with the memory layer's
+  `export()` / `import_from()`. WAL can be turned off (`MemoryLayer(wal=False)`)
+  for filesystems that don't support it, such as some network mounts.
+
 ## Publishing posture note
 
 - `.github/workflows/publish-check.yml` is a **manual, non-publishing readiness workflow**.
