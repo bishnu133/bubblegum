@@ -103,8 +103,33 @@ async with BubblegumSession.mobile(driver) as s:
 ```
 
 Session extras: `s.goto(url)` (web), `s.results()`, `s.summary()`,
-`s.assert_all_passed()`, `s.print_plan()` (dry‑run), and state probes
+`s.assert_all_passed()`, `s.print_plan()` (dry‑run), `s.explain(step)`
+(why a step resolved the way it did), and state probes
 (`s.is_checked`, `s.selected_value`, `s.is_visible`) — see the Web section.
+
+### Skip the UI login (API auth bootstrap)
+
+Logging in through the UI on every test is the single biggest source of both
+slowness and flakiness. Pass an async (or sync) `bootstrap` callable that
+establishes authenticated state via API — inject cookies/`localStorage`/token on
+web, or deep‑link/inject a token on mobile — and start each test already
+authenticated, with zero UI login steps. It runs once on session entry and
+receives the wrapped handle (`page` for web, `driver` for mobile):
+
+```python
+async def login(page):
+    token = await get_token_via_api("tester", "pw!")     # your API call
+    await page.context.add_cookies(
+        [{"name": "session", "value": token, "url": "https://your-app.test"}]
+    )
+
+async with BubblegumSession.web(page, bootstrap=login) as s:
+    await s.goto("https://your-app.test/dashboard")       # already authed
+    await s.verify("Dashboard is visible")
+```
+
+Bubblegum stays provider‑agnostic — you supply the API call. See
+`examples/web/auth_bootstrap/`.
 
 ### How resolution works (the grounding tiers)
 
@@ -119,6 +144,37 @@ Bubblegum tries resolvers in cost order and stops as soon as one is confident:
 You normally never think about tiers — but `r.target.resolver_name` tells you
 which one won, and the `max_cost_level` setting controls whether Tier 3 may run.
 
+When Bubblegum picks the *wrong* element, `s.explain(step)` shows the full
+rationale — the ranked candidates, each one's per‑signal score breakdown
+(text/role/visibility/uniqueness/proximity/memory) against the confidence‑formula
+weights, the tier it stopped at, and how far the winner beat the runner‑up. It
+runs a dry‑run resolution (no execution) and prints the report:
+
+```python
+await s.explain("Click Login")
+```
+
+### Stability wait (anti‑flake, built in)
+
+Before resolving each step, Bubblegum waits for the page to **settle** — no
+in‑flight network, no DOM mutations for a short quiet window, and no visible
+loading spinner — so it never acts mid‑render. This is on by default and bounded
+by a timeout (it proceeds anyway if the page never settles). A 1.5 s
+spinner‑gated button resolves without any `sleep()` in your test. Tune or disable
+it in `bubblegum.yaml`:
+
+```yaml
+grounding:
+  stability_wait_enabled: true   # set false to restore old timing
+  stability_quiet_ms: 400        # required quiet window
+  stability_timeout_ms: 5000     # give up settling after this long
+  # stability_spinner_selectors: ["[role='progressbar']", ".spinner"]
+```
+
+Per call: `await s.act("Click Continue", stability_wait=False)` or
+`stability_quiet_ms=200`. On mobile, "settled" means the Appium UI hierarchy
+stopped changing for the quiet window.
+
 ### Self‑healing (built in)
 
 If your step says `"Login"` but the page now says `"Sign In"`, the fuzzy tier
@@ -126,6 +182,14 @@ heals it: the step still passes but is marked **`recovered`** and carries a
 `healing` advisory so you can confirm the substitution wasn't a real bug. This
 survives across runs — once healed, the resolution is cached and the advisory
 keeps showing on replays.
+
+Each heal also includes a **suggested fix** — the old→new label/selector change
+to de‑brittle the step (`healing.suggested_fix`, plus `old_ref`/`new_ref`/
+`new_selector`), which the HTML report renders as a copy‑pasteable block. To
+export the fixes and a **brittleness ranking** (the most‑healed labels — which
+selectors are rotting), pass `--bubblegum-suggest-fixes fixes.json`. The same
+ranking appears under `analytics.healing_summary.brittleness` in the HTML/JSON
+reports.
 
 ### Memory cache (faster, stickier runs)
 
@@ -233,7 +297,70 @@ await s.verify("Save button", assertion_type="element_state", expected_value="#s
 ```
 
 `assertion_type` options (web): `text_visible` (default), `element_state`
-(a CSS selector is visible), `page_transition` (URL contains a fragment).
+(a CSS selector is visible), `page_transition` (URL contains a fragment),
+`a11y` (accessibility audit — see below), `network` (a backend call happened —
+see below).
+
+#### Network assertions
+
+UI text alone can't prove the backend actually did the thing. Assert on the
+network call instead — method + URL + status (any part may be omitted):
+
+```python
+await s.act("Click Sign in")
+await s.verify("login call succeeded",
+               assertion_type="network", expected_value="POST /api/login 200")
+```
+
+Bubblegum records responses from the first step onward, so this matches a call
+that already happened during the action (and waits up to `timeout_ms` for one
+still in flight). The URL part is a substring or glob (`/api/users/*`); it fails
+with a clear message listing how many responses were seen.
+
+#### Accessibility (a11y) assertions
+
+```python
+await s.verify("page has no critical a11y violations", assertion_type="a11y")
+```
+
+Bubblegum injects [axe-core](https://github.com/dequelabs/axe-core) and audits
+the whole page (no element grounding needed). The failing severity is read from
+the instruction (`critical`/`serious`/`moderate`/`minor`) or set explicitly with
+`expected_value="serious"`; any violation at or above it fails the step, and the
+error message lists each rule. The failed step carries the structured
+violations under `result.target.metadata["a11y_violations"]`.
+
+axe-core ships **vendored** with Bubblegum (offline, zero-config). Override the
+source in `bubblegum.yaml` if needed:
+
+```yaml
+a11y:
+  impact_threshold: critical      # default failing severity
+  # axe_script_path: path/to/axe.min.js   # use your own pinned build
+  # axe_url: https://cdn.example.com/axe.min.js   # load from a URL instead
+```
+
+Install with the `[a11y]` extra (it pulls the web/browser stack):
+`pip install "bubblegum-ai[a11y]"`.
+
+#### Soft assertions
+
+A failing `verify` is recorded and surfaced together at
+`assert_all_passed()` — it does not stop the test on the spot. To check a
+batch of expectations and report **every** failure in one run, wrap them in a
+soft-assertions block (or pass `soft=True` per call):
+
+```python
+with s.soft_assertions():
+    await s.verify("Total is $42")
+    await s.verify("Cart shows 3 items")
+    await s.verify("Discount applied")
+s.assert_all_passed()   # raises once, listing all soft failures
+```
+
+Soft failures are tagged `target.metadata["soft"] = True`, so they are
+distinguishable in the JSON/HTML/JUnit reports. `s.soft_failures()` returns
+just the soft-failed steps.
 
 ### Extract (read text)
 

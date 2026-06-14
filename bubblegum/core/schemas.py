@@ -54,6 +54,12 @@ class ExecutionOptions(BaseModel):
     # late-rendered SPA elements resolve instead of failing immediately.
     resolve_retries: int            = 2
     resolve_retry_interval_ms: int  = 300
+    # Stability / quiescence wait (W2): settle the page before resolving. Defaults
+    # mirror GroundingConfig; per-call overrides flow through build_options.
+    stability_wait:      bool       = True
+    stability_quiet_ms:  int        = 400
+    stability_timeout_ms: int       = 5_000
+    stability_spinner_selectors: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -80,6 +80,30 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Write Bubblegum JSON report to this path at session end (optional).",
     )
     group.addoption(
+        "--bubblegum-report-junit",
+        action="store",
+        default=None,
+        metavar="PATH",
+        help="Write Bubblegum JUnit XML report to this path at session end "
+        "(optional). Consumed natively by Jenkins/GitLab/Azure/CircleCI.",
+    )
+    group.addoption(
+        "--bubblegum-report-allure",
+        action="store",
+        default=None,
+        metavar="DIR",
+        help="Write Bubblegum Allure result files to this directory at session "
+        "end (optional). View with `allure serve <DIR>`.",
+    )
+    group.addoption(
+        "--bubblegum-suggest-fixes",
+        action="store",
+        default=None,
+        metavar="PATH",
+        help="Write a JSON dump of self-healing suggested fixes + a brittleness "
+        "ranking (most-healed selectors) to this path at session end (optional).",
+    )
+    group.addoption(
         "--bubblegum-artifacts",
         action="store",
         default="artifacts",
@@ -181,8 +205,11 @@ def bubblegum_artifacts_dir(pytestconfig: pytest.Config) -> Path:
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     report_path = session.config.getoption("--bubblegum-report")
     report_json_path = session.config.getoption("--bubblegum-report-json")
+    report_junit_path = session.config.getoption("--bubblegum-report-junit")
+    report_allure_dir = session.config.getoption("--bubblegum-report-allure")
+    suggest_fixes_path = session.config.getoption("--bubblegum-suggest-fixes")
 
-    if report_path or report_json_path:
+    if report_path or report_json_path or report_junit_path or report_allure_dir or suggest_fixes_path:
         reporter = getattr(session.config, "_bubblegum_reporter", None)
         results = getattr(reporter, "results", []) if reporter is not None else []
 
@@ -195,6 +222,21 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             from bubblegum.reporting.json_report import write_json_report
 
             write_json_report(results, path=report_json_path)
+
+        if report_junit_path:
+            from bubblegum.reporting.junit_report import write_junit_report
+
+            write_junit_report(results, path=report_junit_path)
+
+        if report_allure_dir:
+            from bubblegum.reporting.allure_report import write_allure_results
+
+            write_allure_results(results, output_dir=report_allure_dir)
+
+        if suggest_fixes_path:
+            from bubblegum.reporting.suggested_fixes import write_suggested_fixes
+
+            write_suggested_fixes(results, path=suggest_fixes_path)
 
     if not session.config.getoption("--bubblegum-benchmark"):
         return

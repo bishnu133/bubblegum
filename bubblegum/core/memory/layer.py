@@ -32,14 +32,23 @@ Staleness checks inside lookup()
 
 All three conditions are tested in lookup() so MemoryCacheResolver stays thin.
 
-Thread safety
--------------
-Connection is opened once per MemoryLayer instance with check_same_thread=False.
-Safe for single-threaded async use (asyncio) and for simple multi-threaded test
-runners. Not safe for concurrent writes from multiple processes — use a shared
-in-process singleton when CI parallelism matters (Phase 5 concern).
+Concurrency / parallel runs (pytest-xdist)
+------------------------------------------
+The connection is opened once per MemoryLayer instance with
+check_same_thread=False, and configured with **WAL journal mode** plus a
+**busy-timeout** so multiple processes (xdist workers) sharing the same
+``.bubblegum/memory.db`` can read/write concurrently without "database is
+locked" errors — and cache hits are still shared across workers. WAL allows
+many concurrent readers alongside a writer; the busy-timeout makes a writer
+wait for a contended lock instead of failing immediately.
 
-Phase 3.
+If you prefer fully isolated per-worker caches instead of a shared DB, point
+each worker at ``.bubblegum/memory.<worker_id>.db`` and optionally merge them
+with ``export()`` / ``import_from()`` afterwards. WAL is enabled by default but
+can be disabled (``MemoryLayer(wal=False)``) for filesystems that don't support
+it (e.g. some network mounts).
+
+Phase 3 (Phase 5 hardening: WAL + busy-timeout for parallel CI).
 """
 
 from __future__ import annotations
@@ -56,6 +65,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DB_PATH  = Path(".bubblegum") / "memory.db"
 _DEFAULT_TTL_DAYS = 7
 _DEFAULT_MAX_FAIL = 3
+# Wait up to this long for a contended write lock before erroring — bounds the
+# cost of concurrent writers under pytest-xdist instead of failing fast.
+_DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS bubblegum_memory (
@@ -90,9 +102,17 @@ class MemoryLayer:
     Instantiate once per process (or pass a custom db_path for testing).
     """
 
-    def __init__(self, db_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path | str | None = None,
+        *,
+        busy_timeout_ms: int = _DEFAULT_BUSY_TIMEOUT_MS,
+        wal: bool = True,
+    ) -> None:
         self._db_path = Path(db_path) if db_path else _DEFAULT_DB_PATH
         self._conn: sqlite3.Connection | None = None
+        self._busy_timeout_ms = int(busy_timeout_ms)
+        self._wal = bool(wal)
 
     # ------------------------------------------------------------------
     # Public write API
@@ -432,9 +452,25 @@ class MemoryLayer:
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
-            self._conn.execute(_DDL)
-            self._conn.commit()
+            conn = sqlite3.connect(
+                str(self._db_path),
+                check_same_thread=False,
+                timeout=self._busy_timeout_ms / 1000.0,
+            )
+            # Concurrency hardening for parallel runs (pytest-xdist): WAL lets
+            # multiple processes read while one writes; busy_timeout makes a
+            # contended writer wait instead of raising "database is locked".
+            # Wrapped because some filesystems (e.g. network mounts) reject WAL.
+            try:
+                if self._wal:
+                    conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms};")
+                conn.execute("PRAGMA synchronous=NORMAL;")
+            except sqlite3.Error as exc:
+                logger.warning("MemoryLayer: PRAGMA setup failed (continuing): %s", exc)
+            conn.execute(_DDL)
+            conn.commit()
+            self._conn = conn
         return self._conn
 
     def _fetch(self, screen_sig: str, step_hash: str):

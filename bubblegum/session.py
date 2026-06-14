@@ -32,10 +32,12 @@ Usage
 
 from __future__ import annotations
 
+import inspect
 import logging
 import re
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable, Iterator
 
 from bubblegum.core import sdk
 from bubblegum.core.schemas import StepResult
@@ -78,6 +80,7 @@ class BubblegumSession:
         page=None,
         driver=None,
         dry_run: bool = False,
+        bootstrap: Callable[[Any], Any] | None = None,
         **defaults: Any,
     ) -> None:
         if channel == "web" and page is None:
@@ -90,6 +93,13 @@ class BubblegumSession:
         self._driver = driver
         self._dry_run = dry_run
         self._defaults = defaults          # forwarded to every SDK call
+        # W1: optional API/auth bootstrap. An (async or sync) callable run once
+        # on session entry to establish authenticated/seeded state — inject
+        # cookies/localStorage/token (web) or deep-link/token (mobile) — so the
+        # test skips the slow, flaky UI login entirely. Receives the wrapped
+        # handle (page for web, driver for mobile).
+        self._bootstrap = bootstrap
+        self._bootstrapped = False
         self._results: list[StepResult] = []
         self._scope_stack = ScopeStack()
         # 22E-3: optional label used to name auto-screenshots on failure.
@@ -98,20 +108,52 @@ class BubblegumSession:
         self._label: str | None = None
         self._artifacts_dir: Path = Path("artifacts")
         self._failure_screenshots: list[Path] = []
+        # Soft assertions (W3): when a verify is soft, a failure is recorded
+        # but never surfaces until assert_all_passed() aggregates them. The
+        # default is flipped on inside a `with s.soft_assertions():` block.
+        self._soft_default: bool = False
+        self._soft_ids: set[int] = set()
 
     # ------------------------------------------------------------------
     # Factory class methods
     # ------------------------------------------------------------------
 
     @classmethod
-    def web(cls, page, *, dry_run: bool = False, **kwargs) -> "BubblegumSession":
-        """Create a web session wrapping a Playwright Page."""
-        return cls(channel="web", page=page, dry_run=dry_run, **kwargs)
+    def web(
+        cls,
+        page,
+        *,
+        dry_run: bool = False,
+        bootstrap: Callable[[Any], Any] | None = None,
+        **kwargs,
+    ) -> "BubblegumSession":
+        """Create a web session wrapping a Playwright Page.
+
+        ``bootstrap`` is an optional (async or sync) callable, run once when the
+        session is entered, that receives the ``page`` and establishes
+        authenticated/seeded state via API instead of the UI — e.g. inject
+        cookies/``localStorage`` or transplant a login token. See
+        :meth:`_run_bootstrap`.
+        """
+        return cls(channel="web", page=page, dry_run=dry_run, bootstrap=bootstrap, **kwargs)
 
     @classmethod
-    def mobile(cls, driver, *, dry_run: bool = False, **kwargs) -> "BubblegumSession":
-        """Create a mobile session wrapping an Appium WebDriver."""
-        return cls(channel="mobile", driver=driver, dry_run=dry_run, **kwargs)
+    def mobile(
+        cls,
+        driver,
+        *,
+        dry_run: bool = False,
+        bootstrap: Callable[[Any], Any] | None = None,
+        **kwargs,
+    ) -> "BubblegumSession":
+        """Create a mobile session wrapping an Appium WebDriver.
+
+        ``bootstrap`` is an optional (async or sync) callable, run once when the
+        session is entered, that receives the ``driver`` and establishes state
+        without the UI — e.g. deep-link into an authenticated screen or inject a
+        token.
+        """
+        return cls(channel="mobile", driver=driver, dry_run=dry_run, bootstrap=bootstrap, **kwargs)
 
     # ------------------------------------------------------------------
     # Wrapped runtime handles
@@ -173,8 +215,17 @@ class BubblegumSession:
         await self._maybe_screenshot_on_failure(result)
         return result
 
-    async def verify(self, instruction: str, **kwargs) -> StepResult:
-        """Assert an expected state in natural language."""
+    async def verify(self, instruction: str, *, soft: bool | None = None, **kwargs) -> StepResult:
+        """Assert an expected state in natural language.
+
+        By default a failing ``verify`` is recorded in the session results and
+        surfaced together at :meth:`assert_all_passed` — it does not raise on
+        the spot. Pass ``soft=True`` (or run inside ``with
+        s.soft_assertions():``) to explicitly mark the failure as soft; the
+        failed StepResult is tagged ``target.metadata["soft"] = True`` so
+        reports can distinguish soft expectations from hard ones.
+        """
+        effective_soft = self._soft_default if soft is None else soft
         result = await sdk.verify(
             instruction,
             channel=self._channel,
@@ -182,6 +233,8 @@ class BubblegumSession:
             driver=self._driver,
             **self._merged(kwargs),
         )
+        if effective_soft and result.status == "failed":
+            self._mark_soft(result)
         self._results.append(result)
         self._log(instruction, result)
         await self._maybe_screenshot_on_failure(result)
@@ -444,16 +497,91 @@ class BubblegumSession:
             "duration_ms": total_ms,
         }
 
+    @contextmanager
+    def soft_assertions(self) -> Iterator["BubblegumSession"]:
+        """Treat every ``verify`` inside the block as a soft assertion.
+
+        Soft failures are collected rather than surfaced one at a time, so a
+        single run reports *all* failing expectations instead of stopping at
+        the first. Call :meth:`assert_all_passed` afterwards to raise an
+        aggregated error:
+
+            with s.soft_assertions():
+                await s.verify("Total is $42")
+                await s.verify("Cart shows 3 items")
+                await s.verify("Discount applied")
+            s.assert_all_passed()   # raises listing every failure
+
+        Re-entrant: the prior default is restored on exit.
+        """
+        previous = self._soft_default
+        self._soft_default = True
+        try:
+            yield self
+        finally:
+            self._soft_default = previous
+
+    def _mark_soft(self, result: StepResult) -> None:
+        """Tag a failed StepResult as a soft assertion failure.
+
+        Records the result identity for :meth:`assert_all_passed` messaging and
+        sets ``target.metadata["soft"] = True`` when a target is present so the
+        flag flows into JSON/HTML/JUnit reports.
+        """
+        self._soft_ids.add(id(result))
+        if result.target is not None and isinstance(result.target.metadata, dict):
+            result.target.metadata["soft"] = True
+
+    def soft_failures(self) -> list[StepResult]:
+        """All failed steps recorded as soft assertions in this session."""
+        return [r for r in self._results if id(r) in self._soft_ids and r.status == "failed"]
+
     def assert_all_passed(self) -> None:
         """Raise AssertionError if any step has status 'failed'.
 
-        Recovered and dry_run steps are not considered failures.
+        Aggregates every failure — hard and soft alike — into one error so a
+        soft-assertion run surfaces all problems at once. Recovered and dry_run
+        steps are not considered failures.
         """
         failures = [r for r in self._results if r.status == "failed"]
         if not failures:
             return
-        msgs = [f"  [{i+1}] {r.action!r}: {r.error.message if r.error else 'failed'}" for i, r in enumerate(failures)]
-        raise AssertionError(f"{len(failures)} step(s) failed:\n" + "\n".join(msgs))
+        soft_count = sum(1 for r in failures if id(r) in self._soft_ids)
+        msgs = []
+        for i, r in enumerate(failures):
+            tag = " [soft]" if id(r) in self._soft_ids else ""
+            detail = r.error.message if r.error else "failed"
+            msgs.append(f"  [{i+1}]{tag} {r.action!r}: {detail}")
+        header = f"{len(failures)} step(s) failed"
+        if soft_count:
+            header += f" ({soft_count} soft)"
+        raise AssertionError(f"{header}:\n" + "\n".join(msgs))
+
+    async def explain(self, instruction: str, *, print_output: bool = True, **kwargs) -> str:
+        """Explain how a step resolves — ranked candidates, per-signal scores,
+        the tier it stops at, and why the winner won.
+
+        Runs a dry-run resolution (no execution; nothing is appended to the
+        session results) and renders the decision from the captured traces.
+        Returns the explanation string and, by default, prints it:
+
+            await s.explain("Click Login")
+        """
+        from bubblegum.reporting.explain import format_explanation
+
+        merged = self._merged(kwargs)
+        merged["dry_run"] = True
+        result = await sdk.act(
+            instruction,
+            channel=self._channel,
+            page=self._page,
+            driver=self._driver,
+            **merged,
+        )
+        text = format_explanation(result)
+        if print_output:
+            print(text)
+        return text
 
     def print_plan(self) -> None:
         """Print a dry-run resolution plan — what each step would act on."""
@@ -472,7 +600,33 @@ class BubblegumSession:
     # ------------------------------------------------------------------
 
     async def __aenter__(self) -> "BubblegumSession":
+        await self._run_bootstrap()
         return self
+
+    async def _run_bootstrap(self) -> None:
+        """Run the auth/setup bootstrap once, before any steps.
+
+        Invoked automatically on ``async with`` entry. Idempotent: a second
+        call is a no-op. Supports both async and sync callables. The wrapped
+        handle is passed in — ``page`` for web, ``driver`` for mobile — so the
+        callable can inject cookies/localStorage/token or deep-link directly:
+
+            async def login(page):
+                token = await get_token_via_api("tester", "pw!")
+                await page.context.add_cookies([
+                    {"name": "session", "value": token, "url": "https://app.test"}
+                ])
+
+            async with BubblegumSession.web(page, bootstrap=login) as s:
+                await s.goto("https://app.test/dashboard")  # already authed
+        """
+        if self._bootstrap is None or self._bootstrapped:
+            return
+        handle = self._page if self._channel == "web" else self._driver
+        result = self._bootstrap(handle)
+        if inspect.isawaitable(result):
+            await result
+        self._bootstrapped = True
 
     async def __aexit__(self, *_) -> None:
         s = self.summary()

@@ -41,6 +41,46 @@ class GroundingConfig(BaseModel):
     # Re-ground retries for late-rendered (SPA) elements — see ExecutionOptions.
     resolve_retries:    int   = 2
     resolve_retry_interval_ms: int = 300
+    # Stability / quiescence wait (W2): before resolving, wait until the page
+    # settles — no DOM mutations for stability_quiet_ms, no in-flight network,
+    # and no visible loading indicator — bounded by stability_timeout_ms.
+    stability_wait_enabled: bool = True
+    stability_quiet_ms:     int  = 400
+    stability_timeout_ms:   int  = 5_000
+    stability_spinner_selectors: list[str] = Field(
+        default_factory=lambda: [
+            "[aria-busy='true']",
+            "[role='progressbar']",
+            ".spinner",
+            ".loading",
+            ".loader",
+            "[class*='spinner']",
+            "[class*='loading']",
+        ]
+    )
+
+
+class A11yConfig(BaseModel):
+    """Accessibility-assertion settings (verify(..., assertion_type='a11y'))."""
+
+    # Path to an axe-core build to inject. Defaults to the vendored copy
+    # shipped with Bubblegum (offline, zero-config). Override to pin your own.
+    axe_script_path: str | None = None
+    # Optional remote/CDN URL to load axe-core from instead of the local file.
+    # When set, takes precedence over axe_script_path. Requires network access.
+    axe_url: str | None = None
+    # Minimum violation impact that fails the assertion: any violation at or
+    # above this level fails. One of: minor | moderate | serious | critical.
+    impact_threshold: str = "critical"
+
+    @field_validator("impact_threshold")
+    @classmethod
+    def _validate_impact(cls, value: str) -> str:
+        normalized = str(value).strip().lower()
+        allowed = {"minor", "moderate", "serious", "critical"}
+        if normalized not in allowed:
+            raise ValueError(f"impact_threshold must be one of {sorted(allowed)}")
+        return normalized
 
 
 class AIConfig(BaseModel):
@@ -118,6 +158,7 @@ class BubblegumConfig(BaseModel):
     """
 
     grounding: GroundingConfig = Field(default_factory=GroundingConfig)
+    a11y:      A11yConfig       = Field(default_factory=A11yConfig)
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
@@ -230,6 +271,15 @@ grounding:
   memory_max_failures: 3
   resolve_retries: 2               # re-ground attempts for late-rendered SPA elements
   resolve_retry_interval_ms: 300   # delay between re-ground attempts
+  stability_wait_enabled: true     # wait for the page to settle before resolving
+  stability_quiet_ms: 400          # require this much DOM/network/spinner quiet
+  stability_timeout_ms: 5000       # give up settling after this long (then proceed)
+  # stability_spinner_selectors: ["[role='progressbar']", ".spinner"]  # override defaults
+
+a11y:
+  # axe_script_path: path/to/axe.min.js   # defaults to the vendored axe-core build
+  # axe_url: https://cdn.example.com/axe.min.js  # optional remote override
+  impact_threshold: critical       # minor | moderate | serious | critical
 
 ai:
   enabled: true

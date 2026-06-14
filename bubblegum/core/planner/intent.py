@@ -15,6 +15,10 @@ def build_options(
     memory_max_failures: int,
     resolve_retries: int | None = None,
     resolve_retry_interval_ms: int | None = None,
+    stability_wait_enabled: bool | None = None,
+    stability_quiet_ms: int | None = None,
+    stability_timeout_ms: int | None = None,
+    stability_spinner_selectors: list[str] | None = None,
 ) -> ExecutionOptions:
     known = {
         "timeout_ms",
@@ -28,6 +32,10 @@ def build_options(
         "nav_wait_ms",
         "resolve_retries",
         "resolve_retry_interval_ms",
+        "stability_wait",
+        "stability_quiet_ms",
+        "stability_timeout_ms",
+        "stability_spinner_selectors",
     }
     opts = {k: v for k, v in kwargs.items() if k in known}
     opts.setdefault("use_ai", ai_enabled)
@@ -38,6 +46,15 @@ def build_options(
         opts.setdefault("resolve_retries", resolve_retries)
     if resolve_retry_interval_ms is not None:
         opts.setdefault("resolve_retry_interval_ms", resolve_retry_interval_ms)
+    # Stability-wait defaults flow from GroundingConfig unless overridden per call.
+    if stability_wait_enabled is not None:
+        opts.setdefault("stability_wait", stability_wait_enabled)
+    if stability_quiet_ms is not None:
+        opts.setdefault("stability_quiet_ms", stability_quiet_ms)
+    if stability_timeout_ms is not None:
+        opts.setdefault("stability_timeout_ms", stability_timeout_ms)
+    if stability_spinner_selectors is not None:
+        opts.setdefault("stability_spinner_selectors", stability_spinner_selectors)
     return ExecutionOptions(**opts)
 
 

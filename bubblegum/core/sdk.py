@@ -64,6 +64,7 @@ from bubblegum.core.schemas import (
     ResolvedTarget,
     StepIntent,
     StepResult,
+    ValidationResult,
 )
 from bubblegum.core.validation import make_verification_result, verification_error, verification_status
 from bubblegum.core.vision.engine import VisionProvider, build_vision_candidates_from_screenshot
@@ -209,6 +210,13 @@ def _build_healing_advisory(intent: StepIntent, target: ResolvedTarget) -> dict 
         "match_kind": match_kind,
         "similarity": round(fuzzy_ratio, 3),
         "severity": severity,
+        # R3 suggested fix: the old→new diff a tester can apply to de-brittle
+        # the step. old_ref is what the step says today; new_ref is the label
+        # that actually matched; new_selector is the resolved technical ref.
+        "old_ref": requested,
+        "new_ref": matched,
+        "new_selector": target.ref,
+        "suggested_fix": f"Update the step label: {requested!r} → {matched!r}",
         "message": (
             f"Self-healing applied: your step referenced '{requested}', but the "
             f"closest element on the page was '{matched}'. If this substitution is "
@@ -268,7 +276,7 @@ async def act(
     adapter = _get_adapter(channel, page=page, driver=driver)
 
     # 1. Build StepIntent
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     intent  = make_intent(
         instruction=instruction,
@@ -282,6 +290,7 @@ async def act(
     )
 
     # 2. Collect context
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -402,7 +411,18 @@ async def verify(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
+
+    # Accessibility assertions are page-scoped — there is no element to ground,
+    # so they branch out before resolution and run an axe-core audit instead.
+    if kwargs.get("assertion_type") == "a11y":
+        return await _verify_a11y(adapter, channel, instruction, kwargs, t0)
+
+    # Network assertions are also page-scoped: assert a backend call happened
+    # (method + URL + status) rather than grounding a UI element.
+    if kwargs.get("assertion_type") == "network":
+        return await _verify_network(adapter, channel, instruction, kwargs, options, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -414,6 +434,7 @@ async def verify(
         options=options,
     )
 
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -437,6 +458,130 @@ async def verify(
     status = verification_status(v_result)
     error = verification_error(expected_value, v_result)
     return make_verification_result(status=status, instruction=instruction, target=target, traces=traces, duration_ms=duration_ms, result=v_result, error=error)
+
+
+def _page_scoped_result(
+    *, instruction: str, t0: float, passed: bool, message: str,
+    error: ErrorInfo | None, metadata: dict[str, Any] | None = None,
+    ref: str = "page", resolver_name: str = "page",
+) -> StepResult:
+    """Build a StepResult for a page-scoped check (synthetic target, no grounding)."""
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref=ref, confidence=1.0, resolver_name=resolver_name, metadata=metadata or {}
+    )
+    v_result = ValidationResult(passed=passed, actual_value=message, duration_ms=duration_ms)
+    return make_verification_result(
+        status="passed" if passed else "failed",
+        instruction=instruction, target=target, traces=[],
+        duration_ms=duration_ms, result=v_result, error=error,
+    )
+
+
+def _a11y_result(
+    *, instruction: str, t0: float, passed: bool, message: str,
+    error: ErrorInfo | None, metadata: dict[str, Any] | None = None,
+) -> StepResult:
+    """Build a StepResult for a page-scoped a11y check (synthetic 'page' target)."""
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=message,
+        error=error, metadata=metadata, ref="page", resolver_name="a11y",
+    )
+
+
+async def _verify_a11y(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Run an axe-core accessibility audit and turn it into a StepResult.
+
+    Page-scoped: skips element grounding entirely. axe-core is injected by the
+    web adapter; result parsing/filtering lives in bubblegum.core.a11y.
+    """
+    from bubblegum.core import a11y as a11y_mod
+
+    if channel != "web":
+        return _a11y_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="a11y assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="assertion_type='a11y' is only supported on the web channel"),
+        )
+
+    cfg = _config.a11y
+    axe_url = kwargs.get("axe_url") or cfg.axe_url
+    axe_script_path = kwargs.get("axe_script_path") or cfg.axe_script_path
+    threshold = kwargs.get("expected_value") or a11y_mod.impact_from_instruction(instruction, cfg.impact_threshold)
+
+    try:
+        if axe_url:
+            raw = await adapter.run_axe(axe_url=axe_url)
+        else:
+            script = a11y_mod.load_axe_script(axe_script_path)
+            raw = await adapter.run_axe(axe_script=script)
+    except Exception as exc:  # noqa: BLE001 — surface any axe/browser failure as a failed step
+        return _a11y_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"axe-core run failed: {exc}",
+            error=ErrorInfo(error_type="A11yCheckError", message=str(exc)),
+        )
+
+    passed, message, violations = a11y_mod.evaluate_axe_results(raw, threshold)
+    metadata = {
+        "a11y_violations": violations,
+        "a11y_violation_count": len(violations),
+        "a11y_impact_threshold": a11y_mod.normalize_impact(threshold),
+    }
+    error = None if passed else ErrorInfo(error_type="A11yViolationError", message=message)
+    return _a11y_result(
+        instruction=instruction, t0=t0, passed=passed, message=message,
+        error=error, metadata=metadata,
+    )
+
+
+async def _verify_network(adapter, channel: str, instruction: str, kwargs: dict, options, t0: float) -> StepResult:
+    """Assert a backend call occurred (method + URL + status), not a UI element.
+
+    Page-scoped: skips grounding. The web adapter records responses from the
+    first Bubblegum step onward; matching/parsing lives in bubblegum.core.network.
+    """
+    from bubblegum.core import network as net
+
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="network assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="assertion_type='network' is only supported on the web channel"),
+            ref="network", resolver_name="network",
+        )
+
+    expected = kwargs.get("expected_value") or net.extract_network_spec(instruction)
+    matcher = net.parse_network_matcher(expected)
+    if matcher is None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="network assertion needs expected_value like 'POST /api/login 200'",
+            error=ErrorInfo(error_type="NetworkAssertionError",
+                            message="provide expected_value, e.g. 'POST /api/login 200'"),
+            ref="network", resolver_name="network",
+        )
+
+    timeout_ms = kwargs.get("timeout_ms", options.timeout_ms)
+    try:
+        passed, actual = await adapter.assert_network(matcher, timeout_ms=timeout_ms)
+    except Exception as exc:  # noqa: BLE001 — surface adapter/browser errors as a failed step
+        passed, actual = False, f"network assertion error: {exc}"
+
+    error = None if passed else ErrorInfo(error_type="NetworkAssertionError", message=actual)
+    metadata = {
+        "network_assertion": {
+            "matcher": net.describe_matcher(matcher),
+            "actual": actual,
+            "passed": passed,
+        }
+    }
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=actual,
+        error=error, metadata=metadata, ref="network", resolver_name="network",
+    )
 
 
 async def extract(
@@ -470,7 +615,7 @@ async def extract(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="extract")
     intent  = make_intent(
         instruction=instruction,
@@ -483,6 +628,7 @@ async def extract(
     )
 
     # Collect context (no screenshot needed for extract)
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -587,7 +733,7 @@ async def recover(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms)
+    options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
     step_intent = make_intent(
         instruction=instruction,
@@ -600,6 +746,7 @@ async def recover(
         options=options,
     )
 
+    await _maybe_wait_until_stable(adapter, options)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(step_intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -697,7 +844,40 @@ def _build_options(kwargs: dict):
         max_cost_level=_config.grounding.max_cost_level,
         memory_ttl_days=_config.grounding.memory_ttl_days,
         memory_max_failures=_config.grounding.memory_max_failures,
+        resolve_retries=_config.grounding.resolve_retries,
+        resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms,
+        stability_wait_enabled=_config.grounding.stability_wait_enabled,
+        stability_quiet_ms=_config.grounding.stability_quiet_ms,
+        stability_timeout_ms=_config.grounding.stability_timeout_ms,
+        stability_spinner_selectors=_config.grounding.stability_spinner_selectors,
     )
+
+
+async def _maybe_wait_until_stable(adapter, options) -> dict | None:
+    """Settle the page/app before resolving (W2), when enabled.
+
+    No-op when stability waiting is disabled, the adapter does not implement
+    ``wait_until_stable``, or the wait raises (resolution then proceeds as
+    before — the wait is best-effort and must never break a step). Returns the
+    adapter's diagnostic dict, or None when skipped.
+    """
+    if not getattr(options, "stability_wait", True):
+        return None
+    wait = getattr(adapter, "wait_until_stable", None)
+    if wait is None:
+        return None
+    spinner_selectors = getattr(options, "stability_spinner_selectors", None)
+    if spinner_selectors is None:
+        spinner_selectors = _config.grounding.stability_spinner_selectors
+    try:
+        return await wait(
+            quiet_ms=options.stability_quiet_ms,
+            timeout_ms=options.stability_timeout_ms,
+            spinner_selectors=spinner_selectors,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort; never fail the step
+        logger.debug("wait_until_stable skipped after error: %s", exc)
+        return None
 
 
 def _infer_action_type(instruction: str, kwargs: dict) -> str:

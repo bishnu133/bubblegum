@@ -111,6 +111,79 @@ async def test_assert_all_passed_raises_on_failure(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Soft assertions (W3)
+# ---------------------------------------------------------------------------
+
+
+class FailVerifyAdapter(FakeAdapter):
+    """Grounds targets normally but every assertion fails."""
+
+    async def validate(self, _plan):
+        return ValidationResult(passed=False, actual_value="nope")
+
+
+@pytest.mark.asyncio
+async def test_soft_verify_does_not_raise_and_is_tagged(monkeypatch):
+    monkeypatch.setattr(sdk, "_get_adapter", lambda *a, **k: FailVerifyAdapter())
+    s = BubblegumSession.web(object())
+
+    result = await s.verify("Dashboard visible", soft=True)
+
+    assert result.status == "failed"
+    assert s.soft_failures() == [result]
+    # Tag flows into target metadata for report surfaces.
+    assert result.target is not None
+    assert result.target.metadata.get("soft") is True
+
+
+@pytest.mark.asyncio
+async def test_soft_assertions_block_collects_all_failures(monkeypatch):
+    monkeypatch.setattr(sdk, "_get_adapter", lambda *a, **k: FailVerifyAdapter())
+    s = BubblegumSession.web(object())
+
+    with s.soft_assertions():
+        await s.verify("Login visible")
+        await s.verify("Username visible")
+        await s.verify("Dashboard visible")
+
+    # All three failures recorded, nothing raised mid-block.
+    assert len(s.results()) == 3
+    assert all(r.status == "failed" for r in s.results())
+    assert len(s.soft_failures()) == 3
+
+    with pytest.raises(AssertionError) as exc:
+        s.assert_all_passed()
+    message = str(exc.value)
+    assert "3 step(s) failed (3 soft)" in message
+    assert message.count("[soft]") == 3
+
+
+@pytest.mark.asyncio
+async def test_soft_default_restored_after_block(monkeypatch):
+    monkeypatch.setattr(sdk, "_get_adapter", lambda *a, **k: FailVerifyAdapter())
+    s = BubblegumSession.web(object())
+
+    with s.soft_assertions():
+        await s.verify("Login visible")
+    # Outside the block, verifies are hard again (not tracked as soft).
+    await s.verify("Username visible")
+
+    assert len(s.soft_failures()) == 1
+
+
+@pytest.mark.asyncio
+async def test_per_call_soft_false_overrides_block(monkeypatch):
+    monkeypatch.setattr(sdk, "_get_adapter", lambda *a, **k: FailVerifyAdapter())
+    s = BubblegumSession.web(object())
+
+    with s.soft_assertions():
+        await s.verify("Login visible")              # soft (inherits block)
+        await s.verify("Username visible", soft=False)  # explicit hard override
+
+    assert len(s.soft_failures()) == 1
+
+
+# ---------------------------------------------------------------------------
 # dry_run session-level flag
 # ---------------------------------------------------------------------------
 
