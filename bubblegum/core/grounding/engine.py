@@ -39,6 +39,7 @@ from bubblegum.core.grounding.errors import (
     LowConfidenceError,
     ResolutionFailedError,
 )
+from bubblegum.core import cost
 from bubblegum.core.grounding.ranker import CandidateRanker
 from bubblegum.core.grounding.registry import ResolverRegistry
 from bubblegum.core.schemas import ResolvedTarget, ResolverTrace, StepIntent
@@ -136,6 +137,21 @@ class GroundingEngine:
                     raise AICostPolicyBlockedError(
                         step=intent.instruction,
                         message="Tier 3 AI resolvers exist but are blocked because max_cost_level=low.",
+                    )
+
+            # X2: per-run cost budget hard-stop — once the run's estimated LLM
+            # spend has reached the budget, block further Tier 3 AI calls.
+            if tier_num == 3 and cost.budget_exceeded():
+                lo, hi = _TIER_RANGES[3]
+                all_tier3 = [r for r in self.registry.all() if lo <= r.priority <= hi and intent.channel in r.channels]
+                if all_tier3:
+                    tracker = cost.get_tracker()
+                    raise AICostPolicyBlockedError(
+                        step=intent.instruction,
+                        message=(
+                            f"Tier 3 AI resolvers are blocked: per-run cost budget exceeded "
+                            f"(spent ${tracker.spent:.4f} ≥ budget ${tracker.budget:.4f})."
+                        ),
                     )
 
             tier_candidates, tier_traces = self._run_tier(intent, tier_num)

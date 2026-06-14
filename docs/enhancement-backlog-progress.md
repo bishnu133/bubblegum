@@ -12,7 +12,7 @@ the handoff for continuing with Sprint 3+.
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
 | 3 — Authoring + verify depth | A1, A2, V1 | ✅ done |
 | 4 — Mobile depth | M1, M2, M4 | ✅ done |
-| 5 — Scale & governance | X1, X2, M5, X3, M6 | 🔄 in progress (X1 done) |
+| 5 — Scale & governance | X1, X2, M5, X3, M6 | 🔄 in progress (X1, X2 done) |
 
 ### What shipped (Sprint 1 & 2)
 
@@ -123,6 +123,17 @@ the handoff for continuing with Sprint 3+.
   doesn't fail the CI build. Plugin records the run at `pytest_sessionfinish` (best-effort, never
   breaks a run). Unit-tested end-to-end (classification, DB accumulation, tracker, report, JUnit
   badges + quarantine); X1 is CI infra with no browser-gated test.
+- **X2** — cost budget hard-stop + LLM decision caching. (a) `core/cost.py`: a process-global
+  `CostTracker` turns provider token counts (`CompletionResult.input/output_tokens`) into estimated
+  USD via a per-model price table; new `grounding.max_run_cost_usd` (0 = disabled) sets a per-run
+  ceiling. The LLM resolver records spend after each call; `GroundingEngine` checks
+  `cost.budget_exceeded()` *before* Tier 3 and raises `AICostPolicyBlockedError` once the budget is
+  reached (hard-stop), mirroring the `max_cost_level=low` block. (b) `core/llm_cache.py`: a
+  process-global LLM decision cache keyed on screen signature + instruction + action_type, so a
+  repeated AI-resolved screen replays its targets with zero model calls (distinct from the disk
+  element memory cache; reset per run). Budget wired in `sdk.configure_runtime`. Unit-tested
+  (estimation, tracker budget/reset, cache key/get/put/copies, resolver cache-replay + cost
+  accounting, engine Tier-3 hard-stop). No browser-gated test (AI/infra; would need `--llm`).
 
 **Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
 so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform

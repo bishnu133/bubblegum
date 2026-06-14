@@ -33,6 +33,9 @@ class GroundingConfig(BaseModel):
     ambiguous_gap:      float = 0.05
     reject_threshold:   float = 0.50
     max_cost_level:     str   = "medium"   # "low" | "medium" | "high"
+    # X2: per-run hard cost ceiling (USD) for Tier-3 AI calls. 0 == disabled.
+    # Once the run's estimated LLM spend reaches this, Tier 3 is hard-stopped.
+    max_run_cost_usd:   float = 0.0
     enable_vision:      bool  = False
     enable_ocr:         bool  = True
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
@@ -342,6 +345,7 @@ grounding:
   ambiguous_gap: 0.05
   reject_threshold: 0.50
   max_cost_level: medium   # low | medium | high
+  max_run_cost_usd: 0.0    # per-run Tier-3 cost ceiling in USD (0 = disabled)
   enable_vision: false
   enable_ocr: true
   ai_first: false          # true = try AI (vision/LLM) before deterministic resolvers

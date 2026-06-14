@@ -86,6 +86,10 @@ _memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for rec
 _vision_provider: VisionProvider | None = None
 _visual_ref_hydrator = VisualRefHydrator()
 
+# X2: apply the per-run Tier-3 cost budget from config to the global tracker.
+from bubblegum.core import cost as _cost  # noqa: E402
+_cost.configure_budget(_config.grounding.max_run_cost_usd)
+
 
 def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
     """Configure SDK runtime from BubblegumConfig and rewire thresholds.
@@ -108,6 +112,8 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
         reject_threshold=_config.grounding.reject_threshold,
         ai_first=_config.grounding.ai_first,
     )
+    # X2: refresh the per-run Tier-3 cost budget from the (re)loaded config.
+    _cost.configure_budget(_config.grounding.max_run_cost_usd)
     return _config
 
 
