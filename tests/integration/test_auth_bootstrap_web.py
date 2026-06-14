@@ -7,12 +7,19 @@ session lands on the authenticated page with ZERO UI login steps.
 Gated by ``--playwright``. Runs on the session loop (like the shared-browser
 fixtures) and builds its own session so it can pass ``bootstrap=``.
 
+Note: the page is loaded via ``page.goto(data: URL)`` rather than
+``set_content`` because Playwright runs ``add_init_script`` hooks on real
+navigations (including ``data:``) but not for ``set_content`` — and the whole
+point is that the bootstrap state exists *before* the app's scripts run.
+
 Run locally:
     pip install -e ".[web]" && python -m playwright install chromium
     python -m pytest tests/integration/test_auth_bootstrap_web.py -v --playwright
 """
 
 from __future__ import annotations
+
+import urllib.parse
 
 import pytest
 
@@ -43,6 +50,10 @@ _TOKEN_GATED_APP = """
 """
 
 
+def _data_url(html: str) -> str:
+    return "data:text/html," + urllib.parse.quote(html)
+
+
 async def test_bootstrap_lands_on_authed_page_without_ui_login(bubblegum_browser):
     context = await bubblegum_browser.new_context()
     try:
@@ -54,7 +65,7 @@ async def test_bootstrap_lands_on_authed_page_without_ui_login(bubblegum_browser
             await p.add_init_script("window.__authToken = 'tok-123';")
 
         async with BubblegumSession.web(page, bootstrap=login_via_api) as s:
-            await page.set_content(_TOKEN_GATED_APP)
+            await page.goto(_data_url(_TOKEN_GATED_APP))
 
             # Bubblegum confirms we're on the authenticated page...
             result = await s.verify("Welcome back, tester")
@@ -73,7 +84,7 @@ async def test_without_bootstrap_the_app_shows_login(bubblegum_browser):
     try:
         page = await context.new_page()
         async with BubblegumSession.web(page) as s:  # no bootstrap
-            await page.set_content(_TOKEN_GATED_APP)
+            await page.goto(_data_url(_TOKEN_GATED_APP))
             assert await page.get_by_role("button", name="Sign in").count() == 1
             result = await s.verify("Please log in")
             assert result.status == "passed"
