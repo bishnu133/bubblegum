@@ -10,12 +10,15 @@ value / fallback selector) and stream it to Python through the
 ``__bubblegum_record__`` binding exposed by :class:`ActionRecorder`.
 
 Capture rules (kept intentionally small for the MVP):
-  - ``change`` drives form-control capture so we read the *final* value:
+  - ``input`` drives text-field capture so it does not depend on blur/``change``
+    timing (which Playwright's ``fill`` does not reliably emit): text input /
+    textarea → ``type`` with the field value. Repeated ``input`` events on one
+    field are collapsed downstream so only the final value survives.
+  - ``change`` drives the commit-style controls:
       • checkbox / radio  → ``check`` or ``uncheck`` (by checked state)
       • ``<select>``      → ``select`` with the chosen option's visible text
-      • text input / textarea → ``type`` with the field value
   - ``click`` captures buttons, links and submit/button inputs. Form controls
-    handled by ``change`` are excluded here so they are not double-recorded.
+    handled above are excluded here so they are not double-recorded.
 
 Accessible-name derivation mirrors what the grounding engine keys on: explicit
 aria-label / aria-labelledby first, then an associated <label>, then
@@ -25,9 +28,12 @@ placeholder, then submit-button value, then trimmed text content, then title.
 from __future__ import annotations
 
 # NOTE: plain JS string — no Python .format()/% templating, so literal braces
-# are safe. Idempotent: re-running on the same document is a no-op.
+# are safe. Wrapped as a self-executing IIFE because ``add_init_script`` runs
+# the script text as-is (it does not *call* a passed function the way
+# ``page.evaluate`` does). Idempotent: re-running on the same document is a
+# no-op.
 RECORDER_JS = r"""
-() => {
+(() => {
   if (window.__bubblegumRecorderInstalled) return;
   window.__bubblegumRecorderInstalled = true;
 
@@ -127,6 +133,18 @@ RECORDER_JS = r"""
     send("click", el);
   }, true);
 
+  document.addEventListener("input", function (ev) {
+    var el = ev.target;
+    if (!el || !el.tagName) return;
+    var tag = el.tagName.toLowerCase();
+    var role = roleOf(el);
+    // Only free-text fields stream via input; checkbox/radio/select commit
+    // through the change handler below.
+    if (tag === "textarea" || (tag === "input" && role === "textbox")) {
+      send("type", el, { value: el.value });
+    }
+  }, true);
+
   document.addEventListener("change", function (ev) {
     var el = ev.target;
     if (!el || !el.tagName) return;
@@ -137,9 +155,7 @@ RECORDER_JS = r"""
     } else if (tag === "select") {
       var opt = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
       send("select", el, { value: opt ? clean(opt.text) : el.value });
-    } else if (tag === "input" || tag === "textarea") {
-      send("type", el, { value: el.value });
     }
   }, true);
-}
+})();
 """

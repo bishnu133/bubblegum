@@ -29,6 +29,9 @@ async def _drive_login(page) -> None:
     await page.fill("#password", "bubblegum!")
     await page.click("#signin")
     await page.wait_for_url("**/dashboard.html")
+    # Let any binding call dispatched just before navigation flush to Python
+    # before the caller closes the recording context.
+    await page.wait_for_timeout(150)
 
 
 async def test_record_login_emits_runnable_nl_steps(bubblegum_browser, sample_app):
