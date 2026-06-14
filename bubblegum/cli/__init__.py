@@ -50,6 +50,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate a script that launches headed (default: headless).",
     )
 
+    repl = sub.add_parser(
+        "repl",
+        help="Live-try natural-language steps against a running page/app.",
+        description=(
+            "Open a session and evaluate typed NL steps immediately, printing "
+            "the resolved target + confidence. Use --url for web or "
+            "--appium-url (+ --caps) for mobile."
+        ),
+    )
+    repl.add_argument("--url", help="Web: start URL to open (Playwright).")
+    repl.add_argument("--appium-url", help="Mobile: Appium server URL (e.g. http://127.0.0.1:4723).")
+    repl.add_argument(
+        "--caps",
+        help="Mobile: Appium capabilities as inline JSON or a path to a .json file.",
+    )
+    repl.add_argument("--headless", action="store_true", help="Web: run headless (default: headed).")
+    repl.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Start in resolve-only mode (preview targets without acting).",
+    )
+
     return parser
 
 
@@ -66,6 +88,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             out=args.out,
             headless=args.headless,
             emit_headless=not args.emit_headed,
+        )
+
+    if args.command == "repl":
+        from bubblegum.cli.repl import run_repl
+
+        if not args.url and not args.appium_url:
+            parser.error("repl requires --url (web) or --appium-url (mobile)")
+        return run_repl(
+            url=args.url,
+            appium_url=args.appium_url,
+            caps=args.caps,
+            headless=args.headless,
+            dry_run=args.dry_run,
         )
 
     parser.print_help()

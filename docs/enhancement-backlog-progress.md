@@ -41,10 +41,20 @@ the handoff for continuing with Sprint 3+.
   click-through via an injected JS recorder (`add_init_script` + `expose_binding`, **not** a
   codegen subprocess) and emits runnable NL steps (`act("Click Login")`, `act('Enter "tom" into
   Username')`) with the resolved selector as a `# fallback:` comment. Browser-free core in
-  `bubblegum/core/recorder/`: `RECORDER_JS` (capture script), `ActionRecorder` (binding side +
-  `attach`), `normalize_event`/`coalesce_actions` (capture→action), `derive_steps` (action→NL,
-  round-trips through the parser), `emit_script` (runnable `*_recorded.py`). Real-browser replay
-  test in `tests/integration/test_recorder_web.py`.
+  `bubblegum/core/recorder/`: `RECORDER_JS` (capture script, a self-executing IIFE — `add_init_script`
+  runs the text as-is; text fields captured on `input`, not blur-dependent `change`), `ActionRecorder`
+  (binding side + `attach`), `normalize_event`/`coalesce_actions` (capture→action), `derive_steps`
+  (action→NL, round-trips through the parser), `emit_script` (runnable `*_recorded.py`). Real-browser
+  replay test in `tests/integration/test_recorder_web.py`.
+- **A2** — interactive REPL / live-try mode. New `bubblegum repl --url ...` (web) /
+  `--appium-url ... --caps ...` (mobile) opens a session and evaluates typed NL steps immediately,
+  printing the resolved target + resolver + confidence. Browser-free core in `bubblegum/core/repl/`:
+  `parse_repl_line`/`ReplCommand` (grammar: bare NL → act, `act/verify/extract/explain/dry(...)` verb
+  calls, `:help`/`:quit`/`:dry`/`:open`/`:explain` meta), `evaluate` (channel-agnostic; reuses
+  `dry_run` for resolve-only previews and `s.explain` from A3), `format_result`. CLI loop +
+  browser/driver lifecycle in `bubblegum/cli/repl.py` (`repl_loop` takes an injectable line reader so
+  it is unit-tested without stdin). Real-browser test in `tests/integration/test_repl_web.py`. Mobile
+  path reuses `testing/appium_driver.py`; unverified without a device (consistent with other Appium code).
 
 ## Conventions established (follow these in Sprint 3+)
 
