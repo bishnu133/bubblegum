@@ -174,6 +174,7 @@ capabilities are missing, so mobile tests never break a web-only run.
 | `--bubblegum-report-json PATH` | — | Write a JSON report at session end |
 | `--bubblegum-report-junit PATH` | — | Write a JUnit XML report at session end (Jenkins/GitLab/Azure/CircleCI) |
 | `--bubblegum-report-allure DIR` | — | Write Allure result files at session end (view with `allure serve DIR`) |
+| `--bubblegum-suggest-fixes PATH` | — | Write self-healing suggested fixes + brittleness ranking (JSON) |
 | `--bubblegum-config PATH` | — | Bubblegum YAML config file |
 | `--bubblegum-appium-url URL` | `http://localhost:4723` | Appium server for `bubblegum_mobile` |
 | `--bubblegum-capabilities JSON_OR_PATH` | — | Appium caps (inline JSON or a .json file) |

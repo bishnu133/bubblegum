@@ -183,6 +183,14 @@ heals it: the step still passes but is marked **`recovered`** and carries a
 survives across runs — once healed, the resolution is cached and the advisory
 keeps showing on replays.
 
+Each heal also includes a **suggested fix** — the old→new label/selector change
+to de‑brittle the step (`healing.suggested_fix`, plus `old_ref`/`new_ref`/
+`new_selector`), which the HTML report renders as a copy‑pasteable block. To
+export the fixes and a **brittleness ranking** (the most‑healed labels — which
+selectors are rotting), pass `--bubblegum-suggest-fixes fixes.json`. The same
+ranking appears under `analytics.healing_summary.brittleness` in the HTML/JSON
+reports.
+
 ### Memory cache (faster, stickier runs)
 
 Successful resolutions are persisted to a small SQLite file

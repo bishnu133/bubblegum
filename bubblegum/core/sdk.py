@@ -210,6 +210,13 @@ def _build_healing_advisory(intent: StepIntent, target: ResolvedTarget) -> dict 
         "match_kind": match_kind,
         "similarity": round(fuzzy_ratio, 3),
         "severity": severity,
+        # R3 suggested fix: the old→new diff a tester can apply to de-brittle
+        # the step. old_ref is what the step says today; new_ref is the label
+        # that actually matched; new_selector is the resolved technical ref.
+        "old_ref": requested,
+        "new_ref": matched,
+        "new_selector": target.ref,
+        "suggested_fix": f"Update the step label: {requested!r} → {matched!r}",
         "message": (
             f"Self-healing applied: your step referenced '{requested}', but the "
             f"closest element on the page was '{matched}'. If this substitution is "

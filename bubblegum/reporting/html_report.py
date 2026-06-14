@@ -480,6 +480,7 @@ def safe_hydration_metadata(metadata: dict) -> dict[str, str]:
 _SAFE_HEALING_FIELDS = (
     "applied", "requested", "matched", "resolver",
     "match_kind", "similarity", "severity", "message",
+    "old_ref", "new_ref", "new_selector", "suggested_fix",
 )
 
 
@@ -1000,8 +1001,15 @@ def _render_step(idx: int, result: StepResult) -> str:
             f'({html.escape(str(healing.get("match_kind", "")))}, '
             f'similarity {html.escape(str(healing.get("similarity", "")))}). '
             f'Revisit your test step to confirm this substitution is intended.'
-            f'</div>'
         )
+        suggested_fix = healing.get("suggested_fix")
+        if suggested_fix:
+            healing_html += (
+                f'<div style="margin-top:6px;">'
+                f'<strong>Suggested fix:</strong> '
+                f'<code>{html.escape(str(suggested_fix))}</code></div>'
+            )
+        healing_html += '</div>'
 
     traces_html = ""
     if result.traces:
@@ -1861,6 +1869,7 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
     healing_total = 0
     healing_severity_counts: Counter[str] = Counter()
     healing_match_kind_counts: Counter[str] = Counter()
+    healing_brittle_counts: Counter[str] = Counter()  # R3: heals per old_ref
 
     for result in results:
         status_counts[result.status] += 1
@@ -1873,6 +1882,9 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             healing_total += 1
             _count_categorical_field(healing_severity_counts, healing.get("severity"))
             _count_categorical_field(healing_match_kind_counts, healing.get("match_kind"))
+            brittle_key = healing.get("old_ref") or healing.get("requested")
+            if brittle_key:
+                healing_brittle_counts[str(brittle_key)] += 1
 
         if result.error and result.error.error_type:
             error_type_counts[result.error.error_type] += 1
@@ -2502,6 +2514,11 @@ def build_report_analytics(results: Sequence[StepResult]) -> dict:
             "total": healing_total,
             "severity_counts": dict(healing_severity_counts),
             "match_kind_counts": dict(healing_match_kind_counts),
+            # R3 brittleness ranking — most-healed step labels (top 5).
+            "brittleness": [
+                {"ref": ref, "heals": count}
+                for ref, count in healing_brittle_counts.most_common(5)
+            ],
         },
         "hydration_summary": hydration_summary,
         "graph_signal_summary": graph_signal_summary,

@@ -48,6 +48,7 @@ def test_cli_options_registered():
     assert opts.bubblegum_report_json is None
     assert opts.bubblegum_report_junit is None
     assert opts.bubblegum_report_allure is None
+    assert opts.bubblegum_suggest_fixes is None
     assert opts.bubblegum_artifacts == "out"
     assert opts.bubblegum_ai is True
     assert opts.bubblegum_memory is False
@@ -403,6 +404,40 @@ def test_no_allure_results_emitted_without_flag(tmp_path):
 
     plugin.pytest_sessionfinish(_NoFlagSession(), 0)
     assert not allure_dir.exists()
+
+
+def test_suggest_fixes_emitted_with_flag_and_healed_results(tmp_path):
+    import json
+
+    from bubblegum import pytest_plugin as plugin
+    from bubblegum.core.schemas import ResolvedTarget
+
+    fixes_path = tmp_path / "fixes.json"
+    cfg = _Cfg({
+        "--bubblegum-report": None,
+        "--bubblegum-report-json": None,
+        "--bubblegum-report-junit": None,
+        "--bubblegum-report-allure": None,
+        "--bubblegum-suggest-fixes": str(fixes_path),
+        "--bubblegum-benchmark": False,
+    })
+    reporter = plugin.bubblegum_reporter.__wrapped__(cfg)
+    healed = _step_result(action="Click Login", status="recovered")
+    healed.target = ResolvedTarget(
+        ref='role=button[name="Sign In"]', confidence=0.78, resolver_name="fuzzy_text",
+        metadata={"healing": {"applied": True, "requested": "Login", "matched": "Sign In",
+                              "old_ref": "Login", "new_ref": "Sign In", "severity": "review",
+                              "suggested_fix": "Update the step label: 'Login' → 'Sign In'"}},
+    )
+    reporter.add(healed)
+
+    session = _Session(cfg, exitstatus=0)
+    plugin.pytest_sessionfinish(session, 0)
+
+    assert fixes_path.exists()
+    payload = json.loads(fixes_path.read_text())
+    assert payload["fixes"][0]["new_ref"] == "Sign In"
+    assert payload["brittleness"][0]["ref"] == "Login"
 
 
 def test_html_and_json_report_can_coexist(tmp_path):
