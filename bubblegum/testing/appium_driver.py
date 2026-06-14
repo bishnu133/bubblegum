@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,20 @@ def load_capabilities(raw: str | None) -> dict[str, Any]:
         except json.JSONDecodeError as exc:
             raise ValueError(f"Capabilities file {text!r} is not valid JSON: {exc}") from exc
     else:
+        # If the value clearly looks like a file path (e.g. "caps.json") but no
+        # such file exists, say so plainly instead of trying to parse the
+        # filename as inline JSON and reporting a misleading "invalid JSON".
+        looks_like_path = (
+            text.endswith(".json")
+            or "/" in text
+            or os.sep in text
+            or text.startswith(("~", "."))
+        )
+        if looks_like_path and "{" not in text:
+            raise ValueError(
+                f"Capabilities file not found: {text!r} (resolved to "
+                f"{candidate.resolve()}). Pass a readable .json path or inline JSON."
+            )
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
