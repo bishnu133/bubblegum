@@ -128,6 +128,36 @@ class MobileConfig(BaseModel):
     background_app_seconds: int = 3
 
 
+class FlakyConfig(BaseModel):
+    """Flaky-test detection / quarantine settings (X1)."""
+
+    enabled: bool = True
+    # A step is flagged flaky when its historical pass-rate is below this AND it
+    # has both passed and failed at least once (intermittent, not just broken).
+    stability_threshold: float = 0.90
+    # Minimum observed runs before a step can be judged flaky (avoids noise).
+    min_runs: int = 3
+    # When True, a flaky step's failure is reported but does not fail the build
+    # (mark-but-not-fail). Usually toggled via --bubblegum-quarantine.
+    quarantine: bool = False
+
+    @field_validator("stability_threshold")
+    @classmethod
+    def _validate_stability(cls, value: float) -> float:
+        f = float(value)
+        if not (0.0 <= f <= 1.0):
+            raise ValueError("stability_threshold must be between 0.0 and 1.0")
+        return f
+
+    @field_validator("min_runs")
+    @classmethod
+    def _validate_min_runs(cls, value: int) -> int:
+        i = int(value)
+        if i < 1:
+            raise ValueError("min_runs must be >= 1")
+        return i
+
+
 class AIConfig(BaseModel):
     enabled:  bool        = True
     provider: str         = "anthropic"    # anthropic | openai | gemini | local
@@ -206,6 +236,7 @@ class BubblegumConfig(BaseModel):
     a11y:      A11yConfig       = Field(default_factory=A11yConfig)
     visual:    VisualConfig     = Field(default_factory=VisualConfig)
     mobile:    MobileConfig      = Field(default_factory=MobileConfig)
+    flaky:     FlakyConfig       = Field(default_factory=FlakyConfig)
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
@@ -338,6 +369,12 @@ visual:
 mobile:
   auto_hide_keyboard: false        # hide the soft keyboard before a tap/click
   background_app_seconds: 3        # default duration for "background app"
+
+flaky:
+  enabled: true
+  stability_threshold: 0.90        # pass-rate below this (with ≥1 pass and ≥1 fail) → flaky
+  min_runs: 3                      # minimum runs before judging flakiness
+  quarantine: false                # or pass --bubblegum-quarantine (mark-but-not-fail)
 
 ai:
   enabled: true

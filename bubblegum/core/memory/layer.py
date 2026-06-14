@@ -82,6 +82,15 @@ CREATE TABLE IF NOT EXISTS bubblegum_memory (
     failure_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (screen_sig, step_hash)
 );
+CREATE TABLE IF NOT EXISTS bubblegum_flaky (
+    step_key     TEXT    NOT NULL PRIMARY KEY,
+    label        TEXT    NOT NULL DEFAULT '',
+    runs         INTEGER NOT NULL DEFAULT 0,
+    passes       INTEGER NOT NULL DEFAULT 0,
+    fails        INTEGER NOT NULL DEFAULT 0,
+    last_outcome TEXT    NOT NULL DEFAULT '',
+    last_seen    TEXT    NOT NULL DEFAULT ''
+);
 """
 
 
@@ -188,6 +197,66 @@ class MemoryLayer:
             )
         except Exception as exc:
             logger.warning("MemoryLayer.record_failure failed: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Flaky-test history (X1)
+    # ------------------------------------------------------------------
+
+    def record_flaky_outcome(self, step_key: str, label: str, passed: bool) -> None:
+        """Record one run's outcome for a step into the flaky-history table.
+
+        Unlike ``record_success`` / ``record_failure`` (whose counts reset to
+        capture *cache freshness*), this accumulates total runs/passes/fails so
+        an *intermittent* step can be detected across runs. One call == one run
+        observation. Never raises — flaky tracking must not break a run.
+        """
+        now_iso = datetime.now(tz=timezone.utc).isoformat()
+        outcome = "pass" if passed else "fail"
+        try:
+            conn = self._get_conn()
+            conn.execute(
+                """
+                INSERT INTO bubblegum_flaky
+                    (step_key, label, runs, passes, fails, last_outcome, last_seen)
+                VALUES (?, ?, 1, ?, ?, ?, ?)
+                ON CONFLICT(step_key) DO UPDATE SET
+                    label        = excluded.label,
+                    runs         = bubblegum_flaky.runs + 1,
+                    passes       = bubblegum_flaky.passes + excluded.passes,
+                    fails        = bubblegum_flaky.fails + excluded.fails,
+                    last_outcome = excluded.last_outcome,
+                    last_seen    = excluded.last_seen
+                """,
+                (step_key, label, 1 if passed else 0, 0 if passed else 1, outcome, now_iso),
+            )
+            conn.commit()
+        except Exception as exc:  # noqa: BLE001 — never break a run
+            logger.warning("MemoryLayer.record_flaky_outcome failed: %s", exc)
+
+    def flaky_rows(self) -> list[dict]:
+        """Return every flaky-history row as a dict (empty list on error)."""
+        try:
+            conn = self._get_conn()
+            cur = conn.execute(
+                "SELECT step_key, label, runs, passes, fails, last_outcome, last_seen "
+                "FROM bubblegum_flaky"
+            )
+            rows = cur.fetchall()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MemoryLayer.flaky_rows failed: %s", exc)
+            return []
+        return [
+            {
+                "step_key": r[0],
+                "label": r[1],
+                "runs": int(r[2]),
+                "passes": int(r[3]),
+                "fails": int(r[4]),
+                "last_outcome": r[5],
+                "last_seen": r[6],
+            }
+            for r in rows
+        ]
 
     # ------------------------------------------------------------------
     # Public read API
@@ -468,7 +537,7 @@ class MemoryLayer:
                 conn.execute("PRAGMA synchronous=NORMAL;")
             except sqlite3.Error as exc:
                 logger.warning("MemoryLayer: PRAGMA setup failed (continuing): %s", exc)
-            conn.execute(_DDL)
+            conn.executescript(_DDL)
             conn.commit()
             self._conn = conn
         return self._conn

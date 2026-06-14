@@ -12,7 +12,7 @@ the handoff for continuing with Sprint 3+.
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
 | 3 — Authoring + verify depth | A1, A2, V1 | ✅ done |
 | 4 — Mobile depth | M1, M2, M4 | ✅ done |
-| 5 — Scale & governance | X1, X2, M5, X3, M6 | ⏳ |
+| 5 — Scale & governance | X1, X2, M5, X3, M6 | 🔄 in progress (X1 done) |
 
 ### What shipped (Sprint 1 & 2)
 
@@ -106,7 +106,23 @@ the handoff for continuing with Sprint 3+.
   Unit-tested (detection across Compose/Flutter/RN/SwiftUI/native hierarchies + resolver gating, no
   device); `--appium`-gated device test confirms the adapter populates `ui_framework`.
 
-### Sprint 4 complete. Next: Sprint 5 (scale & governance): X1 → X2 → M5 → X3 → M6.
+### Sprint 4 complete. Sprint 5 (scale & governance): X1 → X2 → M5 → X3 → M6.
+
+### What shipped (Sprint 5, in progress)
+
+- **X1** — flaky-test detection / quarantine. Tracks per-step pass-rate **across runs** in a new
+  `bubblegum_flaky` table in the SQLite memory layer (`record_flaky_outcome`/`flaky_rows`; counts
+  accumulate, unlike the cache's reset-on-success counters). Pure logic in `core/flaky.py`:
+  `step_identity` (stable key from NL action + screen signature), `classify` (flaky ⇔ ≥min_runs, has
+  both a pass and a fail, pass-rate < threshold — distinct from "always fails"=broken), `summarize`
+  (flaky-first ranking), and `FlakyTracker` (records one outcome per step per run, dedupes within a
+  run with fail-wins). `FlakyConfig` (`enabled`, `stability_threshold` 0.90, `min_runs` 3,
+  `quarantine`). Flaky JSON report (`reporting/flaky_report.py`, `--bubblegum-flaky-report`). JUnit
+  integration: flaky steps get `flaky`/`pass_rate`/`runs` properties + a `<system-out>` note; with
+  `--bubblegum-quarantine`, a flaky *failure* is downgraded to `<skipped>` (mark-but-not-fail) so it
+  doesn't fail the CI build. Plugin records the run at `pytest_sessionfinish` (best-effort, never
+  breaks a run). Unit-tested end-to-end (classification, DB accumulation, tracker, report, JUnit
+  badges + quarantine); X1 is CI infra with no browser-gated test.
 
 **Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
 so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform
