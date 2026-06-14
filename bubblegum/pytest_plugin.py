@@ -135,6 +135,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Launch the bubblegum_web fixture browser in headed mode.",
     )
     group.addoption(
+        "--bubblegum-update-baselines",
+        action="store_true",
+        default=False,
+        help="Visual regression: (re)write baselines instead of comparing "
+        "(verify(..., assertion_type='visual')).",
+    )
+    group.addoption(
         "--bubblegum-appium-url",
         action="store",
         default="http://localhost:4723",
@@ -158,6 +165,13 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "bubblegum: marks a test as using Bubblegum fixtures (web/mobile).",
     )
+    # Visual regression: --bubblegum-update-baselines must take effect even for
+    # tests that don't pull in the bubblegum_config fixture, so apply it to the
+    # runtime config here as well.
+    if config.getoption("--bubblegum-update-baselines"):
+        cfg = BubblegumConfig.load(config.getoption("--bubblegum-config") or None)
+        cfg.visual.update_baselines = True
+        configure_runtime(config=cfg)
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -178,6 +192,8 @@ def pytest_runtest_makereport(item: pytest.Item, call):
 def bubblegum_config(pytestconfig: pytest.Config) -> BubblegumConfig:
     config_path = pytestconfig.getoption("--bubblegum-config")
     cfg = BubblegumConfig.load(config_path) if config_path else BubblegumConfig.load()
+    if pytestconfig.getoption("--bubblegum-update-baselines"):
+        cfg.visual.update_baselines = True
     configure_runtime(config=cfg)
     return cfg
 

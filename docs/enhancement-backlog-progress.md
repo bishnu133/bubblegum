@@ -10,7 +10,7 @@ the handoff for continuing with Sprint 3+.
 | --- | --- | --- |
 | 1 — Reporting / quick wins | C0, R1, W3, R2, A3, V2 | ✅ done |
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
-| 3 — Authoring + verify depth | A1, A2, V1 | 🔄 in progress (A1 done) |
+| 3 — Authoring + verify depth | A1, A2, V1 | ✅ done |
 | 4 — Mobile depth | M1, M2, M4 | ⏳ |
 | 5 — Scale & governance | X1, X2, M5, X3, M6 | ⏳ |
 
@@ -55,6 +55,19 @@ the handoff for continuing with Sprint 3+.
   browser/driver lifecycle in `bubblegum/cli/repl.py` (`repl_loop` takes an injectable line reader so
   it is unit-tested without stdin). Real-browser test in `tests/integration/test_repl_web.py`. Mobile
   path reuses `testing/appium_driver.py`; unverified without a device (consistent with other Appium code).
+- **V1** — visual regression assertions. `verify(assertion_type="visual")` captures a screenshot and
+  diffs it against a stored baseline. Page-scoped (branches in `sdk.verify` before grounding, like
+  a11y/network) → `sdk._verify_visual`. Pure pixel math in `core/visual.py` (`baseline_name`,
+  `compare_rgba`, `evaluate_diff`, `highlight_diff_rgba` — stdlib, unit-tested with no deps); PNG
+  decode/encode isolated in `core/visual_image.py` behind Pillow (`bubblegum-ai[visual]` extra). New
+  `VisualConfig` (`baseline_dir` default `.bubblegum/baselines`, `tolerance`, `channel_threshold`,
+  `full_page`, `update_baselines`) + `--bubblegum-update-baselines` flag. First run (or update) writes
+  the baseline & passes; a regression writes a highlighted `<name>.diff.png` + `<name>.actual.png` and
+  fails. Baselines keyed by a name derived from the instruction ("header matches baseline" → `header`).
+  Adapter gains `screenshot_bytes(full_page=...)`. Real-browser test in
+  `tests/integration/test_visual_web.py`.
+
+### Sprint 3 complete — next: Sprint 4 (mobile depth): M1 → M2 → M4.
 
 ## Conventions established (follow these in Sprint 3+)
 

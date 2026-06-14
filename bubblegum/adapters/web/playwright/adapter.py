@@ -565,6 +565,14 @@ class PlaywrightAdapter(BaseAdapter):
         # axe.run() returns a Promise; Playwright awaits it and returns the value.
         return await self._page.evaluate("() => axe.run(document)")
 
+    async def screenshot_bytes(self, *, full_page: bool = False) -> bytes:
+        """Capture a PNG screenshot and return the raw bytes (no file written).
+
+        Used by the visual-regression assertion (V1), which manages its own
+        baseline/diff files under ``.bubblegum/baselines/``.
+        """
+        return await self._page.screenshot(type="png", full_page=full_page)
+
     async def screenshot(self) -> ArtifactRef:
         """
         Capture a screenshot and save it to artifacts/<timestamp>.png.

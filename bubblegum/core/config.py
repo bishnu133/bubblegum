@@ -83,6 +83,39 @@ class A11yConfig(BaseModel):
         return normalized
 
 
+class VisualConfig(BaseModel):
+    """Visual-regression settings (verify(..., assertion_type='visual'))."""
+
+    # Where baseline images (and diff/actual artifacts) live.
+    baseline_dir: str = ".bubblegum/baselines"
+    # Fraction of pixels (0.0–1.0) allowed to differ before the check fails.
+    tolerance: float = 0.001
+    # Per-channel 0–255 delta below which a pixel counts as unchanged — absorbs
+    # anti-aliasing / sub-pixel noise. 0 means any difference counts.
+    channel_threshold: int = 0
+    # Capture the full scrollable page instead of just the viewport.
+    full_page: bool = False
+    # When True, (re)write baselines instead of comparing — first-run capture or
+    # an intentional UI change. Usually toggled via --bubblegum-update-baselines.
+    update_baselines: bool = False
+
+    @field_validator("tolerance")
+    @classmethod
+    def _validate_tolerance(cls, value: float) -> float:
+        f = float(value)
+        if not (0.0 <= f <= 1.0):
+            raise ValueError("tolerance must be between 0.0 and 1.0")
+        return f
+
+    @field_validator("channel_threshold")
+    @classmethod
+    def _validate_channel_threshold(cls, value: int) -> int:
+        i = int(value)
+        if not (0 <= i <= 255):
+            raise ValueError("channel_threshold must be between 0 and 255")
+        return i
+
+
 class AIConfig(BaseModel):
     enabled:  bool        = True
     provider: str         = "anthropic"    # anthropic | openai | gemini | local
@@ -159,6 +192,7 @@ class BubblegumConfig(BaseModel):
 
     grounding: GroundingConfig = Field(default_factory=GroundingConfig)
     a11y:      A11yConfig       = Field(default_factory=A11yConfig)
+    visual:    VisualConfig     = Field(default_factory=VisualConfig)
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
@@ -280,6 +314,13 @@ a11y:
   # axe_script_path: path/to/axe.min.js   # defaults to the vendored axe-core build
   # axe_url: https://cdn.example.com/axe.min.js  # optional remote override
   impact_threshold: critical       # minor | moderate | serious | critical
+
+visual:
+  baseline_dir: .bubblegum/baselines
+  tolerance: 0.001                 # fraction of pixels (0.0–1.0) allowed to differ
+  channel_threshold: 0             # per-channel 0–255 delta ignored (anti-aliasing noise)
+  full_page: false                 # capture full scrollable page vs viewport
+  update_baselines: false          # or pass --bubblegum-update-baselines
 
 ai:
   enabled: true

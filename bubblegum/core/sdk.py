@@ -423,6 +423,11 @@ async def verify(
     if kwargs.get("assertion_type") == "network":
         return await _verify_network(adapter, channel, instruction, kwargs, options, t0)
 
+    # Visual-regression assertions are page-scoped too: capture a screenshot and
+    # diff it against a stored baseline rather than grounding a UI element.
+    if kwargs.get("assertion_type") == "visual":
+        return await _verify_visual(adapter, channel, instruction, kwargs, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -581,6 +586,148 @@ async def _verify_network(adapter, channel: str, instruction: str, kwargs: dict,
     return _page_scoped_result(
         instruction=instruction, t0=t0, passed=passed, message=actual,
         error=error, metadata=metadata, ref="network", resolver_name="network",
+    )
+
+
+def _visual_result(
+    *, instruction: str, t0: float, passed: bool, message: str,
+    error: ErrorInfo | None, metadata: dict[str, Any] | None = None,
+    artifacts: list[ArtifactRef] | None = None,
+) -> StepResult:
+    """Build a StepResult for a page-scoped visual check (synthetic 'visual' target)."""
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref="visual", confidence=1.0, resolver_name="visual", metadata=metadata or {}
+    )
+    return StepResult(
+        status="passed" if passed else "failed",
+        action=instruction,
+        target=target,
+        confidence=1.0,
+        validation=ValidationResult(passed=passed, actual_value=message, duration_ms=duration_ms),
+        artifacts=artifacts or [],
+        duration_ms=duration_ms,
+        error=error,
+    )
+
+
+async def _verify_visual(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Compare a screenshot against a stored baseline (V1).
+
+    Page-scoped: skips element grounding. First run (or ``--update-baselines``)
+    captures the baseline and passes; later runs diff against it and, on
+    failure, write a highlighted diff image plus the actual screenshot under the
+    baseline directory and attach them to the result.
+    """
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from bubblegum.core import visual as vmod
+    from bubblegum.core import visual_image as vimg
+
+    if channel != "web":
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="visual assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="assertion_type='visual' is only supported on the web channel"),
+        )
+
+    if not vimg.pillow_available():
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False, message=vimg.PILLOW_HINT,
+            error=ErrorInfo(error_type="VisualDependencyError", message=vimg.PILLOW_HINT),
+        )
+
+    cfg = _config.visual
+    full_page = bool(kwargs.get("full_page", cfg.full_page))
+    tolerance = float(kwargs.get("tolerance", cfg.tolerance))
+    channel_threshold = int(kwargs.get("channel_threshold", cfg.channel_threshold))
+    update = kwargs.get("update_baseline")
+    update = cfg.update_baselines if update is None else bool(update)
+
+    name = kwargs.get("name") or vmod.baseline_name(instruction, kwargs.get("expected_value"))
+    baseline_dir = Path(kwargs.get("baseline_dir") or cfg.baseline_dir)
+    baseline_path = baseline_dir / f"{name}.png"
+
+    try:
+        actual_png = await adapter.screenshot_bytes(full_page=full_page)
+    except Exception as exc:  # noqa: BLE001 — surface capture failures as a failed step
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"screenshot capture failed: {exc}",
+            error=ErrorInfo(error_type="VisualCaptureError", message=str(exc)),
+        )
+
+    base_meta = {"name": name, "baseline": str(baseline_path), "tolerance": tolerance}
+
+    # First-run capture or explicit update: (re)write the baseline and pass.
+    existed = baseline_path.exists()
+    if update or not existed:
+        baseline_dir.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_bytes(actual_png)
+        action = "updated" if existed else "created"
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=True,
+            message=f"baseline {action}: {baseline_path}",
+            error=None,
+            metadata={"visual": {**base_meta, "baseline_action": action}},
+        )
+
+    try:
+        base_rgba, bw, bh = vimg.load_png_rgba(baseline_path.read_bytes())
+        act_rgba, aw, ah = vimg.load_png_rgba(actual_png)
+    except Exception as exc:  # noqa: BLE001
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"could not decode images: {exc}",
+            error=ErrorInfo(error_type="VisualDecodeError", message=str(exc)),
+            metadata={"visual": base_meta},
+        )
+
+    ts = datetime.now(tz=timezone.utc).isoformat()
+
+    if (bw, bh) != (aw, ah):
+        actual_path = baseline_dir / f"{name}.actual.png"
+        actual_path.write_bytes(actual_png)
+        msg = f"size changed: baseline {bw}x{bh} vs actual {aw}x{ah}"
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False, message=msg,
+            error=ErrorInfo(error_type="VisualRegressionError", message=msg),
+            metadata={"visual": {**base_meta, "baseline_size": [bw, bh], "actual_size": [aw, ah]}},
+            artifacts=[ArtifactRef(type="screenshot", path=str(actual_path), timestamp=ts)],
+        )
+
+    diff_pixels, total, mask = vmod.compare_rgba(
+        base_rgba, act_rgba, aw, ah, channel_threshold=channel_threshold
+    )
+    passed, ratio = vmod.evaluate_diff(diff_pixels, total, tolerance)
+    meta = {**base_meta, "diff_pixels": diff_pixels, "total_pixels": total, "diff_ratio": ratio}
+
+    if passed:
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=True,
+            message=f"{ratio:.4%} of pixels differ (tolerance {tolerance:.4%})",
+            error=None, metadata={"visual": meta},
+        )
+
+    # Regression: write the highlighted diff + the actual screenshot as artifacts.
+    diff_rgba = vmod.highlight_diff_rgba(act_rgba, mask, aw, ah)
+    diff_path = vimg.save_png(diff_rgba, aw, ah, baseline_dir / f"{name}.diff.png")
+    actual_path = baseline_dir / f"{name}.actual.png"
+    actual_path.write_bytes(actual_png)
+    msg = (
+        f"{ratio:.4%} of pixels differ (tolerance {tolerance:.4%}); "
+        f"diff image: {diff_path}"
+    )
+    return _visual_result(
+        instruction=instruction, t0=t0, passed=False, message=msg,
+        error=ErrorInfo(error_type="VisualRegressionError", message=msg),
+        metadata={"visual": {**meta, "diff_image": str(diff_path), "actual_image": str(actual_path)}},
+        artifacts=[
+            ArtifactRef(type="screenshot", path=str(diff_path), timestamp=ts),
+            ArtifactRef(type="screenshot", path=str(actual_path), timestamp=ts),
+        ],
     )
 
 
