@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bubblegum-ai"
-version = "0.0.5a0"
+version = "0.0.6a0"
 description = "AI-powered recovery and natural-language execution layer for Playwright and Appium tests"
 readme = "README.md"
 license = "MIT"
@@ -24,9 +24,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/bubblegum-ai/bubblegum"
-Repository = "https://github.com/bubblegum-ai/bubblegum"
-Issues = "https://github.com/bubblegum-ai/bubblegum/issues"
+Homepage = "https://github.com/bishnu133/bubblegum"
+Repository = "https://github.com/bishnu133/bubblegum"
+Issues = "https://github.com/bishnu133/bubblegum/issues"
 
 [project.optional-dependencies]
 test = ["pytest-asyncio"]
