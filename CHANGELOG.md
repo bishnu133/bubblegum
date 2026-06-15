@@ -1,5 +1,18 @@
 # Unreleased
 
+## Release prep: bump to 0.0.6a0 + correct repository URLs
+
+- Bumped the package version `0.0.5a0` → `0.0.6a0` (`pyproject.toml`,
+  `bubblegum.__version__`, and the `test_package_metadata` assertion) to open the
+  `v0.0.6-alpha` pre-release line — the first version targeting PyPI publish and
+  the npm client per `docs/distribution-npm-and-pypi.md`.
+- Corrected the repository URLs from the placeholder `bubblegum-ai/bubblegum`
+  org to the actual `bishnu133/bubblegum` repo, in the `pyproject.toml`
+  `[project.urls]` metadata (Homepage/Repository/Issues) and the README badges,
+  so published package metadata links resolve.
+- The README "latest release" badge still points at `v0.0.5-alpha` — it is
+  updated when the `v0.0.6-alpha` GitHub release is actually cut.
+
 ## Bridge: drive the engine over JSON-RPC (npm/non-Python clients)
 
 - Added `bubblegum.bridge` — a **JSON-RPC 2.0** server that exposes the engine to
