@@ -42,7 +42,8 @@ new features ship additively at higher versions.
      "engine_version":"0.0.5a0","protocol_version":1,
      "capabilities":["session.open","session.close","act","verify","extract",
                      "recover","explain","state_probes","summary",
-                     "configure_runtime","channel.web","channel.mobile"]}}
+                     "configure_runtime","channel.web","channel.mobile",
+                     "channel.web.cdp"]}}
 ```
 
 `PROTOCOL_VERSION` is bumped **additively**: new methods / optional fields raise
@@ -70,6 +71,14 @@ every subsequent call.
 | `dry_run` | both | resolve-only, never execute |
 | `appium_url` | mobile | Appium server URL (required for mobile) |
 | `capabilities` | mobile | Appium capabilities object |
+| `cdp_endpoint` | web | attach to a **client-owned** Chromium over CDP (e.g. `http://localhost:9222`) instead of launching one — requires the `channel.web.cdp` capability |
+| `page_index` | web | which existing page to attach to when using `cdp_endpoint` (default `0`, flattened across contexts) |
+
+**Client-owned (CDP attach).** When `cdp_endpoint` is given, the engine connects
+to the caller's already-running Chromium and resolves against an existing page,
+so the engine and the caller's test share one browser. The engine never creates
+or closes the caller's browser/page; on `session.close` it only disconnects.
+Feature-detect via the `channel.web.cdp` capability.
 
 Close with `session.close` (`{"session_id": ...}` → `{"closed": true}`). The
 process tears down any still-open sessions on exit.

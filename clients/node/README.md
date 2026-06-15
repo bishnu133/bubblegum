@@ -74,6 +74,30 @@ const bg = await Bubblegum.launch({
 await bg.act("Tap Login");
 ```
 
+### Attach to your own browser (CDP, client-owned)
+
+Instead of letting the engine launch its own Chromium, point it at the browser
+**your** Playwright test already drives, over the Chrome DevTools Protocol. Launch
+Chromium with a remote-debugging port, then `attach`:
+
+```ts
+import { chromium } from "@playwright/test";
+import { Bubblegum } from "@bubblegum-ai/node";
+
+const browser = await chromium.launch({ args: ["--remote-debugging-port=9222"] });
+const page = await browser.newPage();
+await page.goto("https://example.com/login");
+
+const bg = await Bubblegum.attach({ cdpEndpoint: "http://localhost:9222" });
+await bg.act("Click Login");   // drives the page you just opened
+await bg.close();              // disconnects; your browser keeps running
+```
+
+The engine attaches to an existing page (`pageIndex`, default 0) and never
+creates or closes your browser/page. Requires the engine to advertise the
+`channel.web.cdp` capability (Bubblegum ≥ 0.0.6); `attach()` throws a clear error
+otherwise. CDP attach is Chromium-only.
+
 ## API
 
 | Method | Returns | Notes |
@@ -116,7 +140,5 @@ npm run typecheck
 
 ## Not yet (roadmap)
 
-- **Client-owned browser (CDP attach):** share your existing Playwright `Page`
-  with the engine instead of the engine launching its own. (`0.3.0`)
 - Auto-bootstrap of a managed Python venv when the engine isn't found.
 - Published to npm + dual-publish CI alongside PyPI.

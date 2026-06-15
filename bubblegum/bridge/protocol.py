@@ -46,6 +46,7 @@ CAPABILITIES: tuple[str, ...] = (
     "configure_runtime",
     "channel.web",
     "channel.mobile",
+    "channel.web.cdp",   # attach to a client-owned Chromium over CDP (session.open cdp_endpoint)
 )
 
 # --- JSON-RPC 2.0 error codes -------------------------------------------------

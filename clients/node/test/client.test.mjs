@@ -128,6 +128,34 @@ test("state probes unwrap the {value} envelope", async () => {
   assert.equal(await bg.selectedValue("Country"), "FR");
 });
 
+test("attach() sends cdp_endpoint + page_index when the engine supports it", async () => {
+  let openParams;
+  const m = makeMock({
+    handshake: () => ({ engine_version: "0.0.6a0", protocol_version: 1, capabilities: ["act", "channel.web.cdp"] }),
+    "session.open": (p) => {
+      openParams = p;
+      return { session_id: "sid-cdp" };
+    },
+    act: (p) => ({ status: "passed", action: p.instruction, target: null, confidence: 1, duration_ms: 1 }),
+  });
+  const bg = await Bubblegum.attach({ transport: m.transport, cdpEndpoint: "http://localhost:9222", pageIndex: 1 });
+  await bg.act("Click Login");
+  assert.equal(openParams.channel, "web");
+  assert.equal(openParams.cdp_endpoint, "http://localhost:9222");
+  assert.equal(openParams.page_index, 1);
+});
+
+test("attach() rejects when the engine lacks the channel.web.cdp capability", async () => {
+  const m = makeMock({
+    handshake: () => ({ engine_version: "0.0.5a0", protocol_version: 1, capabilities: ["act"] }), // no channel.web.cdp
+    "session.open": () => ({ session_id: "x" }),
+  });
+  await assert.rejects(
+    Bubblegum.attach({ transport: m.transport, cdpEndpoint: "http://localhost:9222" }),
+    (e) => e instanceof BridgeError && /CDP attach/.test(e.message),
+  );
+});
+
 test("close() closes the session then the bridge", async () => {
   const m = makeMock({
     handshake: HANDSHAKE,
