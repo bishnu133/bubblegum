@@ -1,5 +1,24 @@
 # Unreleased
 
+## Client-owned browser: CDP attach (0.3.0 slice)
+
+- The bridge can now attach the engine to a **caller-owned Chromium over CDP**
+  instead of launching its own, so a TS/JS Playwright test and the engine share
+  one browser. `session.open` gains `cdp_endpoint` (e.g. `http://localhost:9222`)
+  and `page_index`; the engine connects via `connect_over_cdp`, resolves against
+  an existing page, and on close only **disconnects** — it never creates or
+  closes the caller's browser/page.
+- Advertised as a new capability `channel.web.cdp` (additive — `PROTOCOL_VERSION`
+  stays `1`; older clients are unaffected). `select_cdp_page` flattens pages
+  across contexts and raises clear errors for an empty endpoint / out-of-range
+  index. Coverage: `tests/unit/test_bridge_cdp.py` (fake browser, no real CDP).
+- `@bubblegum-ai/node`: new `Bubblegum.attach({ cdpEndpoint, pageIndex? })` (and
+  `cdpEndpoint`/`pageIndex` on `launch`) that feature-detects `channel.web.cdp`
+  and throws a clear error against an engine too old to support it. Client tests
+  cover the present/absent-capability paths.
+- Docs: `docs/bridge-protocol.md` (cdp params + capability) and the client README
+  (CDP attach example) updated.
+
 ## npm client scaffold: @bubblegum-ai/node (0.2.0 slice)
 
 - Added `clients/node/` — a Node/TypeScript client (`@bubblegum-ai/node`) that

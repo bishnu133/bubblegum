@@ -34,12 +34,23 @@ class OpenSpec:
     dry_run: bool = False
     appium_url: str | None = None
     capabilities: dict[str, Any] | None = None
+    # Web client-owned mode: attach to an existing Chromium over CDP instead of
+    # launching one. ``cdp_endpoint`` is the caller's CDP URL (e.g.
+    # "http://localhost:9222"); ``page_index`` selects which existing page.
+    cdp_endpoint: str | None = None
+    page_index: int = 0
 
     @classmethod
     def from_params(cls, params: dict[str, Any]) -> "OpenSpec":
         channel = params.get("channel", "web")
         if channel not in ("web", "mobile"):
             raise p.BridgeError(p.INVALID_PARAMS, f"unknown channel: {channel!r}")
+        cdp_endpoint = params.get("cdp_endpoint")
+        if cdp_endpoint is not None and channel != "web":
+            raise p.BridgeError(p.INVALID_PARAMS, "cdp_endpoint is only valid for the web channel")
+        page_index = params.get("page_index", 0)
+        if not isinstance(page_index, int) or isinstance(page_index, bool) or page_index < 0:
+            raise p.BridgeError(p.INVALID_PARAMS, "page_index must be a non-negative integer")
         return cls(
             channel=channel,
             url=params.get("url"),
@@ -47,6 +58,8 @@ class OpenSpec:
             dry_run=bool(params.get("dry_run", False)),
             appium_url=params.get("appium_url"),
             capabilities=params.get("capabilities"),
+            cdp_endpoint=cdp_endpoint,
+            page_index=page_index,
         )
 
 
@@ -101,6 +114,25 @@ class SessionManager:
                 pass
 
 
+def select_cdp_page(browser: Any, page_index: int):
+    """Pick an existing page from a CDP-attached browser, flattened across contexts.
+
+    Raises a clear bridge error when the endpoint exposes no page, or when
+    ``page_index`` is out of range — rather than attaching to nothing.
+    """
+    pages = [pg for ctx in browser.contexts for pg in ctx.pages]
+    if not pages:
+        raise p.BridgeError(
+            p.UNSUPPORTED, "no existing page on the CDP endpoint to attach to"
+        )
+    if not (0 <= page_index < len(pages)):
+        raise p.BridgeError(
+            p.INVALID_PARAMS,
+            f"page_index {page_index} out of range (endpoint has {len(pages)} page(s))",
+        )
+    return pages[page_index]
+
+
 async def default_session_factory(spec: OpenSpec) -> OpenedSession:
     """Launch a real web/mobile session, mirroring the ``repl`` launchers.
 
@@ -120,9 +152,16 @@ async def default_session_factory(spec: OpenSpec) -> OpenedSession:
             ) from exc
 
         pw = await async_playwright().start()
-        browser = await pw.chromium.launch(headless=spec.headless)
-        context = await browser.new_context()
-        page = await context.new_page()
+        if spec.cdp_endpoint:
+            # Client-owned browser: attach to the Chromium the caller already
+            # drives (e.g. their Playwright test) and resolve against an existing
+            # page. We never create or close the caller's browser/page.
+            browser = await pw.chromium.connect_over_cdp(spec.cdp_endpoint)
+            page = select_cdp_page(browser, spec.page_index)
+        else:
+            browser = await pw.chromium.launch(headless=spec.headless)
+            context = await browser.new_context()
+            page = await context.new_page()
         if spec.url:
             await page.goto(spec.url)
         session = await BubblegumSession.web(page, dry_run=spec.dry_run).__aenter__()
@@ -131,6 +170,8 @@ async def default_session_factory(spec: OpenSpec) -> OpenedSession:
             try:
                 await session.__aexit__(None, None, None)
             finally:
+                # For a CDP-attached browser, browser.close() only disconnects our
+                # Playwright connection — the caller's browser keeps running.
                 await browser.close()
                 await pw.stop()
 

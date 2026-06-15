@@ -1,4 +1,6 @@
 import { BridgeClient, BridgeClientOptions } from "./client.js";
+import { BridgeError } from "./errors.js";
+import { ErrorCodes } from "./protocol.js";
 import { SessionSummary, StepOptions, StepResult } from "./types.js";
 
 export type Channel = "web" | "mobile";
@@ -16,6 +18,20 @@ export interface LaunchOptions extends BridgeClientOptions {
   appiumUrl?: string;
   /** Mobile: Appium capabilities. */
   capabilities?: Record<string, unknown>;
+  /**
+   * Web client-owned mode: attach the engine to an existing Chromium over CDP
+   * (e.g. `http://localhost:9222`) instead of launching one, so the engine
+   * drives the same browser your test already controls. Requires the engine to
+   * advertise the `channel.web.cdp` capability.
+   */
+  cdpEndpoint?: string;
+  /** Which existing page to attach to when using `cdpEndpoint` (default 0). */
+  pageIndex?: number;
+}
+
+/** Options for {@link Bubblegum.attach} — `cdpEndpoint` is required. */
+export interface AttachOptions extends Omit<LaunchOptions, "channel"> {
+  cdpEndpoint: string;
 }
 
 export interface RecoverArgs {
@@ -47,11 +63,17 @@ export class Bubblegum {
     private readonly sessionId: string,
   ) {}
 
-  /** Spawn the bridge, handshake, and open an engine-owned session. */
+  /** Spawn the bridge, handshake, and open a session (engine-owned by default). */
   static async launch(opts: LaunchOptions = {}): Promise<Bubblegum> {
     const client = new BridgeClient(opts);
     try {
       await client.handshake();
+      if (opts.cdpEndpoint && !client.hasCapability("channel.web.cdp")) {
+        throw new BridgeError(
+          ErrorCodes.Unsupported,
+          "this engine does not support CDP attach (channel.web.cdp); upgrade bubblegum-ai",
+        );
+      }
       const { session_id } = await client.request<{ session_id: string }>("session.open", {
         channel: opts.channel ?? "web",
         url: opts.url,
@@ -59,12 +81,29 @@ export class Bubblegum {
         dry_run: opts.dryRun ?? false,
         appium_url: opts.appiumUrl,
         capabilities: opts.capabilities,
+        cdp_endpoint: opts.cdpEndpoint,
+        page_index: opts.pageIndex,
       });
       return new Bubblegum(client, session_id);
     } catch (err) {
       await client.close();
       throw err;
     }
+  }
+
+  /**
+   * Attach the engine to a browser your test already controls, over CDP
+   * (client-owned mode). Launch your Chromium with a remote-debugging port and
+   * pass its endpoint:
+   *
+   * ```ts
+   * const browser = await chromium.launch({ args: ["--remote-debugging-port=9222"] });
+   * const bg = await Bubblegum.attach({ cdpEndpoint: "http://localhost:9222" });
+   * await bg.act("Click Login"); // drives the page your test opened
+   * ```
+   */
+  static attach(opts: AttachOptions): Promise<Bubblegum> {
+    return Bubblegum.launch({ ...opts, channel: "web" });
   }
 
   /** The bridge client (for advanced use / capability checks). */
