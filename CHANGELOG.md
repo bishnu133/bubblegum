@@ -21,6 +21,27 @@
   device (`tests/unit/test_bridge.py`, 14 tests). Reference: `docs/bridge-protocol.md`.
 - Additive only: no changes to existing SDK/schema/public API.
 
+## Documentation: split how-to guides + npm/PyPI distribution strategy
+
+- Added `docs/HOW_TO_USE_WEB.md` and `docs/HOW_TO_USE_MOBILE.md` — two focused,
+  self-contained, copy-paste how-to guides (split out of the combined
+  `USER_GUIDE.md`) so web (Playwright) and mobile (Appium) adopters each get a
+  channel-specific reference: install, the four primitives, `BubblegumSession`,
+  the NL grammar, every action type, verify/extract, channel-specific features
+  (web: iframes/nav-wait/a11y/network asserts; mobile: system dialogs, WebView
+  switching, network conditions, device cloud), self-healing, pytest, and the
+  full config reference.
+- Added `docs/distribution-npm-and-pypi.md` — design/strategy for shipping
+  Bubblegum on **both PyPI and npm**. Recommends a single Python engine exposed
+  over a thin JSON-RPC **bridge** with a typed Node/TypeScript client
+  (`@bubblegum-ai/node`), rather than a second TS engine. Covers the bridge
+  module + `bubblegum bridge` CLI, engine-owned vs client-owned (CDP attach)
+  browser models, a SemVer + `PROTOCOL_VERSION` (additive-first, capability-
+  negotiated) versioning scheme so newer engines keep serving older clients, a
+  forward-looking release ladder to a `1.0.0` stable contract, and dual-publish
+  CI mechanics. Design-only — no engine code changes.
+- README now links the two how-to guides and the distribution strategy.
+
 ## Documentation: end-to-end user guide
 
 - Added `docs/USER_GUIDE.md` — a single, example-driven reference covering every
