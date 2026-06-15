@@ -117,7 +117,7 @@ class ActionPlan(BaseModel):
     ResolvedTarget is added later by the GroundingEngine.
     """
 
-    action_type:  Literal["click", "type", "select", "scroll", "tap", "swipe", "verify", "extract", "upload", "check", "uncheck", "set"]
+    action_type:  Literal["click", "type", "select", "scroll", "tap", "swipe", "verify", "extract", "upload", "check", "uncheck", "set", "long_press", "double_tap", "pinch", "zoom", "drag"]
     target_hint:  str | None = None   # natural language hint to the grounding engine
     input_value:  str | None = None   # value to type / select
     options:      ExecutionOptions = Field(default_factory=ExecutionOptions)

@@ -42,6 +42,7 @@ import json
 from bubblegum.adapters.base import BaseAdapter
 from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.mobile.framework_detector import detect_mobile_surface
+from bubblegum.core.mobile.ui_framework_detector import detect_ui_framework
 from bubblegum.core.mobile.system_dialog import detect_system_dialog
 from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
 from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
@@ -79,6 +80,26 @@ _TRANSIENT_ERROR_MARKERS = (
 
 _MAX_RETRY_CAP = 1
 _RETRY_DELAY_SECONDS = 0.05
+
+# Default press-and-hold duration for the long_press gesture (M1).
+_LONG_PRESS_DEFAULT_MS = 1_000
+
+# Default seconds the app stays backgrounded for "background app" (M2).
+_BACKGROUND_APP_DEFAULT_S = 3
+
+
+def _xpath_literal(value: str) -> str:
+    """Quote a string for safe embedding in an XPath expression.
+
+    Uses concat() when the value contains both quote characters; otherwise wraps
+    in whichever quote it does not contain.
+    """
+    if '"' not in value:
+        return f'"{value}"'
+    if "'" not in value:
+        return f"'{value}'"
+    parts = value.split('"')
+    return "concat(" + ", '\"', ".join(f'"{p}"' for p in parts) + ")"
 
 
 def _is_transient_execution_error(exc: Exception) -> bool:
@@ -275,6 +296,13 @@ class AppiumAdapter(BaseAdapter):
             platform=self.platform,
             capabilities=self._safe_capabilities(),
             app_state=app_state,
+            hierarchy_xml=hierarchy_xml,
+        )
+        # M4: classify the app's UI toolkit (Compose/Flutter/RN/SwiftUI vs.
+        # native) so the hierarchy resolver can tune matching per framework.
+        app_state["ui_framework"] = detect_ui_framework(
+            platform=self.platform,
+            capabilities=self._safe_capabilities(),
             hierarchy_xml=hierarchy_xml,
         )
         app_state["webview_switch_diagnostics"] = build_webview_switch_diagnostics(
@@ -500,6 +528,21 @@ class AppiumAdapter(BaseAdapter):
         elif plan.action_type == "swipe":
             direction = (plan.input_value or "up").lower()
             self._swipe_from_element(element, direction)
+
+        elif plan.action_type == "long_press":
+            self._long_press(element, plan)
+
+        elif plan.action_type == "double_tap":
+            self._double_tap(element)
+
+        elif plan.action_type == "pinch":
+            self._pinch(element, zoom_in=False)
+
+        elif plan.action_type == "zoom":
+            self._pinch(element, zoom_in=True)
+
+        elif plan.action_type == "drag":
+            self._drag(element, plan)
 
         else:
             logger.warning(
@@ -1028,6 +1071,176 @@ class AppiumAdapter(BaseAdapter):
             self._driver.swipe(start_x, start_y, end_x, end_y, duration=500)
         except Exception as exc:
             logger.warning("swipe_from_element failed direction=%s: %s", direction, exc)
+
+    # ------------------------------------------------------------------
+    # Mobile gesture vocabulary (M1)
+    # ------------------------------------------------------------------
+
+    def _is_ios(self) -> bool:
+        return str(self.platform).lower().startswith("ios")
+
+    def _gesture_duration_ms(self, plan: ActionPlan, default_ms: int) -> int:
+        """Optional duration override via a numeric input_value (milliseconds)."""
+        try:
+            value = int(str(plan.input_value).strip())
+            return value if value > 0 else default_ms
+        except (TypeError, ValueError):
+            return default_ms
+
+    def _long_press(self, element, plan: ActionPlan) -> None:
+        """Press and hold an element to open its context menu.
+
+        Android → ``mobile: longClickGesture`` (duration in ms); iOS →
+        ``mobile: touchAndHold`` (duration in seconds). Default hold ≈ 1 s.
+        """
+        duration_ms = self._gesture_duration_ms(plan, _LONG_PRESS_DEFAULT_MS)
+        if self._is_ios():
+            self._driver.execute_script(
+                "mobile: touchAndHold", {"elementId": element.id, "duration": duration_ms / 1000.0}
+            )
+        else:
+            self._driver.execute_script(
+                "mobile: longClickGesture", {"elementId": element.id, "duration": duration_ms}
+            )
+
+    def _double_tap(self, element) -> None:
+        """Double-tap an element. Android → ``mobile: doubleClickGesture``;
+        iOS → ``mobile: doubleTap``."""
+        if self._is_ios():
+            self._driver.execute_script("mobile: doubleTap", {"elementId": element.id})
+        else:
+            self._driver.execute_script("mobile: doubleClickGesture", {"elementId": element.id})
+
+    def _pinch(self, element, *, zoom_in: bool) -> None:
+        """Pinch-to-zoom on an element.
+
+        ``zoom_in`` True spreads (zoom in), False pinches closed (zoom out).
+        Android → ``mobile: pinchOpenGesture`` / ``pinchCloseGesture`` (percent);
+        iOS → ``mobile: pinch`` (scale >1 to zoom in, <1 to zoom out).
+        """
+        if self._is_ios():
+            scale = 2.0 if zoom_in else 0.5
+            self._driver.execute_script(
+                "mobile: pinch", {"elementId": element.id, "scale": scale, "velocity": 1.0}
+            )
+        else:
+            name = "mobile: pinchOpenGesture" if zoom_in else "mobile: pinchCloseGesture"
+            self._driver.execute_script(name, {"elementId": element.id, "percent": 0.75})
+
+    def _drag(self, element, plan: ActionPlan) -> None:
+        """Drag an element by a directional offset from its centre.
+
+        Direction comes from ``input_value`` (up/down/left/right, default up).
+        Android → ``mobile: dragGesture`` (elementId + endX/endY); iOS →
+        ``mobile: dragFromToForDuration`` (from/to coordinates).
+        """
+        location = element.location
+        size = element.size
+        start_x = location["x"] + size["width"] // 2
+        start_y = location["y"] + size["height"] // 2
+
+        direction = (plan.input_value or "up").lower()
+        offsets = {"up": (0, -300), "down": (0, 300), "left": (-300, 0), "right": (300, 0)}
+        dx, dy = offsets.get(direction, (0, -300))
+        end_x = max(0, start_x + dx)
+        end_y = max(0, start_y + dy)
+
+        if self._is_ios():
+            self._driver.execute_script(
+                "mobile: dragFromToForDuration",
+                {"duration": 1.0, "fromX": start_x, "fromY": start_y, "toX": end_x, "toY": end_y},
+            )
+        else:
+            self._driver.execute_script(
+                "mobile: dragGesture",
+                {"elementId": element.id, "endX": end_x, "endY": end_y},
+            )
+
+    # ------------------------------------------------------------------
+    # Mobile system / hardware actions (M2)
+    # ------------------------------------------------------------------
+
+    async def execute_system_action(self, kind: str, arg: dict | None = None) -> dict:
+        """Perform a device-level system action (no element grounding).
+
+        kind: press_back | rotate | hide_keyboard | deep_link | background_app |
+              accept_biometric | open_notification. Returns a small dict with a
+              human-readable ``detail`` (and any extra metadata). Driver/SDK
+              errors propagate to the caller (sdk.act turns them into a failed
+              step).
+        """
+        arg = arg or {}
+
+        if kind == "press_back":
+            if self._is_ios():
+                self._driver.back()
+            else:
+                self._driver.press_keycode(4)  # Android KEYCODE_BACK
+            return {"detail": "pressed back"}
+
+        if kind == "rotate":
+            orientation = str(arg.get("orientation") or "landscape").upper()
+            self._driver.orientation = orientation
+            return {"detail": f"orientation set to {orientation}", "orientation": orientation}
+
+        if kind == "hide_keyboard":
+            self._driver.hide_keyboard()
+            return {"detail": "keyboard hidden"}
+
+        if kind == "deep_link":
+            url = arg.get("url")
+            if not url:
+                raise ValueError("deep_link requires a url")
+            self._driver.get(url)
+            return {"detail": f"opened deep link {url}", "url": url}
+
+        if kind == "background_app":
+            seconds = int(arg.get("seconds", _BACKGROUND_APP_DEFAULT_S))
+            self._driver.background_app(seconds)
+            return {"detail": f"backgrounded app for {seconds}s", "seconds": seconds}
+
+        if kind == "accept_biometric":
+            if self._is_ios():
+                self._driver.execute_script(
+                    "mobile: sendBiometricMatch", {"type": "touchId", "match": True}
+                )
+            else:
+                finger_id = int(arg.get("finger_id", 1))
+                self._driver.execute_script("mobile: fingerprint", {"fingerprintId": finger_id})
+            return {"detail": "biometric accepted"}
+
+        if kind == "open_notification":
+            self._driver.open_notifications()
+            text = arg.get("text")
+            tapped = False
+            if text:
+                tapped = self._tap_notification_by_text(str(text))
+            detail = f"opened notifications" + (f", tapped {text!r}" if tapped else "")
+            return {"detail": detail, "text": text, "tapped": tapped}
+
+        raise ValueError(f"unknown system action: {kind}")
+
+    def _tap_notification_by_text(self, text: str) -> bool:
+        """Best-effort: tap a notification whose text contains ``text`` (Android).
+
+        Returns True when a matching node was clicked. Swallows lookup errors so
+        opening the shade still succeeds even if the specific item is absent.
+        """
+        try:
+            from appium.webdriver.common.appiumby import AppiumBy  # type: ignore
+            by = AppiumBy.XPATH
+        except ImportError:
+            by = "xpath"
+        xpath = f"//*[contains(@text, {_xpath_literal(text)})]"
+        try:
+            element = self._driver.find_element(by, xpath)
+        except Exception:
+            return False
+        try:
+            element.click()
+            return True
+        except Exception:
+            return False
 
     def _run_assertion(self, plan: ValidationPlan) -> tuple[bool, str]:
         """Run the appropriate Appium assertion. Returns (passed, actual_value)."""

@@ -104,16 +104,54 @@ def _add_artifact_properties(testcase: ET.Element, result: StepResult) -> None:
         )
 
 
+def _flaky_for(result: StepResult, flaky_index: dict | None):
+    """Return the FlakyRecord for a step if it is currently classified flaky."""
+    if not flaky_index:
+        return None
+    from bubblegum.core.flaky import step_identity
+
+    key, _label = step_identity(result)
+    return flaky_index.get(key)
+
+
+def _flaky_note(record) -> str:
+    pct = f"{record.pass_rate * 100:.0f}%"
+    return (
+        f"FLAKY: historical pass rate {pct} over {record.runs} run(s) "
+        f"({record.passes} passed, {record.fails} failed)."
+    )
+
+
 def build_junit_tree(
     results: Sequence[StepResult],
     *,
     suite_name: str = "bubblegum",
     classname: str = "bubblegum",
+    flaky_index: dict | None = None,
+    quarantine: bool = False,
 ) -> ET.ElementTree:
-    """Build the JUnit XML ElementTree for a sequence of StepResult records."""
+    """Build the JUnit XML ElementTree for a sequence of StepResult records.
+
+    ``flaky_index`` maps a step key (``flaky.step_identity``) → FlakyRecord for
+    steps classified flaky (X1); matching steps get ``flaky`` / ``pass_rate``
+    properties and a ``<system-out>`` note. When ``quarantine`` is True, a
+    *failed* flaky step is downgraded to ``<skipped>`` (mark-but-not-fail) so it
+    does not fail the CI build.
+    """
+    # Pre-compute each step's flaky record + effective status (quarantine may
+    # downgrade a flaky failure to skipped) so the suite tallies stay correct.
+    flaky_records = [_flaky_for(r, flaky_index) for r in results]
+    quarantined = [
+        bool(quarantine and fr is not None and r.status == "failed")
+        for r, fr in zip(results, flaky_records)
+    ]
     total = len(results)
-    failures = sum(1 for r in results if r.status == "failed")
-    skipped = sum(1 for r in results if r.status in _SKIP_STATUSES)
+    failures = sum(
+        1 for r, q in zip(results, quarantined) if r.status == "failed" and not q
+    )
+    skipped = sum(
+        1 for r, q in zip(results, quarantined) if r.status in _SKIP_STATUSES or q
+    )
     total_time = _seconds(sum(int(r.duration_ms or 0) for r in results))
     timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -154,7 +192,20 @@ def build_junit_tree(
             },
         )
 
-        if result.status == "failed":
+        flaky_record = flaky_records[index]
+        is_quarantined = quarantined[index]
+        out_messages: list[str] = []
+
+        if is_quarantined:
+            # Flaky failure, quarantined: surface as skipped (does not fail CI).
+            _, body = _failure_text(result)
+            ET.SubElement(
+                testcase,
+                "skipped",
+                {"message": f"quarantined flaky step — {_flaky_note(flaky_record)}"},
+            )
+            out_messages.append(f"Quarantined flaky failure. {body}")
+        elif result.status == "failed":
             message, body = _failure_text(result)
             failure = ET.SubElement(
                 testcase,
@@ -169,10 +220,20 @@ def build_junit_tree(
             reason = "dry-run (resolve only, not executed)" if result.status == "dry_run" else "skipped"
             ET.SubElement(testcase, "skipped", {"message": reason})
 
-        system_out = _healing_system_out(result)
-        if system_out:
+        # X1: flaky badge — properties + a system-out note for any flaky step.
+        if flaky_record is not None:
+            props = ET.SubElement(testcase, "properties")
+            ET.SubElement(props, "property", {"name": "flaky", "value": "true"})
+            ET.SubElement(props, "property", {"name": "pass_rate", "value": f"{flaky_record.pass_rate:.4f}"})
+            ET.SubElement(props, "property", {"name": "runs", "value": str(flaky_record.runs)})
+            out_messages.append(_flaky_note(flaky_record))
+
+        healing_out = _healing_system_out(result)
+        if healing_out:
+            out_messages.append(healing_out)
+        if out_messages:
             out_el = ET.SubElement(testcase, "system-out")
-            out_el.text = system_out
+            out_el.text = " ".join(out_messages)
 
         _add_artifact_properties(testcase, result)
 
@@ -185,10 +246,18 @@ def write_junit_report(
     *,
     suite_name: str = "bubblegum",
     classname: str = "bubblegum",
+    flaky_index: dict | None = None,
+    quarantine: bool = False,
 ) -> Path:
     """Write a JUnit XML report to disk for a sequence of StepResult records."""
     out_path = Path(path)
-    tree = build_junit_tree(results, suite_name=suite_name, classname=classname)
+    tree = build_junit_tree(
+        results,
+        suite_name=suite_name,
+        classname=classname,
+        flaky_index=flaky_index,
+        quarantine=quarantine,
+    )
     ET.indent(tree, space="  ")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tree.write(out_path, encoding="utf-8", xml_declaration=True)

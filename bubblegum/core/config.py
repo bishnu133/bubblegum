@@ -33,6 +33,9 @@ class GroundingConfig(BaseModel):
     ambiguous_gap:      float = 0.05
     reject_threshold:   float = 0.50
     max_cost_level:     str   = "medium"   # "low" | "medium" | "high"
+    # X2: per-run hard cost ceiling (USD) for Tier-3 AI calls. 0 == disabled.
+    # Once the run's estimated LLM spend reaches this, Tier 3 is hard-stopped.
+    max_run_cost_usd:   float = 0.0
     enable_vision:      bool  = False
     enable_ocr:         bool  = True
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
@@ -81,6 +84,81 @@ class A11yConfig(BaseModel):
         if normalized not in allowed:
             raise ValueError(f"impact_threshold must be one of {sorted(allowed)}")
         return normalized
+
+
+class VisualConfig(BaseModel):
+    """Visual-regression settings (verify(..., assertion_type='visual'))."""
+
+    # Where baseline images (and diff/actual artifacts) live.
+    baseline_dir: str = ".bubblegum/baselines"
+    # Fraction of pixels (0.0–1.0) allowed to differ before the check fails.
+    tolerance: float = 0.001
+    # Per-channel 0–255 delta below which a pixel counts as unchanged — absorbs
+    # anti-aliasing / sub-pixel noise. 0 means any difference counts.
+    channel_threshold: int = 0
+    # Capture the full scrollable page instead of just the viewport.
+    full_page: bool = False
+    # When True, (re)write baselines instead of comparing — first-run capture or
+    # an intentional UI change. Usually toggled via --bubblegum-update-baselines.
+    update_baselines: bool = False
+
+    @field_validator("tolerance")
+    @classmethod
+    def _validate_tolerance(cls, value: float) -> float:
+        f = float(value)
+        if not (0.0 <= f <= 1.0):
+            raise ValueError("tolerance must be between 0.0 and 1.0")
+        return f
+
+    @field_validator("channel_threshold")
+    @classmethod
+    def _validate_channel_threshold(cls, value: int) -> int:
+        i = int(value)
+        if not (0 <= i <= 255):
+            raise ValueError("channel_threshold must be between 0 and 255")
+        return i
+
+
+class MobileConfig(BaseModel):
+    """Mobile channel behavior (M2)."""
+
+    # Best-effort: hide the soft keyboard before a tap/click. Off by default;
+    # enable when keyboard occlusion makes taps below the keyboard flaky. The
+    # soft keyboard is a top Appium flakiness source (IME state).
+    auto_hide_keyboard: bool = False
+    # Default seconds to keep the app backgrounded for "background app" before
+    # it auto-foregrounds.
+    background_app_seconds: int = 3
+
+
+class FlakyConfig(BaseModel):
+    """Flaky-test detection / quarantine settings (X1)."""
+
+    enabled: bool = True
+    # A step is flagged flaky when its historical pass-rate is below this AND it
+    # has both passed and failed at least once (intermittent, not just broken).
+    stability_threshold: float = 0.90
+    # Minimum observed runs before a step can be judged flaky (avoids noise).
+    min_runs: int = 3
+    # When True, a flaky step's failure is reported but does not fail the build
+    # (mark-but-not-fail). Usually toggled via --bubblegum-quarantine.
+    quarantine: bool = False
+
+    @field_validator("stability_threshold")
+    @classmethod
+    def _validate_stability(cls, value: float) -> float:
+        f = float(value)
+        if not (0.0 <= f <= 1.0):
+            raise ValueError("stability_threshold must be between 0.0 and 1.0")
+        return f
+
+    @field_validator("min_runs")
+    @classmethod
+    def _validate_min_runs(cls, value: int) -> int:
+        i = int(value)
+        if i < 1:
+            raise ValueError("min_runs must be >= 1")
+        return i
 
 
 class AIConfig(BaseModel):
@@ -159,6 +237,9 @@ class BubblegumConfig(BaseModel):
 
     grounding: GroundingConfig = Field(default_factory=GroundingConfig)
     a11y:      A11yConfig       = Field(default_factory=A11yConfig)
+    visual:    VisualConfig     = Field(default_factory=VisualConfig)
+    mobile:    MobileConfig      = Field(default_factory=MobileConfig)
+    flaky:     FlakyConfig       = Field(default_factory=FlakyConfig)
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
@@ -264,6 +345,7 @@ grounding:
   ambiguous_gap: 0.05
   reject_threshold: 0.50
   max_cost_level: medium   # low | medium | high
+  max_run_cost_usd: 0.0    # per-run Tier-3 cost ceiling in USD (0 = disabled)
   enable_vision: false
   enable_ocr: true
   ai_first: false          # true = try AI (vision/LLM) before deterministic resolvers
@@ -280,6 +362,23 @@ a11y:
   # axe_script_path: path/to/axe.min.js   # defaults to the vendored axe-core build
   # axe_url: https://cdn.example.com/axe.min.js  # optional remote override
   impact_threshold: critical       # minor | moderate | serious | critical
+
+visual:
+  baseline_dir: .bubblegum/baselines
+  tolerance: 0.001                 # fraction of pixels (0.0–1.0) allowed to differ
+  channel_threshold: 0             # per-channel 0–255 delta ignored (anti-aliasing noise)
+  full_page: false                 # capture full scrollable page vs viewport
+  update_baselines: false          # or pass --bubblegum-update-baselines
+
+mobile:
+  auto_hide_keyboard: false        # hide the soft keyboard before a tap/click
+  background_app_seconds: 3        # default duration for "background app"
+
+flaky:
+  enabled: true
+  stability_threshold: 0.90        # pass-rate below this (with ≥1 pass and ≥1 fail) → flaky
+  min_runs: 3                      # minimum runs before judging flakiness
+  quarantine: false                # or pass --bubblegum-quarantine (mark-but-not-fail)
 
 ai:
   enabled: true

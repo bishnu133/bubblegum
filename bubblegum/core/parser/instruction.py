@@ -69,6 +69,56 @@ _TRAILING_WIDGET_SUFFIX_RE = re.compile(
 )
 
 
+# Mobile gesture vocabulary (M1). Each rule is anchored at the start of the
+# instruction so a gesture verb only matches when it leads the phrase — a
+# button literally named "Long press" is still clicked via "Click ...". These
+# verbs are mobile-specific (long press / double tap / pinch / zoom / drag), so
+# matching them globally does not change web phrasing. "double click" is
+# intentionally excluded so a web double-click intent is not hijacked.
+_GESTURE_RULES: list[tuple[str, "re.Pattern[str]"]] = [
+    ("long_press", re.compile(
+        r"^(?:long[\s-]?press|press\s+and\s+hold|tap\s+and\s+hold|hold)\s+"
+        r"(?:down\s+)?(?:on\s+)?(?:the\s+)?(.+)$", re.IGNORECASE)),
+    ("double_tap", re.compile(
+        r"^double[\s-]?tap\s+(?:on\s+)?(?:the\s+)?(.+)$", re.IGNORECASE)),
+    ("zoom", re.compile(
+        r"^(?:zoom\s+in|spread|pinch\s+open)\s+(?:on\s+|into\s+)?(?:the\s+)?(.+)$",
+        re.IGNORECASE)),
+    ("pinch", re.compile(
+        r"^(?:zoom\s+out|pinch(?:\s+(?:in|close))?)\s+(?:on\s+)?(?:the\s+)?(.+)$",
+        re.IGNORECASE)),
+    ("drag", re.compile(r"^drag\s+(?:the\s+)?(.+)$", re.IGNORECASE)),
+]
+
+_DRAG_DIRECTION_RE = re.compile(r"\b(up|down|left|right)\b\s*$", re.IGNORECASE)
+_DRAG_TO_TAIL_RE = re.compile(r"\b(?:to(?:wards?)?(?:\s+the)?)\s*$", re.IGNORECASE)
+
+
+def match_gesture(instruction: str) -> tuple[str, str | None, str | None] | None:
+    """Detect a mobile gesture verb at the start of an instruction.
+
+    Returns ``(action_type, target_phrase, input_value)`` when a gesture leads
+    the phrase, else None. ``input_value`` carries a drag direction
+    (up/down/left/right) when present; it is None for the other gestures.
+    """
+    text = (instruction or "").strip()
+    for action, pattern in _GESTURE_RULES:
+        m = pattern.match(text)
+        if not m:
+            continue
+        raw_target = m.group(1).strip()
+        value: str | None = None
+        if action == "drag":
+            dir_match = _DRAG_DIRECTION_RE.search(raw_target)
+            if dir_match:
+                value = dir_match.group(1).lower()
+                raw_target = raw_target[: dir_match.start()].strip()
+                raw_target = _DRAG_TO_TAIL_RE.sub("", raw_target).strip()
+        target = _strip_widget_suffix(raw_target)
+        return action, target, value
+    return None
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -92,10 +142,21 @@ def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
     grammar is ambiguous so the SDK can optionally escalate to an LLM parser.
     """
     kwargs = kwargs or {}
-    action = infer_action_type(instruction, kwargs)
     text = instruction.strip()
 
     explicit_value = kwargs.get("input_value", kwargs.get("value"))
+
+    # Mobile gesture verbs (long press / double tap / pinch / zoom / drag) take
+    # precedence when the caller hasn't pinned action_type. A caller-supplied
+    # value still wins over a parsed drag direction.
+    if "action_type" not in kwargs:
+        gesture = match_gesture(text)
+        if gesture is not None:
+            g_action, g_target, g_value = gesture
+            value = explicit_value if explicit_value is not None else g_value
+            return ParsedIntent(g_action, g_target, value, confident=bool(g_target))
+
+    action = infer_action_type(instruction, kwargs)
 
     if action == "set":
         m = _SET_TARGET_TO_VALUE_RE.match(text)
@@ -184,6 +245,11 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
     """Infer action_type from kwargs or instruction text."""
     if "action_type" in kwargs:
         return kwargs["action_type"]
+    # Mobile gesture verbs are anchored at the start, so they never collide with
+    # verify cues (which only matter for non-gesture phrasing).
+    gesture = match_gesture(instruction)
+    if gesture is not None:
+        return gesture[0]
     lowered = instruction.lower()
     # Explicit verify cues come first so they shadow ambiguous overlap with
     # "check" as a verb (e.g. "Check that login is visible" → verify).

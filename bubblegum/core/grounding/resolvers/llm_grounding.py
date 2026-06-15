@@ -34,6 +34,7 @@ import logging
 import re
 import concurrent.futures
 
+from bubblegum.core import cost, llm_cache
 from bubblegum.core.grounding.resolver import Resolver
 from bubblegum.core.models.base import ModelProvider
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
@@ -137,6 +138,13 @@ class LLMGroundingResolver(Resolver):
             logger.debug("LLMGroundingResolver: no relevant lines after filtering")
             return []
 
+        # X2: replay a cached decision for a repeat screen/step — zero model call.
+        cache_key = llm_cache.make_key(intent)
+        cached = llm_cache.get(cache_key)
+        if cached is not None:
+            logger.debug("LLMGroundingResolver: cache hit — replaying decision (no model call)")
+            return cached
+
         prompt = _build_prompt(intent.instruction, filtered)
         logger.debug(
             "LLMGroundingResolver calling provider=%s model=%s action=%s",
@@ -153,7 +161,20 @@ class LLMGroundingResolver(Resolver):
             logger.error("LLMGroundingResolver provider call failed: %s", exc)
             return []
 
-        return _parse_response(result.text, self.name)
+        # X2: account for the spend (token counts → estimated USD) so the
+        # per-run budget can hard-stop further Tier-3 calls.
+        try:
+            cost.record_usage(
+                getattr(result, "model", None) or self._provider.model,
+                getattr(result, "input_tokens", 0),
+                getattr(result, "output_tokens", 0),
+            )
+        except Exception:  # noqa: BLE001 — accounting must never break resolution
+            pass
+
+        targets = _parse_response(result.text, self.name)
+        llm_cache.put(cache_key, targets)
+        return targets
 
 
 # ---------------------------------------------------------------------------

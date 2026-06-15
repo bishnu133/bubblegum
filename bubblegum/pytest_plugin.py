@@ -135,6 +135,28 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Launch the bubblegum_web fixture browser in headed mode.",
     )
     group.addoption(
+        "--bubblegum-update-baselines",
+        action="store_true",
+        default=False,
+        help="Visual regression: (re)write baselines instead of comparing "
+        "(verify(..., assertion_type='visual')).",
+    )
+    group.addoption(
+        "--bubblegum-flaky-report",
+        action="store",
+        default=None,
+        metavar="PATH",
+        help="Write a flaky-test report (ranked by historical pass-rate) to this "
+        "JSON path at session end. Tracks per-step pass-rate across runs (X1).",
+    )
+    group.addoption(
+        "--bubblegum-quarantine",
+        action="store_true",
+        default=False,
+        help="Quarantine flaky steps: a known-flaky step's failure is reported "
+        "but does not fail the JUnit build (mark-but-not-fail).",
+    )
+    group.addoption(
         "--bubblegum-appium-url",
         action="store",
         default="http://localhost:4723",
@@ -158,6 +180,13 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "bubblegum: marks a test as using Bubblegum fixtures (web/mobile).",
     )
+    # Visual regression: --bubblegum-update-baselines must take effect even for
+    # tests that don't pull in the bubblegum_config fixture, so apply it to the
+    # runtime config here as well.
+    if config.getoption("--bubblegum-update-baselines"):
+        cfg = BubblegumConfig.load(config.getoption("--bubblegum-config") or None)
+        cfg.visual.update_baselines = True
+        configure_runtime(config=cfg)
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -178,6 +207,8 @@ def pytest_runtest_makereport(item: pytest.Item, call):
 def bubblegum_config(pytestconfig: pytest.Config) -> BubblegumConfig:
     config_path = pytestconfig.getoption("--bubblegum-config")
     cfg = BubblegumConfig.load(config_path) if config_path else BubblegumConfig.load()
+    if pytestconfig.getoption("--bubblegum-update-baselines"):
+        cfg.visual.update_baselines = True
     configure_runtime(config=cfg)
     return cfg
 
@@ -208,10 +239,43 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     report_junit_path = session.config.getoption("--bubblegum-report-junit")
     report_allure_dir = session.config.getoption("--bubblegum-report-allure")
     suggest_fixes_path = session.config.getoption("--bubblegum-suggest-fixes")
+    flaky_report_path = session.config.getoption("--bubblegum-flaky-report")
+    quarantine_flag = bool(session.config.getoption("--bubblegum-quarantine"))
 
-    if report_path or report_json_path or report_junit_path or report_allure_dir or suggest_fixes_path:
+    if (report_path or report_json_path or report_junit_path or report_allure_dir
+            or suggest_fixes_path or flaky_report_path):
         reporter = getattr(session.config, "_bubblegum_reporter", None)
         results = getattr(reporter, "results", []) if reporter is not None else []
+
+        # X1: record this run's outcomes into the flaky history and build the
+        # flaky index used to annotate / quarantine steps in the JUnit report.
+        flaky_index = None
+        quarantine = quarantine_flag
+        cfg = BubblegumConfig.load(session.config.getoption("--bubblegum-config") or None)
+        quarantine = quarantine or cfg.flaky.quarantine
+        if cfg.flaky.enabled and results:
+            try:
+                from bubblegum.core.flaky import FlakyTracker
+                from bubblegum.core.memory.layer import MemoryLayer
+
+                tracker = FlakyTracker(
+                    MemoryLayer(),
+                    stability_threshold=cfg.flaky.stability_threshold,
+                    min_runs=cfg.flaky.min_runs,
+                )
+                tracker.record_run(results)
+                flaky_index = tracker.flaky_index()
+                if flaky_report_path:
+                    from bubblegum.reporting.flaky_report import write_flaky_report
+
+                    write_flaky_report(
+                        tracker.summary(),
+                        path=flaky_report_path,
+                        stability_threshold=cfg.flaky.stability_threshold,
+                        min_runs=cfg.flaky.min_runs,
+                    )
+            except Exception:  # noqa: BLE001 — flaky tracking must never break a run
+                flaky_index = None
 
         if report_path:
             from bubblegum.reporting.html_report import write_html_report
@@ -226,7 +290,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         if report_junit_path:
             from bubblegum.reporting.junit_report import write_junit_report
 
-            write_junit_report(results, path=report_junit_path)
+            write_junit_report(
+                results, path=report_junit_path,
+                flaky_index=flaky_index, quarantine=quarantine,
+            )
 
         if report_allure_dir:
             from bubblegum.reporting.allure_report import write_allure_results

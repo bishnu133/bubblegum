@@ -70,6 +70,17 @@ def test_load_capabilities_rejects_invalid_json_file(tmp_path: Path):
         load_capabilities(str(f))
 
 
+def test_load_capabilities_missing_file_says_not_found(tmp_path: Path):
+    # A value that looks like a path but doesn't exist should report "file not
+    # found" rather than the misleading "invalid JSON". Use tmp_path so the test
+    # never depends on a caps.json that may exist in the repo root.
+    missing = tmp_path / "nope_caps.json"
+    with pytest.raises(ValueError, match="not found"):
+        load_capabilities(str(missing))
+    with pytest.raises(ValueError, match="not found"):
+        load_capabilities("/no/such/dir/caps.json")
+
+
 # ---------------------------------------------------------------------------
 # build_appium_options (needs appium-python-client importable)
 # ---------------------------------------------------------------------------

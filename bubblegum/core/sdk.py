@@ -86,6 +86,10 @@ _memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for rec
 _vision_provider: VisionProvider | None = None
 _visual_ref_hydrator = VisualRefHydrator()
 
+# X2: apply the per-run Tier-3 cost budget from config to the global tracker.
+from bubblegum.core import cost as _cost  # noqa: E402
+_cost.configure_budget(_config.grounding.max_run_cost_usd)
+
 
 def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
     """Configure SDK runtime from BubblegumConfig and rewire thresholds.
@@ -108,6 +112,8 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
         reject_threshold=_config.grounding.reject_threshold,
         ai_first=_config.grounding.ai_first,
     )
+    # X2: refresh the per-run Tier-3 cost budget from the (re)loaded config.
+    _cost.configure_budget(_config.grounding.max_run_cost_usd)
     return _config
 
 
@@ -275,6 +281,17 @@ async def act(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
+    # M2: mobile system / hardware verbs (press back, rotate, hide keyboard,
+    # deep link, background app, biometric, notification) act on the device,
+    # not a UI element — route them before grounding. Caller overrides
+    # (explicit selector / action_type) keep the normal element path.
+    if channel == "mobile" and not kwargs.get("selector") and not kwargs.get("action_type"):
+        from bubblegum.core.mobile.system_actions import parse_system_action
+
+        system_action = parse_system_action(instruction)
+        if system_action is not None:
+            return await _act_system(adapter, instruction, system_action, t0)
+
     # 1. Build StepIntent
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
@@ -336,6 +353,10 @@ async def act(
         input_value=intent.input_value,
         options=options,
     )
+    # M2: optionally hide the soft keyboard before a mobile tap/click so an
+    # IME covering the target doesn't cause a flaky miss. Best-effort, opt-in.
+    await _maybe_hide_keyboard(adapter, channel, intent.action_type)
+
     exec_result = await adapter.execute(plan, target)
     duration_ms = int((time.monotonic() - t0) * 1000)
 
@@ -422,6 +443,11 @@ async def verify(
     # (method + URL + status) rather than grounding a UI element.
     if kwargs.get("assertion_type") == "network":
         return await _verify_network(adapter, channel, instruction, kwargs, options, t0)
+
+    # Visual-regression assertions are page-scoped too: capture a screenshot and
+    # diff it against a stored baseline rather than grounding a UI element.
+    if kwargs.get("assertion_type") == "visual":
+        return await _verify_visual(adapter, channel, instruction, kwargs, t0)
 
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
@@ -582,6 +608,206 @@ async def _verify_network(adapter, channel: str, instruction: str, kwargs: dict,
         instruction=instruction, t0=t0, passed=passed, message=actual,
         error=error, metadata=metadata, ref="network", resolver_name="network",
     )
+
+
+def _visual_result(
+    *, instruction: str, t0: float, passed: bool, message: str,
+    error: ErrorInfo | None, metadata: dict[str, Any] | None = None,
+    artifacts: list[ArtifactRef] | None = None,
+) -> StepResult:
+    """Build a StepResult for a page-scoped visual check (synthetic 'visual' target)."""
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref="visual", confidence=1.0, resolver_name="visual", metadata=metadata or {}
+    )
+    return StepResult(
+        status="passed" if passed else "failed",
+        action=instruction,
+        target=target,
+        confidence=1.0,
+        validation=ValidationResult(passed=passed, actual_value=message, duration_ms=duration_ms),
+        artifacts=artifacts or [],
+        duration_ms=duration_ms,
+        error=error,
+    )
+
+
+async def _verify_visual(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Compare a screenshot against a stored baseline (V1).
+
+    Page-scoped: skips element grounding. First run (or ``--update-baselines``)
+    captures the baseline and passes; later runs diff against it and, on
+    failure, write a highlighted diff image plus the actual screenshot under the
+    baseline directory and attach them to the result.
+    """
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from bubblegum.core import visual as vmod
+    from bubblegum.core import visual_image as vimg
+
+    if channel != "web":
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="visual assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="assertion_type='visual' is only supported on the web channel"),
+        )
+
+    if not vimg.pillow_available():
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False, message=vimg.PILLOW_HINT,
+            error=ErrorInfo(error_type="VisualDependencyError", message=vimg.PILLOW_HINT),
+        )
+
+    cfg = _config.visual
+    full_page = bool(kwargs.get("full_page", cfg.full_page))
+    tolerance = float(kwargs.get("tolerance", cfg.tolerance))
+    channel_threshold = int(kwargs.get("channel_threshold", cfg.channel_threshold))
+    update = kwargs.get("update_baseline")
+    update = cfg.update_baselines if update is None else bool(update)
+
+    name = kwargs.get("name") or vmod.baseline_name(instruction, kwargs.get("expected_value"))
+    baseline_dir = Path(kwargs.get("baseline_dir") or cfg.baseline_dir)
+    baseline_path = baseline_dir / f"{name}.png"
+
+    try:
+        actual_png = await adapter.screenshot_bytes(full_page=full_page)
+    except Exception as exc:  # noqa: BLE001 — surface capture failures as a failed step
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"screenshot capture failed: {exc}",
+            error=ErrorInfo(error_type="VisualCaptureError", message=str(exc)),
+        )
+
+    base_meta = {"name": name, "baseline": str(baseline_path), "tolerance": tolerance}
+
+    # First-run capture or explicit update: (re)write the baseline and pass.
+    existed = baseline_path.exists()
+    if update or not existed:
+        baseline_dir.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_bytes(actual_png)
+        action = "updated" if existed else "created"
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=True,
+            message=f"baseline {action}: {baseline_path}",
+            error=None,
+            metadata={"visual": {**base_meta, "baseline_action": action}},
+        )
+
+    try:
+        base_rgba, bw, bh = vimg.load_png_rgba(baseline_path.read_bytes())
+        act_rgba, aw, ah = vimg.load_png_rgba(actual_png)
+    except Exception as exc:  # noqa: BLE001
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"could not decode images: {exc}",
+            error=ErrorInfo(error_type="VisualDecodeError", message=str(exc)),
+            metadata={"visual": base_meta},
+        )
+
+    ts = datetime.now(tz=timezone.utc).isoformat()
+
+    if (bw, bh) != (aw, ah):
+        actual_path = baseline_dir / f"{name}.actual.png"
+        actual_path.write_bytes(actual_png)
+        msg = f"size changed: baseline {bw}x{bh} vs actual {aw}x{ah}"
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=False, message=msg,
+            error=ErrorInfo(error_type="VisualRegressionError", message=msg),
+            metadata={"visual": {**base_meta, "baseline_size": [bw, bh], "actual_size": [aw, ah]}},
+            artifacts=[ArtifactRef(type="screenshot", path=str(actual_path), timestamp=ts)],
+        )
+
+    diff_pixels, total, mask = vmod.compare_rgba(
+        base_rgba, act_rgba, aw, ah, channel_threshold=channel_threshold
+    )
+    passed, ratio = vmod.evaluate_diff(diff_pixels, total, tolerance)
+    meta = {**base_meta, "diff_pixels": diff_pixels, "total_pixels": total, "diff_ratio": ratio}
+
+    if passed:
+        return _visual_result(
+            instruction=instruction, t0=t0, passed=True,
+            message=f"{ratio:.4%} of pixels differ (tolerance {tolerance:.4%})",
+            error=None, metadata={"visual": meta},
+        )
+
+    # Regression: write the highlighted diff + the actual screenshot as artifacts.
+    diff_rgba = vmod.highlight_diff_rgba(act_rgba, mask, aw, ah)
+    diff_path = vimg.save_png(diff_rgba, aw, ah, baseline_dir / f"{name}.diff.png")
+    actual_path = baseline_dir / f"{name}.actual.png"
+    actual_path.write_bytes(actual_png)
+    msg = (
+        f"{ratio:.4%} of pixels differ (tolerance {tolerance:.4%}); "
+        f"diff image: {diff_path}"
+    )
+    return _visual_result(
+        instruction=instruction, t0=t0, passed=False, message=msg,
+        error=ErrorInfo(error_type="VisualRegressionError", message=msg),
+        metadata={"visual": {**meta, "diff_image": str(diff_path), "actual_image": str(actual_path)}},
+        artifacts=[
+            ArtifactRef(type="screenshot", path=str(diff_path), timestamp=ts),
+            ArtifactRef(type="screenshot", path=str(actual_path), timestamp=ts),
+        ],
+    )
+
+
+async def _act_system(adapter, instruction: str, system_action, t0: float) -> StepResult:
+    """Execute a mobile system/hardware action (M2) and build a StepResult.
+
+    Device-level: no grounding. ``system_action`` is a SystemAction (kind +
+    arg). Success → status "passed" with a synthetic ``system:<kind>`` target;
+    any adapter/driver error → status "failed".
+    """
+    kind = system_action.kind
+    arg = dict(system_action.arg or {})
+    try:
+        outcome = await adapter.execute_system_action(kind, arg)
+    except Exception as exc:  # noqa: BLE001 — surface as a failed step
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            status="failed",
+            action=instruction,
+            target=ResolvedTarget(ref=f"system:{kind}", confidence=1.0, resolver_name="mobile_system"),
+            confidence=1.0,
+            duration_ms=duration_ms,
+            error=ErrorInfo(
+                error_type="MobileSystemActionError",
+                message=f"system action {kind!r} failed: {exc}",
+                resolver_name="mobile_system",
+            ),
+        )
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    metadata = {"system_action": {"kind": kind, **arg, **(outcome or {})}}
+    return StepResult(
+        status="passed",
+        action=instruction,
+        target=ResolvedTarget(
+            ref=f"system:{kind}", confidence=1.0, resolver_name="mobile_system", metadata=metadata
+        ),
+        confidence=1.0,
+        duration_ms=duration_ms,
+    )
+
+
+async def _maybe_hide_keyboard(adapter, channel: str, action_type: str) -> None:
+    """Best-effort soft-keyboard hide before a mobile tap/click (M2 config flag).
+
+    No-op unless ``mobile.auto_hide_keyboard`` is set, the channel is mobile, the
+    action is a tap/click, and the adapter supports system actions. Never raises.
+    """
+    if channel != "mobile" or action_type not in ("tap", "click"):
+        return
+    if not _config.mobile.auto_hide_keyboard:
+        return
+    runner = getattr(adapter, "execute_system_action", None)
+    if runner is None:
+        return
+    try:
+        await runner("hide_keyboard")
+    except Exception as exc:  # noqa: BLE001 — best-effort; never fail the step
+        logger.debug("auto hide_keyboard skipped: %s", exc)
 
 
 async def extract(

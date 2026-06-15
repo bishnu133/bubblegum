@@ -1,0 +1,111 @@
+"""
+bubblegum/cli/__init__.py
+=========================
+The ``bubblegum`` command-line entry point (A1).
+
+First console entry point for the project. Built as an argparse dispatcher with
+subcommands so later authoring commands (e.g. A2's ``repl``) slot in beside
+``record`` without reshaping the CLI. Registered in ``pyproject.toml`` as
+``[project.scripts] bubblegum = "bubblegum.cli:main"``.
+
+Usage:
+    bubblegum record --url https://example.com/login --out login_flow.py
+"""
+
+from __future__ import annotations
+
+import argparse
+from typing import Sequence
+
+from bubblegum import __version__
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level argument parser with its subcommands."""
+    parser = argparse.ArgumentParser(
+        prog="bubblegum",
+        description="Bubblegum — natural-language test authoring tools.",
+    )
+    parser.add_argument("--version", action="version", version=f"bubblegum {__version__}")
+    sub = parser.add_subparsers(dest="command", metavar="<command>")
+
+    record = sub.add_parser(
+        "record",
+        help="Record a manual click-through and emit Bubblegum NL steps.",
+        description=(
+            "Open a browser at --url, capture your interactions, and write a "
+            "runnable *_recorded.py flow of natural-language steps."
+        ),
+    )
+    record.add_argument("--url", required=True, help="Start URL to open for recording.")
+    record.add_argument("--out", required=True, help="Path to write the recorded flow (*.py).")
+    record.add_argument(
+        "--headless",
+        action="store_true",
+        help="Record with a headless browser (default: headed, so you can interact).",
+    )
+    record.add_argument(
+        "--emit-headed",
+        action="store_true",
+        help="Generate a script that launches headed (default: headless).",
+    )
+
+    repl = sub.add_parser(
+        "repl",
+        help="Live-try natural-language steps against a running page/app.",
+        description=(
+            "Open a session and evaluate typed NL steps immediately, printing "
+            "the resolved target + confidence. Use --url for web or "
+            "--appium-url (+ --caps) for mobile."
+        ),
+    )
+    repl.add_argument("--url", help="Web: start URL to open (Playwright).")
+    repl.add_argument("--appium-url", help="Mobile: Appium server URL (e.g. http://127.0.0.1:4723).")
+    repl.add_argument(
+        "--caps",
+        help="Mobile: Appium capabilities as inline JSON or a path to a .json file.",
+    )
+    repl.add_argument("--headless", action="store_true", help="Web: run headless (default: headed).")
+    repl.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Start in resolve-only mode (preview targets without acting).",
+    )
+
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entry point. Returns a process exit code."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "record":
+        from bubblegum.cli.record import run_record
+
+        return run_record(
+            url=args.url,
+            out=args.out,
+            headless=args.headless,
+            emit_headless=not args.emit_headed,
+        )
+
+    if args.command == "repl":
+        from bubblegum.cli.repl import run_repl
+
+        if not args.url and not args.appium_url:
+            parser.error("repl requires --url (web) or --appium-url (mobile)")
+        return run_repl(
+            url=args.url,
+            appium_url=args.appium_url,
+            caps=args.caps,
+            headless=args.headless,
+            dry_run=args.dry_run,
+        )
+
+    parser.print_help()
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

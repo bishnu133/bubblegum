@@ -110,6 +110,14 @@ class AppiumHierarchyResolver(Resolver):
 
         instruction_lower = intent.match_phrase.lower().strip()
 
+        # M4: the UI toolkit (Compose/Flutter/RN/SwiftUI/native), detected in
+        # the adapter and threaded through app_state, tunes role scoring below.
+        app_state = intent.context.get("app_state")
+        ui_framework_meta = app_state.get("ui_framework") if isinstance(app_state, dict) else None
+        ui_framework = ""
+        if isinstance(ui_framework_meta, dict):
+            ui_framework = str(ui_framework_meta.get("framework") or "")
+
         try:
             root = ET.fromstring(hierarchy_xml)
         except ET.ParseError as exc:
@@ -152,7 +160,7 @@ class AppiumHierarchyResolver(Resolver):
             normalized_elements.append(normalized)
             if normalized.source_ref:
                 elements_by_ref[normalized.source_ref] = normalized
-            result = self._match_element(element, instruction_lower, intent.action_type)
+            result = self._match_element(element, instruction_lower, intent.action_type, ui_framework=ui_framework)
             if result is not None:
                 candidates.append(result)
         graph = ElementGraph(normalized_elements) if normalized_elements else None
@@ -186,6 +194,14 @@ class AppiumHierarchyResolver(Resolver):
         enriched: list[ResolvedTarget] = []
         for target in candidates:
             meta = dict(target.metadata)
+            if isinstance(ui_framework_meta, dict) and ui_framework_meta.get("framework"):
+                # Surface the detected toolkit (+ any limits) on every candidate
+                # so reports/explain show why scoring was tuned the way it was.
+                meta["ui_framework"] = {
+                    "framework": ui_framework_meta.get("framework"),
+                    "confidence": ui_framework_meta.get("confidence"),
+                    "limits": list(ui_framework_meta.get("limits") or []),
+                }
             meta["graph_signals"] = compute_graph_signals(
                 GraphSignalInput(
                     candidate_ref=target.ref,
@@ -241,11 +257,16 @@ class AppiumHierarchyResolver(Resolver):
         element: ET.Element,
         instruction_lower: str,
         action_type: str,
+        ui_framework: str = "",
     ) -> ResolvedTarget | None:
         """
         Attempt to match a single XML element against the instruction.
         Checks in order: text → content-desc → resource-id.
         Uses bidirectional substring matching via _text_matches().
+
+        ``ui_framework`` (M4) tunes role scoring: Compose/RN render tappable
+        controls as generic clickable View/ViewGroup nodes, which would
+        otherwise be down-ranked for tap/click.
         """
         tag    = element.tag or ""
         widget_type = (element.get("class") or tag or "").strip()
@@ -253,6 +274,7 @@ class AppiumHierarchyResolver(Resolver):
         c_desc = (element.get("content-desc") or "").strip()
         res_id = (element.get("resource-id") or "").strip()
         bounds = element.get("bounds") or ""
+        clickable = (element.get("clickable") or "").strip().lower() == "true"
         enabled_attr = (element.get("enabled") or "").strip().lower()
         visible_attr = (element.get("visible-to-user") or "").strip().lower()
         hidden_attr = (element.get("hidden") or "").strip().lower()
@@ -271,7 +293,7 @@ class AppiumHierarchyResolver(Resolver):
                 confidence=_CONF_TEXT,
                 resolver_name=self.name,
                 metadata={
-                    "signals": make_signals(text_match=0.92, role_match=_role_match_for_action(widget_type, action_type), visibility=visibility, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=0.92, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
                     "matched_attr": "text",
                     "matched_value": text,
                     "tag": widget_type,
@@ -287,7 +309,7 @@ class AppiumHierarchyResolver(Resolver):
                 confidence=_CONF_CONTENT_DESC,
                 resolver_name=self.name,
                 metadata={
-                    "signals": make_signals(text_match=0.85, role_match=_role_match_for_action(widget_type, action_type), visibility=visibility, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=0.85, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
                     "matched_attr": "content-desc",
                     "matched_value": c_desc,
                     "tag": widget_type,
@@ -305,7 +327,7 @@ class AppiumHierarchyResolver(Resolver):
                     confidence=_CONF_RESOURCE_ID,
                     resolver_name=self.name,
                     metadata={
-                    "signals": make_signals(text_match=0.75, role_match=_role_match_for_action(widget_type, action_type), visibility=visibility, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=0.75, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
                         "matched_attr": "resource-id",
                         "matched_value": res_id,
                         "tag": widget_type,
@@ -337,10 +359,30 @@ def _build_xpath(tag: str, attr: str, value: str) -> str:
     concat_args = ", \"'\", ".join(f"'{p}'" for p in parts)
     return f"//{tag}[@{attr}=concat({concat_args})]"
 
-def _role_match_for_action(tag: str, action_type: str) -> float:
+_GENERIC_VIEW_TAGS = ("view", "viewgroup", "composeview")
+# Frameworks whose tappable controls render as generic clickable View nodes.
+_GENERIC_CONTROL_FRAMEWORKS = {"jetpack_compose", "react_native"}
+
+
+def _role_match_for_action(
+    tag: str, action_type: str, *, ui_framework: str = "", clickable: bool = False
+) -> float:
     t = tag.lower()
     if action_type in ("tap", "click"):
-        return 1.0 if any(x in t for x in ("button", "imagebutton", "textview")) else 0.4
+        if any(x in t for x in ("button", "imagebutton", "textview")):
+            return 1.0
+        # M4: Compose / React Native expose tappable controls as generic
+        # clickable View/ViewGroup nodes (no "button"/"textview" in the class),
+        # which would otherwise be down-ranked. Treat a clickable generic node
+        # as a real control for those toolkits. Additive — native scoring (no
+        # ui_framework) is unchanged.
+        if (
+            ui_framework in _GENERIC_CONTROL_FRAMEWORKS
+            and clickable
+            and any(x in t for x in _GENERIC_VIEW_TAGS)
+        ):
+            return 0.9
+        return 0.4
     if action_type == "type":
         return 1.0 if "edittext" in t else 0.2
     if action_type == "verify":
