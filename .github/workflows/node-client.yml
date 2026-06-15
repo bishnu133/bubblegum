@@ -1,0 +1,42 @@
+name: Node client
+
+# Build + test the @bubblegum-ai/node client. Scoped to changes under
+# clients/node/ so it doesn't run on unrelated Python-only changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "clients/node/**"
+      - ".github/workflows/node-client.yml"
+  pull_request:
+    paths:
+      - "clients/node/**"
+      - ".github/workflows/node-client.yml"
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/node
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test (mock transport — no Python required)
+        run: node --test test/*.test.mjs
