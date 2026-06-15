@@ -12,7 +12,7 @@ the handoff for continuing with Sprint 3+.
 | 2 — Flakiness + speed | W2, W1, R3, P1, W4 | ✅ done |
 | 3 — Authoring + verify depth | A1, A2, V1 | ✅ done |
 | 4 — Mobile depth | M1, M2, M4 | ✅ done |
-| 5 — Scale & governance | X1, X2, M5, X3, M6 | 🔄 in progress (X1, X2 done) |
+| 5 — Scale & governance | X1, X2, M5, X3, M6 | ✅ done |
 
 ### What shipped (Sprint 1 & 2)
 
@@ -168,6 +168,22 @@ the handoff for continuing with Sprint 3+.
   precedence, web/mobile coordinate execution via fakes); real-browser canvas test in
   `tests/integration/test_coordinate_click_web.py` (`--playwright`-gated). Docs in
   `docs/coordinate-clicking.md`.
+
+- **M6** — network-condition simulation (mobile). Device-level NL verbs for connection state, routed
+  before grounding exactly like the M2 system verbs (reusing `SystemAction` + `_act_system` so there's
+  no new result/error plumbing). New `core/mobile/network_conditions.parse_network_condition`
+  (start-anchored, so "Click the Wi-Fi settings row" isn't hijacked) → two kinds: `set_connectivity`
+  (offline / online / airplane / wifi / mobile-data toggles) and `set_network_speed` (2G/3G/4G/5G/edge/
+  lte/full profiles → Android emulator `netspeed` tokens). `sdk.act` now tries `parse_system_action`
+  then `parse_network_condition`. Dispatch in `AppiumAdapter.execute_system_action` →
+  `_apply_connectivity` (Android `mobile: setConnectivity`; offline cuts all radios, online restores
+  wifi+data) and `_apply_network_speed` (`mobile: networkSpeed`). Honest limits: connectivity works on
+  real devices + emulators, speed throttling is Android-emulator-only, iOS radio toggles raise rather
+  than silently no-op. Unit-tested (parser table incl. negative/non-hijack cases, per-state/per-platform
+  dispatch via a fake driver, sdk routing-before-grounding); `--appium`-gated device flow in
+  `tests/integration/test_mobile_network_conditions_appium.py`. Docs in `docs/mobile-network-conditions.md`.
+
+### Sprint 5 complete. Backlog (X1, X2, M5, X3, M6) shipped.
 
 **Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
 so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform

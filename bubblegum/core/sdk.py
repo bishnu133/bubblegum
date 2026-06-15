@@ -281,14 +281,16 @@ async def act(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
-    # M2: mobile system / hardware verbs (press back, rotate, hide keyboard,
-    # deep link, background app, biometric, notification) act on the device,
-    # not a UI element — route them before grounding. Caller overrides
-    # (explicit selector / action_type) keep the normal element path.
+    # M2/M6: mobile system / hardware verbs (press back, rotate, hide keyboard,
+    # deep link, background app, biometric, notification) and network-condition
+    # verbs (go offline, airplane mode, throttle to 3G) act on the device, not a
+    # UI element — route them before grounding. Caller overrides (explicit
+    # selector / action_type) keep the normal element path.
     if channel == "mobile" and not kwargs.get("selector") and not kwargs.get("action_type"):
+        from bubblegum.core.mobile.network_conditions import parse_network_condition
         from bubblegum.core.mobile.system_actions import parse_system_action
 
-        system_action = parse_system_action(instruction)
+        system_action = parse_system_action(instruction) or parse_network_condition(instruction)
         if system_action is not None:
             return await _act_system(adapter, instruction, system_action, t0)
 

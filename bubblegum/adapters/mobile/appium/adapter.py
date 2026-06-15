@@ -1209,10 +1209,10 @@ class AppiumAdapter(BaseAdapter):
         """Perform a device-level system action (no element grounding).
 
         kind: press_back | rotate | hide_keyboard | deep_link | background_app |
-              accept_biometric | open_notification. Returns a small dict with a
-              human-readable ``detail`` (and any extra metadata). Driver/SDK
-              errors propagate to the caller (sdk.act turns them into a failed
-              step).
+              accept_biometric | open_notification | set_connectivity (M6) |
+              set_network_speed (M6). Returns a small dict with a human-readable
+              ``detail`` (and any extra metadata). Driver/SDK errors propagate to
+              the caller (sdk.act turns them into a failed step).
         """
         arg = arg or {}
 
@@ -1263,7 +1263,62 @@ class AppiumAdapter(BaseAdapter):
             detail = f"opened notifications" + (f", tapped {text!r}" if tapped else "")
             return {"detail": detail, "text": text, "tapped": tapped}
 
+        # M6: network-condition simulation.
+        if kind == "set_connectivity":
+            return self._apply_connectivity(arg)
+
+        if kind == "set_network_speed":
+            return self._apply_network_speed(arg)
+
         raise ValueError(f"unknown system action: {kind}")
+
+    # Maps a high-level connectivity state to the radios `mobile: setConnectivity`
+    # should drive. Absent keys are left untouched (e.g. a wifi toggle leaves
+    # mobile data alone). "offline" cuts everything; "online" restores wifi+data.
+    _CONNECTIVITY_STATES: dict[str, dict[str, bool]] = {
+        "offline": {"wifi": False, "data": False, "airplane": True},
+        "online": {"wifi": True, "data": True, "airplane": False},
+        "airplane_on": {"airplane": True},
+        "airplane_off": {"airplane": False},
+        "wifi_on": {"wifi": True},
+        "wifi_off": {"wifi": False},
+        "data_on": {"data": True},
+        "data_off": {"data": False},
+    }
+
+    def _apply_connectivity(self, arg: dict) -> dict:
+        """M6: toggle network connectivity (Android `mobile: setConnectivity`).
+
+        Real-device + emulator supported. iOS raises — XCUITest cannot toggle
+        the radios reliably, so we report that honestly rather than no-op.
+        """
+        if self._is_ios():
+            raise ValueError("network connectivity simulation is Android-only")
+        state = str(arg.get("state") or "").strip().lower()
+        params = self._CONNECTIVITY_STATES.get(state)
+        if params is None:
+            raise ValueError(f"unknown connectivity state: {state!r}")
+        self._driver.execute_script("mobile: setConnectivity", dict(params))
+        return {"detail": f"connectivity → {state}", "state": state, **params}
+
+    def _apply_network_speed(self, arg: dict) -> dict:
+        """M6: throttle to a 2G/3G/4G profile (Android **emulator** only).
+
+        Speed profiles map to the emulator `netspeed` tokens; real devices and
+        iOS cannot be throttled through Appium, so those paths raise.
+        """
+        if self._is_ios():
+            raise ValueError("network speed simulation is Android-emulator-only")
+        netspeed = str(arg.get("netspeed") or "").strip().lower()
+        if not netspeed:
+            raise ValueError("set_network_speed requires a netspeed profile")
+        self._driver.execute_script("mobile: networkSpeed", {"netspeed": netspeed})
+        profile = arg.get("profile", netspeed)
+        return {
+            "detail": f"network speed → {profile} ({netspeed})",
+            "profile": profile,
+            "netspeed": netspeed,
+        }
 
     def _tap_notification_by_text(self, text: str) -> bool:
         """Best-effort: tap a notification whose text contains ``text`` (Android).
