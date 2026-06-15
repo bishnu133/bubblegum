@@ -5,6 +5,11 @@ import json
 from typing import Any, Literal
 import xml.etree.ElementTree as ET
 
+from bubblegum.core.coordinates import (
+    COORDINATE_CLICK_ACTIONS,
+    bbox_center,
+    coordinate_ref,
+)
 from bubblegum.core.schemas import ResolvedTarget, StepIntent
 
 HydrationStatus = Literal["hydrated", "not_hydrated", "blocked"]
@@ -85,14 +90,33 @@ class HydrationResult:
 
 class VisualRefHydrator:
     """
-    Phase 13I deterministic web-only mapping MVP:
-    - Detect synthetic visual refs (ocr://, vision://).
-    - Never execute synthetic refs directly.
-    - Do not request screenshots, call providers, or perform center-click fallback.
-    - Hydrate only when deterministic metadata can map to existing executable web refs.
+    Maps synthetic visual refs (ocr://, vision://) to something executable.
+
+    Deterministic mapping first (Phase 13I): never execute a synthetic ref
+    directly; instead translate it to an existing web/mobile element ref via
+    metadata (text / role / content-desc / resource-id). No screenshots or
+    provider calls.
+
+    X3 coordinate fallback: when no deterministic element mapping exists and the
+    caller opted in (``intent.context["coordinate_click_fallback"]``), a
+    click/tap target with a usable bounding box is hydrated to a ``point://x,y``
+    coordinate ref so canvas / image-only / custom-drawn UIs are still
+    actionable. Off by default — a blind coordinate click is riskier than an
+    element click.
     """
 
     def hydrate(self, *, target: ResolvedTarget, intent: StepIntent) -> HydrationResult:
+        deterministic = self._hydrate_deterministic(target=target, intent=intent)
+        if deterministic.status == "hydrated" or not is_visual_ref(target.ref):
+            return deterministic
+        # Deterministic mapping failed for a real visual ref — try the opt-in
+        # coordinate fallback before giving up.
+        fallback = self._coordinate_fallback(
+            target=target, intent=intent, deterministic=deterministic
+        )
+        return fallback if fallback is not None else deterministic
+
+    def _hydrate_deterministic(self, *, target: ResolvedTarget, intent: StepIntent) -> HydrationResult:
         ref = target.ref
 
         if not is_visual_ref(ref):
@@ -265,6 +289,60 @@ class VisualRefHydrator:
             diagnostics={"source": source, "match_count": 0, "channel": intent.channel},
             original_ref=ref,
             hydrated_ref=None,
+        )
+
+    def _coordinate_fallback(
+        self,
+        *,
+        target: ResolvedTarget,
+        intent: StepIntent,
+        deterministic: HydrationResult,
+    ) -> HydrationResult | None:
+        """X3: hydrate to a ``point://x,y`` ref from the target's bounding box.
+
+        Returns ``None`` (decline the fallback, keep the deterministic failure)
+        unless every guard passes: the fallback is enabled, the action is a
+        click/tap, and the target carries a usable bbox. Channel-agnostic — the
+        web and mobile adapters both know how to click a coordinate.
+        """
+        if not intent.context.get("coordinate_click_fallback"):
+            return None
+        action = str(getattr(intent, "action_type", "") or "").strip().lower()
+        if action not in COORDINATE_CLICK_ACTIONS:
+            return None
+        center = bbox_center(target.metadata.get("bbox"))
+        if center is None:
+            return None
+
+        x, y = center
+        ref = target.ref
+        source = "vision" if ref.startswith("vision://") else "ocr"
+        hydrated_target = self._hydrated_target(
+            target=target,
+            hydrated_ref=coordinate_ref(x, y),
+            source=source,
+            strategy="coordinate",
+            metadata=_safe_metadata(dict(target.metadata)),
+        )
+        enriched = dict(hydrated_target.metadata)
+        enriched["coordinate_point"] = [x, y]
+        enriched["coordinate_fallback_reason"] = deterministic.reason
+        hydrated_target = hydrated_target.model_copy(
+            update={"metadata": _safe_metadata(enriched)}
+        )
+        return HydrationResult(
+            status="hydrated",
+            target=hydrated_target,
+            reason="hydrated_coordinate_fallback",
+            diagnostics={
+                "source": source,
+                "strategy": "coordinate",
+                "channel": intent.channel,
+                "point": [x, y],
+                "deterministic_reason": deterministic.reason,
+            },
+            original_ref=ref,
+            hydrated_ref=hydrated_target.ref,
         )
 
     def _failsafe(self, *, ref: str, scheme: str) -> HydrationResult:

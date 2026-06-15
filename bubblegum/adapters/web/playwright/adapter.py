@@ -30,6 +30,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bubblegum.adapters.base import BaseAdapter
+from bubblegum.core.coordinates import (
+    COORDINATE_CLICK_ACTIONS,
+    is_coordinate_ref,
+    parse_coordinate_ref,
+)
 from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.schemas import (
     ActionPlan,
@@ -226,6 +231,12 @@ class PlaywrightAdapter(BaseAdapter):
         ref = target.ref
         timeout = plan.options.timeout_ms
 
+        # X3: a point://x,y ref bypasses locator resolution — click the raw
+        # coordinate (canvas / image-only / custom-drawn UI from a vision/OCR
+        # target with no element mapping).
+        if is_coordinate_ref(ref):
+            return await self._execute_coordinate_action(plan, target, ref, t0)
+
         retries = _retry_budget(getattr(plan.options, "retry_count", 0))
         attempts = 0
         last_exc: Exception | None = None
@@ -289,6 +300,42 @@ class PlaywrightAdapter(BaseAdapter):
                     element_ref=ref,
                     error=str(exc),
                 )
+
+    async def _execute_coordinate_action(
+        self, plan: ActionPlan, target: ResolvedTarget, ref: str, t0: float
+    ) -> ExecutionResult:
+        """Click a raw ``point://x,y`` coordinate via the Playwright mouse (X3).
+
+        Only click/tap are coordinate-actionable; typing/selecting need a real
+        element. Stamps ``coordinate_click`` metadata so reports show the step
+        used the fallback rather than an element.
+        """
+        point = parse_coordinate_ref(ref)
+        if point is None or plan.action_type not in COORDINATE_CLICK_ACTIONS:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            reason = (
+                f"action {plan.action_type!r} is not coordinate-clickable"
+                if point is not None
+                else f"malformed coordinate ref {ref!r}"
+            )
+            return ExecutionResult(
+                success=False, duration_ms=duration_ms, element_ref=ref, error=reason
+            )
+
+        x, y = point
+        try:
+            await self._page.mouse.click(x, y)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            target.metadata["coordinate_click"] = True
+            target.metadata["coordinate_point"] = [x, y]
+            target.metadata["coordinate_adapter"] = "playwright"
+            return ExecutionResult(success=True, duration_ms=duration_ms, element_ref=ref)
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            logger.error("Coordinate click failed at (%s, %s): %s", x, y, exc)
+            return ExecutionResult(
+                success=False, duration_ms=duration_ms, element_ref=ref, error=str(exc)
+            )
 
     async def _wait_for_mode(self, locator, wait_for: str | None, timeout: int) -> None:
         if not wait_for:

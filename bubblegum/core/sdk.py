@@ -1207,6 +1207,11 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
     # Runtime config flags exposed in context for resolver eligibility checks.
     intent.context.setdefault("config_ocr_enabled", _config.ocr_enabled)
     intent.context.setdefault("config_vision_enabled", _config.vision_enabled)
+    # X3: expose the coordinate-click fallback toggle so the visual-ref hydrator
+    # can decide whether to emit a point:// ref when no element mapping exists.
+    intent.context.setdefault(
+        "coordinate_click_fallback", _config.grounding.coordinate_click_fallback
+    )
 
 
 # Resolution failures worth retrying: the element may simply not be in the DOM

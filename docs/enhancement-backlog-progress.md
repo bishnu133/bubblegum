@@ -153,6 +153,22 @@ the handoff for continuing with Sprint 3+.
   `apply_cloud_options` immutability/merge); cloud runs are `--appium`/real-env-gated. Docs in
   `docs/mobile-cloud.md`.
 
+- **X3** — coordinate-based vision clicking. When a vision/OCR target can't be deterministically
+  hydrated to a DOM/hierarchy element (canvas, image-only, custom-drawn UI), click the bounding-box
+  **center** coordinate instead. Pure geometry/ref encoding in `core/coordinates.py` (`bbox_center`,
+  `coordinate_ref`/`parse_coordinate_ref`/`is_coordinate_ref` for the `point://x,y` scheme;
+  fail-closed on malformed/negative/zero-area input — never clicks `(0,0)`). The `VisualRefHydrator`
+  gains a `_coordinate_fallback`: deterministic element mapping still wins first; only when it fails
+  *and* the new `grounding.coordinate_click_fallback` opt-in is on *and* the action is click/tap *and*
+  a usable bbox exists does it emit a `point://` ref (`hydration_strategy="coordinate"`). Both adapters
+  recognize `point://` and click the raw coordinate: Playwright `page.mouse.click(x,y)`, Appium
+  `driver.tap([(x,y)])` — click/tap only (typing needs a real element). Flag threaded via
+  `intent.context` in `_merge_context`; default OFF (a blind click is riskier than an element click).
+  Unit-tested (geometry, ref round-trip/validation, hydrator fallback gating + deterministic
+  precedence, web/mobile coordinate execution via fakes); real-browser canvas test in
+  `tests/integration/test_coordinate_click_web.py` (`--playwright`-gated). Docs in
+  `docs/coordinate-clicking.md`.
+
 **Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
 so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform
 via a fake driver. Real-device tests are `--appium`-gated and run only where an emulator/device exists.

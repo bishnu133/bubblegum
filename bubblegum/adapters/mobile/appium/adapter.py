@@ -58,6 +58,11 @@ from bubblegum.core.mobile.webview_real_driver_switch import (
     execute_real_driver_switch_with_ref,
     resolve_real_webview_context_ref,
 )
+from bubblegum.core.coordinates import (
+    COORDINATE_CLICK_ACTIONS,
+    is_coordinate_ref,
+    parse_coordinate_ref,
+)
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -424,6 +429,11 @@ class AppiumAdapter(BaseAdapter):
         t0 = time.monotonic()
         ref = target.ref
 
+        # X3: a point://x,y ref taps the raw coordinate (vision/OCR target with
+        # no hierarchy element — canvas / game / custom-drawn surface).
+        if is_coordinate_ref(ref):
+            return self._execute_coordinate_action(plan, target, ref, t0)
+
         retries = _retry_budget(getattr(plan.options, "retry_count", 0))
         attempts = 0
         last_exc: Exception | None = None
@@ -488,6 +498,41 @@ class AppiumAdapter(BaseAdapter):
                     element_ref=str(ref),
                     error=str(exc)
                 )
+
+    def _execute_coordinate_action(
+        self, plan: ActionPlan, target: ResolvedTarget, ref: str, t0: float
+    ) -> ExecutionResult:
+        """Tap a raw ``point://x,y`` coordinate via Appium (X3).
+
+        Only tap/click are coordinate-actionable. Uses ``driver.tap`` (W3C
+        pointer under the hood); stamps ``coordinate_click`` metadata.
+        """
+        point = parse_coordinate_ref(ref)
+        if point is None or plan.action_type not in COORDINATE_CLICK_ACTIONS:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            reason = (
+                f"action {plan.action_type!r} is not coordinate-clickable"
+                if point is not None
+                else f"malformed coordinate ref {ref!r}"
+            )
+            return ExecutionResult(
+                success=False, duration_ms=duration_ms, element_ref=ref, error=reason
+            )
+
+        x, y = point
+        try:
+            self._driver.tap([(int(x), int(y))])
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            target.metadata["coordinate_click"] = True
+            target.metadata["coordinate_point"] = [x, y]
+            target.metadata["coordinate_adapter"] = "appium"
+            return ExecutionResult(success=True, duration_ms=duration_ms, element_ref=ref)
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            logger.error("Coordinate tap failed at (%s, %s): %s", x, y, exc)
+            return ExecutionResult(
+                success=False, duration_ms=duration_ms, element_ref=ref, error=str(exc)
+            )
 
     def _wait_for_mode(self, ref, element, wait_for: str | None, timeout_ms: int) -> None:
         if not wait_for:
