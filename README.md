@@ -242,8 +242,10 @@ Adoption/docs MVP links:
 - Real-environment smoke harness commands (opt-in, skip-by-default): `tests/real_env/README.md`
 
 Distribution posture note:
-- Current distribution path is GitHub releases (latest pre-release: `v0.0.5-alpha`).
-- PyPI/TestPyPI publishing is intentionally deferred until a later explicit release phase.
+- Published to **PyPI** as `bubblegum-ai` (latest: `0.0.6a0` / `v0.0.6-alpha`) via
+  Trusted Publishing, alongside GitHub pre-release tags.
+- An `@bubblegum-ai/node` npm client is planned so TS/JS Playwright projects can
+  drive the same engine — see `docs/distribution-npm-and-pypi.md`.
 
 Optional OpenAI vision backend note:
 - `OpenAIVisionProvider` is available as an optional vision backend under `bubblegum.core.vision.backends`.
@@ -607,11 +609,9 @@ Because Bubblegum may send DOM text and hierarchy data to external LLM providers
 
 ## Roadmap
 
-Phase roadmap has been reset after `v0.0.4-alpha`.
-
-- Planning phase: **Phase 17A — Post-v0.0.4 roadmap reset and v0.0.5-alpha planning**
-- Planning doc: `docs/phase-17a-roadmap-reset-v0.0.5-alpha.md`
-- Current release target: `v0.0.5-alpha`
+- Latest release: **`v0.0.6-alpha`** — first PyPI publish + JSON-RPC engine bridge (`0.1.0`).
+- In progress: the `@bubblegum-ai/node` npm client (`0.2.0`) — see `docs/distribution-npm-and-pypi.md`.
+- Earlier planning context: `docs/phase-17a-roadmap-reset-v0.0.5-alpha.md`.
 
 Planned `v0.0.5-alpha` scope themes:
 
@@ -781,17 +781,20 @@ Optional maintainer check (local, if `twine` is installed):
 python -m twine check dist/*
 ```
 
-Publishing is not automated yet in CI.
+Publishing is automated via PyPI Trusted Publishing in
+`.github/workflows/publish.yml` (manual dispatch → TestPyPI; `v*` tag → PyPI).
+See `docs/publishing.md`.
 
 ## Project Status
 
 | Item | Detail |
 |---|---|
 | Architecture version | v0.9 — Final Approved |
-| Implementation readiness | 92% — Overall rating 9.2 / 10 |
-| Current phase | **Phase 17A: Post-v0.0.4 roadmap reset and v0.0.5-alpha planning** |
-| Next step | Execute the first v0.0.5-alpha slices: release-checklist sync, roadmap/docs consistency pass, and targeted packaging/reporting regression checks |
-| Locked decisions | Keep fallback-first posture, preserve privacy/cost gates, no breaking SDK/API/schema changes, GitHub pre-release-first distribution |
+| Latest release | **`v0.0.6-alpha`** — published to PyPI as `bubblegum-ai 0.0.6a0` (first PyPI release) |
+| Current focus | Dual distribution: JSON-RPC engine **bridge shipped** (`0.1.0`); `@bubblegum-ai/node` npm client **in progress** (`0.2.0`) |
+| Next step | Publish the `@bubblegum-ai/node` client, then the client-owned (CDP-attach) browser model and dual-publish (PyPI + npm) CI |
+| Distribution | PyPI (`bubblegum-ai`, via Trusted Publishing) + npm (`@bubblegum-ai/node`, planned) — see `docs/distribution-npm-and-pypi.md` |
+| Locked decisions | Keep fallback-first posture, preserve privacy/cost gates, no breaking SDK/API/schema changes |
 
 ---
 
