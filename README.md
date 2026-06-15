@@ -23,10 +23,11 @@
 
 > 📘 **New here?** Start with the focused how‑to guides:
 > [**How to Use — Web**](docs/HOW_TO_USE_WEB.md) ·
-> [**How to Use — Mobile**](docs/HOW_TO_USE_MOBILE.md). The
+> [**How to Use — Mobile**](docs/HOW_TO_USE_MOBILE.md) ·
+> [**How to Use — TypeScript/JS**](docs/HOW_TO_USE_TYPESCRIPT.md). The
 > [**User Guide**](docs/USER_GUIDE.md) is the single combined reference, and
 > [**Distribution (PyPI + npm)**](docs/distribution-npm-and-pypi.md) explains how
-> TS/JS Playwright projects will consume Bubblegum.
+> TS/JS Playwright projects consume Bubblegum.
 
 ---
 

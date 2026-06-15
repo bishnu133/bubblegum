@@ -49,9 +49,9 @@ pip install "bubblegum-ai[all]"        # everything
 
 Python **3.11+** is required. The web channel needs a Playwright **async** `Page`.
 
-> **Using a TypeScript / JavaScript Playwright project?** A first‑class npm
-> client is on the roadmap so you can call the same primitives from Node — see
-> [`distribution-npm-and-pypi.md`](distribution-npm-and-pypi.md).
+> **Using a TypeScript / JavaScript Playwright project?** Use the
+> **`@bubblegum-ai/node`** client to call the same primitives from Node — see
+> [`HOW_TO_USE_TYPESCRIPT.md`](HOW_TO_USE_TYPESCRIPT.md).
 
 ---
 

@@ -1,5 +1,20 @@
 # Unreleased
 
+## Docs + CI: TypeScript/JS how-to guide and npm publish workflow
+
+- Added `docs/HOW_TO_USE_TYPESCRIPT.md` — a tester-facing copy-paste guide for
+  driving Bubblegum from JS/TS via `@bubblegum-ai/node`: prerequisites (Python
+  engine + Node), install, the four primitives, `StepResult`, per-call options,
+  CDP attach (client-owned browser), a `@playwright/test` fixture pattern,
+  mobile, error handling, versioning, and troubleshooting. Linked from the README
+  and the Web how-to guide.
+- Added `.github/workflows/npm-publish.yml` — publishes `@bubblegum-ai/node` to
+  npm: manual dispatch does `npm publish --dry-run`; a pushed `node-v*` tag does a
+  real `npm publish --provenance`. Uses a separate `node-v*` tag namespace so it
+  never collides with the Python `v*` releases, and a normal merge never
+  publishes. `docs/publishing.md` documents the one-time npm org/scope + token
+  setup and the release runbook.
+
 ## Client-owned browser: CDP attach (0.3.0 slice)
 
 - The bridge can now attach the engine to a **caller-owned Chromium over CDP**

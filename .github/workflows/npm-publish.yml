@@ -1,0 +1,62 @@
+name: npm publish
+
+# Publishes @bubblegum-ai/node to npm. Mirrors the PyPI publish flow:
+#   * workflow_dispatch -> `npm publish --dry-run` (safe validation, repeatable)
+#   * push of a node-v* tag -> real publish to npm (with provenance)
+#
+# A normal merge to main never publishes — only a `node-v*` tag push does.
+# (Python releases use `v*` tags; the npm client uses a separate `node-v*`
+# namespace so the two release lines don't collide.)
+#
+# Requires a one-time NPM_TOKEN repo secret (a granular automation token scoped
+# to publish @bubblegum-ai/*). See docs/publishing.md.
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - "node-v*"
+
+permissions:
+  contents: read
+  id-token: write # provenance attestation
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/node
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: node --test test/*.test.mjs
+
+      - name: Publish (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        run: npm publish --dry-run --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/node-v')
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
