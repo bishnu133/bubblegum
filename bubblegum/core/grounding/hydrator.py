@@ -327,8 +327,10 @@ class VisualRefHydrator:
         enriched = dict(hydrated_target.metadata)
         enriched["coordinate_point"] = [x, y]
         enriched["coordinate_fallback_reason"] = deterministic.reason
+        # X3: dispatch is on the structured point, not the ref string. The ref
+        # stays a readable point://x,y label for traces/reports.
         hydrated_target = hydrated_target.model_copy(
-            update={"metadata": _safe_metadata(enriched)}
+            update={"metadata": _safe_metadata(enriched), "point": [x, y]}
         )
         return HydrationResult(
             status="hydrated",

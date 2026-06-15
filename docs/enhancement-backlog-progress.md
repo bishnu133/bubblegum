@@ -167,7 +167,8 @@ the handoff for continuing with Sprint 3+.
   Unit-tested (geometry, ref round-trip/validation, hydrator fallback gating + deterministic
   precedence, web/mobile coordinate execution via fakes); real-browser canvas test in
   `tests/integration/test_coordinate_click_web.py` (`--playwright`-gated). Docs in
-  `docs/coordinate-clicking.md`.
+  `docs/coordinate-clicking.md`. Targets carry an explicit structured `ResolvedTarget.point` (`[x,y]`)
+  that the adapters dispatch on; the `point://x,y` ref is kept only as a readable label.
 
 - **M6** — network-condition simulation (mobile). Device-level NL verbs for connection state, routed
   before grounding exactly like the M2 system verbs (reusing `SystemAction` + `_act_system` so there's

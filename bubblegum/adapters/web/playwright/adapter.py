@@ -30,11 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bubblegum.adapters.base import BaseAdapter
-from bubblegum.core.coordinates import (
-    COORDINATE_CLICK_ACTIONS,
-    is_coordinate_ref,
-    parse_coordinate_ref,
-)
+from bubblegum.core.coordinates import COORDINATE_CLICK_ACTIONS, normalize_point
 from bubblegum.core.memory.fingerprint import compute_signature
 from bubblegum.core.schemas import (
     ActionPlan,
@@ -231,11 +227,11 @@ class PlaywrightAdapter(BaseAdapter):
         ref = target.ref
         timeout = plan.options.timeout_ms
 
-        # X3: a point://x,y ref bypasses locator resolution — click the raw
-        # coordinate (canvas / image-only / custom-drawn UI from a vision/OCR
-        # target with no element mapping).
-        if is_coordinate_ref(ref):
-            return await self._execute_coordinate_action(plan, target, ref, t0)
+        # X3: a target with an explicit point bypasses locator resolution —
+        # click the raw coordinate (canvas / image-only / custom-drawn UI from a
+        # vision/OCR target with no element mapping).
+        if target.point is not None:
+            return await self._execute_coordinate_action(plan, target, t0)
 
         retries = _retry_budget(getattr(plan.options, "retry_count", 0))
         attempts = 0
@@ -302,21 +298,22 @@ class PlaywrightAdapter(BaseAdapter):
                 )
 
     async def _execute_coordinate_action(
-        self, plan: ActionPlan, target: ResolvedTarget, ref: str, t0: float
+        self, plan: ActionPlan, target: ResolvedTarget, t0: float
     ) -> ExecutionResult:
-        """Click a raw ``point://x,y`` coordinate via the Playwright mouse (X3).
+        """Click ``target.point`` via the Playwright mouse (X3).
 
         Only click/tap are coordinate-actionable; typing/selecting need a real
         element. Stamps ``coordinate_click`` metadata so reports show the step
         used the fallback rather than an element.
         """
-        point = parse_coordinate_ref(ref)
+        ref = target.ref
+        point = normalize_point(target.point)
         if point is None or plan.action_type not in COORDINATE_CLICK_ACTIONS:
             duration_ms = int((time.monotonic() - t0) * 1000)
             reason = (
                 f"action {plan.action_type!r} is not coordinate-clickable"
                 if point is not None
-                else f"malformed coordinate ref {ref!r}"
+                else f"malformed coordinate point {target.point!r}"
             )
             return ExecutionResult(
                 success=False, duration_ms=duration_ms, element_ref=ref, error=reason

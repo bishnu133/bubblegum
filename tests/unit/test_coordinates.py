@@ -10,6 +10,7 @@ from bubblegum.core.coordinates import (
     coordinate_ref,
     coordinate_ref_from_bbox,
     is_coordinate_ref,
+    normalize_point,
     parse_coordinate_ref,
 )
 
@@ -80,3 +81,22 @@ def test_coordinate_ref_from_bbox():
 
 def test_click_actions_set():
     assert COORDINATE_CLICK_ACTIONS == frozenset({"click", "tap"})
+
+
+def test_normalize_point_valid():
+    assert normalize_point([60, 45]) == (60, 45)
+    assert normalize_point((10, 20)) == (10, 20)
+    assert normalize_point([60.9, 45.2]) == (60, 45)
+
+
+def test_normalize_point_rejects_malformed():
+    assert normalize_point(None) is None
+    assert normalize_point([1]) is None
+    assert normalize_point([1, 2, 3]) is None
+    assert normalize_point(["a", "b"]) is None
+    assert normalize_point([True, 2]) is None
+
+
+def test_normalize_point_rejects_negative():
+    assert normalize_point([-1, 5]) is None
+    assert normalize_point([5, -1]) is None

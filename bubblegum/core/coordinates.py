@@ -84,3 +84,21 @@ def coordinate_ref_from_bbox(bbox: Any) -> str | None:
     if center is None:
         return None
     return coordinate_ref(*center)
+
+
+def normalize_point(point: Any) -> tuple[int, int] | None:
+    """Validate a structured ``[x, y]`` click point (``ResolvedTarget.point``).
+
+    Returns ``(x, y)`` for a well-formed, non-negative integer pair, else
+    ``None`` so adapters fail closed rather than click ``(0, 0)``.
+    """
+    if not isinstance(point, (list, tuple)) or len(point) != 2:
+        return None
+    x, y = point
+    if isinstance(x, bool) or isinstance(y, bool):
+        return None
+    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+        return None
+    if x < 0 or y < 0:
+        return None
+    return int(x), int(y)

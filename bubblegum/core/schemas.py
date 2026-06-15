@@ -135,6 +135,12 @@ class ResolvedTarget(BaseModel):
     confidence:    float           # 0.0 – 1.0
     resolver_name: str
     metadata:      dict[str, Any] = Field(default_factory=dict)
+    # X3: an explicit click point in screen pixels, [x, y]. Set when a target is
+    # actionable only by coordinate (a vision/OCR hit with no element mapping —
+    # canvas / image-only / custom-drawn UI). When present, the adapter clicks
+    # the point directly instead of resolving ``ref`` to a locator. ``ref`` stays
+    # a human-readable ``point://x,y`` label for traces/reports.
+    point:         list[int] | None = None
 
 
 # ---------------------------------------------------------------------------

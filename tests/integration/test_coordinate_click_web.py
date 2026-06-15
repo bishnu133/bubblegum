@@ -50,6 +50,7 @@ async def test_coordinate_target_clicks_canvas(bubblegum_page):
     adapter = PlaywrightAdapter(s.page)
     target = ResolvedTarget(
         ref=coordinate_ref(120, 80),
+        point=[120, 80],
         confidence=0.8,
         resolver_name="vision_model",
         metadata={"bbox": [100, 60, 140, 100]},

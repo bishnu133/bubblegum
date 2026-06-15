@@ -58,11 +58,7 @@ from bubblegum.core.mobile.webview_real_driver_switch import (
     execute_real_driver_switch_with_ref,
     resolve_real_webview_context_ref,
 )
-from bubblegum.core.coordinates import (
-    COORDINATE_CLICK_ACTIONS,
-    is_coordinate_ref,
-    parse_coordinate_ref,
-)
+from bubblegum.core.coordinates import COORDINATE_CLICK_ACTIONS, normalize_point
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -429,10 +425,10 @@ class AppiumAdapter(BaseAdapter):
         t0 = time.monotonic()
         ref = target.ref
 
-        # X3: a point://x,y ref taps the raw coordinate (vision/OCR target with
-        # no hierarchy element — canvas / game / custom-drawn surface).
-        if is_coordinate_ref(ref):
-            return self._execute_coordinate_action(plan, target, ref, t0)
+        # X3: a target with an explicit point taps the raw coordinate (vision/OCR
+        # target with no hierarchy element — canvas / game / custom-drawn surface).
+        if target.point is not None:
+            return self._execute_coordinate_action(plan, target, t0)
 
         retries = _retry_budget(getattr(plan.options, "retry_count", 0))
         attempts = 0
@@ -500,20 +496,21 @@ class AppiumAdapter(BaseAdapter):
                 )
 
     def _execute_coordinate_action(
-        self, plan: ActionPlan, target: ResolvedTarget, ref: str, t0: float
+        self, plan: ActionPlan, target: ResolvedTarget, t0: float
     ) -> ExecutionResult:
-        """Tap a raw ``point://x,y`` coordinate via Appium (X3).
+        """Tap ``target.point`` via Appium (X3).
 
         Only tap/click are coordinate-actionable. Uses ``driver.tap`` (W3C
         pointer under the hood); stamps ``coordinate_click`` metadata.
         """
-        point = parse_coordinate_ref(ref)
+        ref = target.ref
+        point = normalize_point(target.point)
         if point is None or plan.action_type not in COORDINATE_CLICK_ACTIONS:
             duration_ms = int((time.monotonic() - t0) * 1000)
             reason = (
                 f"action {plan.action_type!r} is not coordinate-clickable"
                 if point is not None
-                else f"malformed coordinate ref {ref!r}"
+                else f"malformed coordinate point {target.point!r}"
             )
             return ExecutionResult(
                 success=False, duration_ms=duration_ms, element_ref=ref, error=reason

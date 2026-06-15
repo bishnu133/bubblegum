@@ -33,8 +33,10 @@ grounding:
    element.
 3. If no element mapping exists **and** `coordinate_click_fallback` is on **and**
    the action is a click/tap **and** the bbox is usable, the target is hydrated
-   to a `point://x,y` ref (the bbox center).
-4. The adapter recognizes `point://` and clicks/taps the raw coordinate.
+   with an explicit **`point` field** (the bbox center). Its `ref` stays a
+   human-readable `point://x,y` label for traces/reports.
+4. The adapter sees a non-`None` `target.point` and clicks/taps that coordinate
+   directly — no locator resolution.
 
 ## Scope & guarantees
 
@@ -50,8 +52,11 @@ grounding:
 
 ## Internals
 
-- Pure geometry + ref encoding: `bubblegum/core/coordinates.py`
-  (`bbox_center`, `coordinate_ref`, `parse_coordinate_ref`, `is_coordinate_ref`).
+- Structured click point: `ResolvedTarget.point` (`[x, y]`, screen pixels) —
+  the field adapters dispatch on. Pure geometry + validation in
+  `bubblegum/core/coordinates.py` (`bbox_center`, `normalize_point`,
+  `coordinate_ref` for the readable label).
 - Fallback decision: `VisualRefHydrator._coordinate_fallback`
-  (`bubblegum/core/grounding/hydrator.py`).
-- Execution: `_execute_coordinate_action` in the Playwright and Appium adapters.
+  (`bubblegum/core/grounding/hydrator.py`) sets `point` (+ a `point://x,y` ref).
+- Execution: `_execute_coordinate_action` in the Playwright and Appium adapters
+  (`page.mouse.click` / `driver.tap`).
