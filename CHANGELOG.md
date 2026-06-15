@@ -1,5 +1,17 @@
 # Unreleased
 
+## CI: PyPI publish workflow (Trusted Publishing / OIDC)
+
+- Added `.github/workflows/publish.yml` — publishes the built distribution via
+  **PyPI Trusted Publishing** (OIDC), so no API tokens are stored as repo
+  secrets. A `build` job runs the strict release gates (`validate_package.py`
+  default + `--strict`, metadata tests, `python -m build`, `twine check`); a
+  manual run uploads to **TestPyPI** (dry run) and a pushed `v*` tag uploads to
+  **PyPI**. A normal merge never publishes — only a tag push does.
+- Added `docs/publishing.md` — the one-time maintainer setup (exact pending
+  trusted-publisher values for TestPyPI/PyPI + the `testpypi`/`pypi`
+  environments) and the dry-run → tag-release → verify runbook.
+
 ## Release prep: bump to 0.0.6a0 + correct repository URLs
 
 - Bumped the package version `0.0.5a0` → `0.0.6a0` (`pyproject.toml`,
