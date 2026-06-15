@@ -79,6 +79,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          # Re-running a dry run for an already-uploaded version is a no-op
+          # success instead of a hard 400 ("File already exists").
+          skip-existing: true
 
   pypi:
     name: Publish to PyPI
@@ -97,3 +100,7 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Idempotent re-runs: if this version's files are already on PyPI,
+          # skip rather than fail (PyPI versions are immutable).
+          skip-existing: true

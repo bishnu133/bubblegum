@@ -21,6 +21,19 @@
   `clients/node/**`). Client README documents prerequisites, the API, versioning,
   and the not-yet-built client-owned (CDP-attach) browser model.
 
+## Post-release: v0.0.6-alpha published + publish-workflow hardening
+
+- `bubblegum-ai 0.0.6a0` is **published to PyPI** (first PyPI release), via the
+  tag-push (`v0.0.6-alpha`) run of the Trusted-Publishing workflow.
+- Hardened `.github/workflows/publish.yml` with `skip-existing: true` on both the
+  TestPyPI and PyPI publish steps, so re-running a build for an already-uploaded
+  version is a no-op success instead of a hard `400 File already exists` (which is
+  what a repeat manual TestPyPI dry run hit — harmless, but noisy/red).
+- Flipped the README "latest release" badge `v0.0.5-alpha` → `v0.0.6-alpha`.
+- Synced `RELEASE_CHECKLIST.md` to `0.0.6a0` / `v0.0.6-alpha` and updated the
+  "publishing deferred" notes — PyPI publishing is now enabled (see
+  `docs/publishing.md`).
+
 ## CI: PyPI publish workflow (Trusted Publishing / OIDC)
 
 - Added `.github/workflows/publish.yml` — publishes the built distribution via
