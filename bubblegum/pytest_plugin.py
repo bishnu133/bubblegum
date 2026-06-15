@@ -27,6 +27,10 @@ from bubblegum.core.config import BubblegumConfig
 from bubblegum.core.schemas import StepResult
 from bubblegum.core.sdk import configure_runtime
 
+# Default Appium server URL for the bubblegum_mobile fixture. Defined as a
+# constant so the option default and the cloud-override heuristic agree.
+_DEFAULT_APPIUM_URL = "http://localhost:4723"
+
 
 @dataclass
 class BubblegumReporter:
@@ -159,7 +163,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption(
         "--bubblegum-appium-url",
         action="store",
-        default="http://localhost:4723",
+        default=_DEFAULT_APPIUM_URL,
         metavar="URL",
         help="Appium server URL for the bubblegum_mobile fixture "
         "(default: http://localhost:4723).",
@@ -172,6 +176,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Appium capabilities for the bubblegum_mobile fixture: either a "
         "path to a .json file or an inline JSON object. Must include "
         "platformName.",
+    )
+    group.addoption(
+        "--bubblegum-cloud-provider",
+        action="store",
+        default=None,
+        metavar="PROVIDER",
+        help="Run bubblegum_mobile against a device cloud (M5): one of "
+        "browserstack, saucelabs, lambdatest, pcloudy, generic. Enriches "
+        "--bubblegum-capabilities with the provider's credential/metadata "
+        "namespace and targets the provider's Appium hub URL. Credentials come "
+        "from BUBBLEGUM_CLOUD_USERNAME / BUBBLEGUM_CLOUD_ACCESS_KEY (or the "
+        "provider's own env vars). Use --bubblegum-appium-url to override the hub.",
     )
 
 
@@ -509,6 +525,7 @@ if _HAS_PYTEST_ASYNCIO:
         from bubblegum.testing.appium_driver import (
             AppiumNotInstalledError,
             create_appium_driver,
+            create_cloud_appium_driver,
             load_capabilities,
         )
 
@@ -521,16 +538,27 @@ if _HAS_PYTEST_ASYNCIO:
             return
 
         appium_url = pytestconfig.getoption("--bubblegum-appium-url")
+        cloud_provider = pytestconfig.getoption("--bubblegum-cloud-provider")
         artifacts_dir = _Path(pytestconfig.getoption("--bubblegum-artifacts") or "artifacts")
 
         caps = load_capabilities(raw_caps)
         try:
-            driver = create_appium_driver(appium_url, caps)
+            if cloud_provider:
+                # M5: target a device cloud. Only pass appium_url as an override
+                # when the operator actually changed it from the local default —
+                # otherwise let the provider's own hub URL be used.
+                override = appium_url if appium_url != _DEFAULT_APPIUM_URL else None
+                driver = create_cloud_appium_driver(
+                    cloud_provider, caps, appium_url=override
+                )
+            else:
+                driver = create_appium_driver(appium_url, caps)
         except AppiumNotInstalledError as exc:
             pytest.skip(str(exc))
             return
         except Exception as exc:  # connection / session creation failure
-            pytest.skip(f"Cannot start Appium session at {appium_url}: {exc}")
+            where = f"cloud provider {cloud_provider!r}" if cloud_provider else appium_url
+            pytest.skip(f"Cannot start Appium session at {where}: {exc}")
             return
 
         try:

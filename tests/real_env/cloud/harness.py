@@ -5,26 +5,21 @@ from dataclasses import dataclass
 
 import pytest
 
+from bubblegum.testing.cloud import SUPPORTED_PROVIDERS, get_provider
+
 _CLOUD_PROVIDER_ENV_VAR = "BUBBLEGUM_CLOUD_PROVIDER"
 
-_ALLOWED_CLOUD_PROVIDERS: frozenset[str] = frozenset(
-    {"pcloudy", "browserstack", "saucelabs", "lambdatest", "generic"}
-)
+# Single source of truth: the shipped provider registry in
+# bubblegum.testing.cloud (M5). The harness derives its namespace / default-URL
+# maps from it so the two never drift.
+_ALLOWED_CLOUD_PROVIDERS: frozenset[str] = SUPPORTED_PROVIDERS
 
 _PROVIDER_CAPABILITY_NAMESPACE: dict[str, str] = {
-    "pcloudy": "pCloudy_Options",
-    "browserstack": "bstack:options",
-    "saucelabs": "sauce:options",
-    "lambdatest": "LT:Options",
-    "generic": "appium:options",
+    name: get_provider(name).capability_namespace for name in SUPPORTED_PROVIDERS
 }
 
 _PROVIDER_DEFAULT_APPIUM_URL: dict[str, str] = {
-    "pcloudy": "https://device.pcloudy.com/appiumcloud/wd/hub",
-    "browserstack": "https://hub.browserstack.com/wd/hub",
-    "saucelabs": "https://ondemand.us-west-1.saucelabs.com/wd/hub",
-    "lambdatest": "https://mobile-hub.lambdatest.com/wd/hub",
-    "generic": "",
+    name: get_provider(name).default_hub_url for name in SUPPORTED_PROVIDERS
 }
 
 

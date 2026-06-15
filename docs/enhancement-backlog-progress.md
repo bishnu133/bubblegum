@@ -135,6 +135,24 @@ the handoff for continuing with Sprint 3+.
   (estimation, tracker budget/reset, cache key/get/put/copies, resolver cache-replay + cost
   accounting, engine Tier-3 hard-stop). No browser-gated test (AI/infra; would need `--llm`).
 
+- **M5** — device cloud integration (BrowserStack / Sauce Labs / LambdaTest / pCloudy). New
+  `bubblegum/testing/cloud.py`: an Appium-free, pytest-free provider registry + capability builder.
+  `CloudProvider` records each cloud's vendor capability namespace (`bstack:options` / `sauce:options`
+  / `LT:Options` / `pCloudy_Options`), default hub URL, and credential key names (vendors disagree:
+  `userName` vs `username` vs `user`). `build_cloud_capabilities` turns "a Pixel 8 on BrowserStack
+  running my app" into a full W3C caps dict (validates one app-launch strategy — `app` /
+  `app_package`+`app_activity` / `bundle_id` — and platform/bundle mismatches → `CloudConfigError`);
+  `apply_cloud_options` cloud-ifies an existing caps dict; `cloud_hub_url`/`resolve_credentials`
+  resolve the hub + secrets (explicit → `BUBBLEGUM_CLOUD_USERNAME`/`_ACCESS_KEY` → the provider's own
+  env vars like `SAUCE_USERNAME`). Driver helper `create_cloud_appium_driver` in
+  `testing/appium_driver.py`. Wired into the `bubblegum_mobile` fixture via
+  `--bubblegum-cloud-provider` (enriches `--bubblegum-capabilities`, defaults to the provider hub
+  unless `--bubblegum-appium-url` is overridden). The real-env cloud smoke harness now sources its
+  namespaces/URLs from this registry (single source of truth, no drift). Unit-tested end-to-end
+  (registry, hub/credential resolution incl. env precedence, per-provider caps, app-launch validation,
+  `apply_cloud_options` immutability/merge); cloud runs are `--appium`/real-env-gated. Docs in
+  `docs/mobile-cloud.md`.
+
 **Note on mobile testing:** the sandbox and the usual local gate are browser-only (no Appium device),
 so mobile items are verified by unit tests that assert the exact `mobile:` gesture command per platform
 via a fake driver. Real-device tests are `--appium`-gated and run only where an emulator/device exists.

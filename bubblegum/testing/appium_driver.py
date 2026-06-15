@@ -148,3 +148,37 @@ def create_appium_driver(appium_url: str, caps: dict[str, Any]):
 
     options = build_appium_options(caps)
     return appium_webdriver.Remote(appium_url, options=options)
+
+
+def create_cloud_appium_driver(
+    provider: str,
+    caps: dict[str, Any],
+    *,
+    appium_url: str | None = None,
+    username: str | None = None,
+    access_key: str | None = None,
+    session_name: str | None = None,
+    build_name: str | None = None,
+):
+    """Create an Appium driver against a device cloud (M5).
+
+    Enriches ``caps`` with the provider's credential/metadata namespace (via
+    :func:`bubblegum.testing.cloud.apply_cloud_options`) and resolves the
+    provider hub URL (``appium_url`` override → ``BUBBLEGUM_CLOUD_APPIUM_URL`` →
+    provider default), then delegates to :func:`create_appium_driver`.
+
+    Credentials fall back to environment variables when omitted — see
+    :func:`bubblegum.testing.cloud.resolve_credentials`.
+    """
+    from bubblegum.testing.cloud import apply_cloud_options, cloud_hub_url
+
+    enriched = apply_cloud_options(
+        provider,
+        caps,
+        username=username,
+        access_key=access_key,
+        session_name=session_name,
+        build_name=build_name,
+    )
+    url = cloud_hub_url(provider, override=appium_url)
+    return create_appium_driver(url, enriched)
