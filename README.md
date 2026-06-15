@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/bishnu133/bubblegum/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-GitHub%20Actions-blue.svg" alt="CI workflow"/></a>
-  <a href="https://github.com/bishnu133/bubblegum/releases/tag/v0.0.5-alpha"><img src="https://img.shields.io/badge/release-v0.0.5--alpha-orange.svg" alt="v0.0.5-alpha release"/></a>
+  <a href="https://github.com/bishnu133/bubblegum/releases/tag/v0.0.6-alpha"><img src="https://img.shields.io/badge/release-v0.0.6--alpha-orange.svg" alt="v0.0.6-alpha release"/></a>
   <a href="https://github.com/bishnu133/bubblegum"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="https://github.com/bishnu133/bubblegum/blob/main/README.md#quick-start"><img src="https://img.shields.io/badge/pip%20install-bubblegum--ai-pink.svg" alt="pip install bubblegum-ai"/></a>
   <a href="https://github.com/bishnu133/bubblegum/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-lightgrey.svg" alt="MIT License"/></a>
