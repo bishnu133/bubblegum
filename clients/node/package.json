@@ -1,0 +1,51 @@
+{
+  "name": "@bubblegum-ai/node",
+  "version": "0.0.6-alpha.0",
+  "description": "Node/TypeScript client for the Bubblegum engine — drive AI-powered, natural-language Playwright/Appium test steps from JS/TS via the Bubblegum JSON-RPC bridge.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "bubblegum",
+    "playwright",
+    "appium",
+    "testing",
+    "test-automation",
+    "self-healing",
+    "natural-language",
+    "ai"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bishnu133/bubblegum.git",
+    "directory": "clients/node"
+  },
+  "homepage": "https://github.com/bishnu133/bubblegum/tree/main/clients/node",
+  "bugs": {
+    "url": "https://github.com/bishnu133/bubblegum/issues"
+  },
+  "peerDependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  }
+}

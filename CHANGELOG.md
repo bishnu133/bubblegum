@@ -1,5 +1,26 @@
 # Unreleased
 
+## npm client scaffold: @bubblegum-ai/node (0.2.0 slice)
+
+- Added `clients/node/` — a Node/TypeScript client (`@bubblegum-ai/node`) that
+  drives the engine from JS/TS by spawning `python -m bubblegum.bridge` and
+  speaking its JSON-RPC protocol. No grounding logic is re-implemented in TS; the
+  Python engine stays the single source of truth (per
+  `docs/distribution-npm-and-pypi.md`).
+- `Bubblegum.launch()` spawns the bridge, negotiates via `handshake` (refuses an
+  unsupported `protocol_version`), and opens an engine-owned session; `act` /
+  `verify` / `extract` / `recover` / state probes / `explain` / `summary` /
+  `close` proxy 1:1 to the bridge and return the same `StepResult` shape as the
+  Python SDK. Typed mirrors of the protocol + schemas live in `src/protocol.ts`
+  and `src/types.ts`.
+- Lower-level `BridgeClient` with an injectable `Transport` (default spawns the
+  Python process); 8 browser/Python-free tests drive the full client/session over
+  a mock transport (`test/client.test.mjs`). Verified end-to-end against the real
+  bridge (handshake) too.
+- Added `.github/workflows/node-client.yml` (type-check + build + test, scoped to
+  `clients/node/**`). Client README documents prerequisites, the API, versioning,
+  and the not-yet-built client-owned (CDP-attach) browser model.
+
 ## CI: PyPI publish workflow (Trusted Publishing / OIDC)
 
 - Added `.github/workflows/publish.yml` — publishes the built distribution via
