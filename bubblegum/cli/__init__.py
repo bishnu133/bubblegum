@@ -72,6 +72,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start in resolve-only mode (preview targets without acting).",
     )
 
+    sub.add_parser(
+        "bridge",
+        help="Run the JSON-RPC bridge over stdio (for non-Python clients).",
+        description=(
+            "Expose the engine over newline-delimited JSON-RPC 2.0 on "
+            "stdin/stdout so a non-Python client (e.g. the @bubblegum-ai/node "
+            "npm package) can drive act/verify/extract/recover. One request per "
+            "line in, one response per line out. See "
+            "docs/distribution-npm-and-pypi.md."
+        ),
+    )
+
     return parser
 
 
@@ -102,6 +114,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             headless=args.headless,
             dry_run=args.dry_run,
         )
+
+    if args.command == "bridge":
+        from bubblegum.cli.bridge import run_bridge
+
+        return run_bridge()
 
     parser.print_help()
     return 1

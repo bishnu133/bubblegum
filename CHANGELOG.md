@@ -1,5 +1,26 @@
 # Unreleased
 
+## Bridge: drive the engine over JSON-RPC (npm/non-Python clients)
+
+- Added `bubblegum.bridge` — a **JSON-RPC 2.0** server that exposes the engine to
+  non-Python clients (the foundation for the planned `@bubblegum-ai/node` npm
+  package; see `docs/distribution-npm-and-pypi.md`). Newline-delimited, one
+  request per line, served over stdio via the new `bubblegum bridge` command
+  (and `python -m bubblegum.bridge`).
+- Methods mirror the SDK 1:1: `handshake` (version/capability negotiation),
+  `session.open`/`session.close` (engine-owned Playwright/Appium sessions keyed
+  by id), `act`/`verify`/`extract`/`recover`, `explain`, the state probes
+  (`is_visible`/`is_checked`/`selected_value`), `summary`, and
+  `configure_runtime`. Primitive results are the existing `StepResult`
+  serialized as JSON, so the wire shape matches the Python SDK exactly.
+- `PROTOCOL_VERSION = 1`, advertised with a capability list, so future
+  enhancements ship **additively** (newer engine keeps serving older clients).
+- Handlers are a thin adapter over `BubblegumSession`/`bubblegum.core.sdk` — no
+  grounding logic is duplicated. Session construction goes through an injectable
+  factory, so the protocol/dispatch/handlers are unit-tested with no browser or
+  device (`tests/unit/test_bridge.py`, 14 tests). Reference: `docs/bridge-protocol.md`.
+- Additive only: no changes to existing SDK/schema/public API.
+
 ## Documentation: end-to-end user guide
 
 - Added `docs/USER_GUIDE.md` — a single, example-driven reference covering every
