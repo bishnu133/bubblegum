@@ -103,5 +103,64 @@ you haven't uploaded to yet).
 No long-lived secret to store, leak, or rotate; the OIDC token is minted
 per-run and scoped to this repo + workflow + environment. This is PyPI's
 recommended path and what the dual-publish plan in
-`distribution-npm-and-pypi.md` standardizes on (the npm side will use npm's
-equivalent OIDC provenance when we wire `0.2.0`).
+`distribution-npm-and-pypi.md` standardizes on.
+
+---
+
+# Publishing the npm client (`@bubblegum-ai/node`)
+
+The Node client publishes via `.github/workflows/npm-publish.yml`, on a **separate
+tag namespace** so it doesn't collide with the Python `v*` releases:
+
+| Trigger | What happens |
+| --- | --- |
+| Manual run (`workflow_dispatch`) | build + test + `npm publish --dry-run` (validate packaging) |
+| Push a `node-v*` tag | build + test + real `npm publish --provenance` |
+
+## One-time setup (maintainer)
+
+npm scoped packages (`@bubblegum-ai/...`) live under an npm **org/scope**.
+
+1. Create an npm account at <https://www.npmjs.com/>, verify email, enable 2FA.
+2. Create the **organization** `bubblegum-ai`
+   (<https://www.npmjs.com/org/create> — free for public packages). The package
+   scope `@bubblegum-ai` maps to this org.
+3. Create a **Granular Access Token** (Settings → Access Tokens → Generate →
+   *Granular*), type **Automation**, with **Read and write** permission for
+   packages under `@bubblegum-ai`.
+4. Add it as a repo secret named **`NPM_TOKEN`**
+   (repo → Settings → Secrets and variables → Actions).
+
+> **First publish note.** npm's OIDC *trusted publishing* can only be configured
+> on a package that already exists, so the first publish uses `NPM_TOKEN`. The
+> workflow still requests `id-token: write` and publishes with `--provenance`, so
+> releases carry a signed provenance attestation. After the first publish you can
+> optionally switch to npm trusted publishing and remove the token.
+
+## Releasing the client
+
+### Dry run
+
+Repo → Actions → **npm publish** → *Run workflow*. The `npm publish --dry-run`
+step prints exactly what would be uploaded (file list + tarball), without
+publishing.
+
+### Real publish
+
+1. Make sure `clients/node/package.json` `version` is what you intend to publish
+   (e.g. `0.0.6-alpha.0`) and `main` is green.
+2. Tag and push (note the `node-` prefix):
+   ```bash
+   git tag node-v0.0.6-alpha.0
+   git push origin node-v0.0.6-alpha.0
+   ```
+3. Verify:
+   ```bash
+   npm view @bubblegum-ai/node version
+   npm install @bubblegum-ai/node
+   ```
+
+> npm versions are immutable like PyPI — bump `package.json` and re-tag if a
+> publish is wrong. Keep the npm major/minor aligned with the engine
+> (`bubblegum-ai`) per `distribution-npm-and-pypi.md`.
+
