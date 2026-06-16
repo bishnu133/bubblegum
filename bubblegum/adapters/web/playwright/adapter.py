@@ -155,6 +155,7 @@ _ACTION_DISPATCH = {
     "uncheck": lambda self, plan, locator, timeout, target: self._do_uncheck(plan, locator, timeout),
     "scroll":  lambda self, plan, locator, timeout, target: self._do_scroll(plan, locator, timeout),
     "set":     lambda self, plan, locator, timeout, target: self._do_set(plan, locator, timeout),
+    "hover":   lambda self, plan, locator, timeout, target: self._do_hover(plan, locator, timeout),
 }
 
 
@@ -450,6 +451,10 @@ class PlaywrightAdapter(BaseAdapter):
 
     async def _do_scroll(self, plan: ActionPlan, locator, timeout: int) -> None:
         await locator.scroll_into_view_if_needed(timeout=timeout)
+
+    async def _do_hover(self, plan: ActionPlan, locator, timeout: int) -> None:
+        """Hover the resolved element — e.g. to reveal a hover-triggered menu."""
+        await locator.hover(timeout=timeout)
 
     async def _do_set(self, plan: ActionPlan, locator, timeout: int) -> None:
         """Set a numeric / range value on the resolved element.

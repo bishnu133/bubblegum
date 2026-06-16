@@ -1,5 +1,16 @@
 # Unreleased
 
+## Web: native `hover` action (reveal hover-triggered menus)
+
+- Added a first-class `hover` web action so hover-revealed dropdowns/menus no
+  longer need a raw-Playwright fallback. `act("Hover over the Create menu")` (or
+  `act('Hover "+ Create a challenge"', { action_type: "hover" })`) resolves the
+  element and dispatches `locator.hover()`.
+- Parser maps the `hover` verb (and the natural "hover over X" phrasing) to
+  `action_type="hover"`; added to the `ActionPlan` schema and the web adapter
+  dispatch table. Click/tap/etc. target extraction is unchanged.
+- Coverage: `tests/unit/test_hover_action.py`. Mobile/other channels unchanged.
+
 ## npm: one-click publish + Node client demo examples
 
 - `npm-publish.yml` now supports a **one-click "publish for real"**: a manual

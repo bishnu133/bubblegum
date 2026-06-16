@@ -29,7 +29,7 @@ _LEADING_VERBS = (
     "fill", "input", "verify", "check", "uncheck", "tick", "untick", "toggle",
     "upload", "attach", "open", "follow", "assert", "confirm", "ensure", "see",
     "extract", "get", "read", "fetch", "scroll", "set", "expand", "collapse",
-    "to", "on", "the",
+    "hover", "to", "on", "the",
 )
 
 # "Enter <value> into <target>" grammar for type/select/upload actions.
@@ -189,8 +189,13 @@ def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:
         # No target separator and no explicit value — ambiguous; let the LLM decide.
         return ParsedIntent(action, None, None, confident=False)
 
-    # click / tap / verify / extract / scroll: target is the text after the verb.
+    # click / tap / verify / extract / scroll / hover: target is the text after
+    # the verb.
     target = _LEADING_VERB_RE.sub("", text, count=1)
+    if action == "hover":
+        # Allow the natural "hover over X" phrasing: strip the optional "over"
+        # preposition (+ article) that survives the single leading-verb strip.
+        target = re.sub(r"^\s*over\b\s*(?:the\s+)?", "", target or "", flags=re.IGNORECASE)
     target = _strip_widget_suffix(target)
     return ParsedIntent(action, target, explicit_value, confident=bool(target))
 
@@ -227,6 +232,7 @@ _LEADING_VERB_TO_ACTION: dict[str, str] = {
     "untick": "uncheck",
     "scroll": "scroll",
     "set": "set",
+    "hover": "hover",
     "expand": "click",
     "collapse": "click",
     "extract": "extract",
