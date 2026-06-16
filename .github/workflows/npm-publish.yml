@@ -12,7 +12,12 @@ name: npm publish
 # to publish @bubblegum-ai/*). See docs/publishing.md.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish for real to npm (unchecked = dry run)"
+        type: boolean
+        default: false
   push:
     tags:
       - "node-v*"
@@ -49,14 +54,19 @@ jobs:
       - name: Test
         run: node --test test/*.test.mjs
 
+      # Dry run: a manual run with the "publish" box unchecked.
       - name: Publish (dry run)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true'
         run: npm publish --dry-run --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # Real publish: a pushed node-v* tag, OR a manual run with "publish" checked
+      # (one-click release from the Actions UI — no tag, no stale-commit risk).
       - name: Publish to npm
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/node-v')
+        if: >-
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/node-v')) ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
