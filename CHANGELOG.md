@@ -1,5 +1,12 @@
 # Unreleased
 
+## Engine 0.0.6a2 — CDP attach + hover on PyPI
+
+- Bumped `0.0.6a1` → `0.0.6a2` so the first published build containing **both**
+  CDP attach and the new `hover` action gets a distinct version — a clean
+  `pip install -U bubblegum-ai` (avoids colliding with the interim `0.0.6a1`
+  installed straight from git).
+
 ## Web: native `hover` action (reveal hover-triggered menus)
 
 - Added a first-class `hover` web action so hover-revealed dropdowns/menus no
@@ -10,6 +17,15 @@
   `action_type="hover"`; added to the `ActionPlan` schema and the web adapter
   dispatch table. Click/tap/etc. target extraction is unchanged.
 - Coverage: `tests/unit/test_hover_action.py`. Mobile/other channels unchanged.
+
+## Engine 0.0.6a1 — ship CDP attach to PyPI
+
+- Bumped the engine `0.0.6a0` → `0.0.6a1`. The PyPI `0.0.6a0` build predated the
+  CDP-attach feature (`channel.web.cdp`, PR #226), so `@bubblegum-ai/node`'s
+  `attach()` correctly refused against it (`BridgeError -32003 ... upgrade
+  bubblegum-ai`). `0.0.6a1` is the first PyPI engine that advertises
+  `channel.web.cdp`, realigning the published engine with the npm client.
+- No code changes beyond the version bump — CDP support already merged on `main`.
 
 ## npm: one-click publish + Node client demo examples
 
