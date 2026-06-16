@@ -1,5 +1,17 @@
 # Unreleased
 
+## npm: one-click publish + Node client demo examples
+
+- `npm-publish.yml` now supports a **one-click "publish for real"**: a manual
+  `workflow_dispatch` run with the `publish` box checked publishes from `main`
+  (no tag, no stale-commit risk); unchecked stays a dry run. Tag-push
+  (`node-v*`) publishing is unchanged. `docs/publishing.md` documents both paths.
+- Added `clients/node/examples/` — copy-paste demos: `demo-engine-owned.mjs`
+  (quickest try; the engine launches its own browser) and `login.spec.ts`
+  (`@playwright/test` + CDP attach, driving the test's own browser), plus a
+  README with prerequisites and troubleshooting. Examples are repo-only (not
+  shipped in the npm tarball).
+
 ## Docs + CI: TypeScript/JS how-to guide and npm publish workflow
 
 - Added `docs/HOW_TO_USE_TYPESCRIPT.md` — a tester-facing copy-paste guide for

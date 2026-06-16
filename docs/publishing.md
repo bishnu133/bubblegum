@@ -147,18 +147,26 @@ publishing.
 
 ### Real publish
 
+**Option A — one click (recommended).** Repo → Actions → **npm publish** → *Run
+workflow*, **check the "Publish for real to npm" box**, Run. This publishes from
+`main` with no tag and no stale-commit risk. (Leaving the box unchecked is a dry
+run.)
+
+**Option B — tag.**
 1. Make sure `clients/node/package.json` `version` is what you intend to publish
    (e.g. `0.0.6-alpha.0`) and `main` is green.
-2. Tag and push (note the `node-` prefix):
+2. Tag and push (note the `node-` prefix), **from an up-to-date `main`** so the
+   tag includes the workflow:
    ```bash
+   git checkout main && git pull
    git tag node-v0.0.6-alpha.0
    git push origin node-v0.0.6-alpha.0
    ```
-3. Verify:
-   ```bash
-   npm view @bubblegum-ai/node version
-   npm install @bubblegum-ai/node
-   ```
+
+Then verify (either option):
+```bash
+npm view @bubblegum-ai/node version --registry=https://registry.npmjs.org/
+```
 
 > npm versions are immutable like PyPI — bump `package.json` and re-tag if a
 > publish is wrong. Keep the npm major/minor aligned with the engine
