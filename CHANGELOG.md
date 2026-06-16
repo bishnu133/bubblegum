@@ -1,5 +1,14 @@
 # Unreleased
 
+## Engine 0.0.6a1 — ship CDP attach to PyPI
+
+- Bumped the engine `0.0.6a0` → `0.0.6a1`. The PyPI `0.0.6a0` build predated the
+  CDP-attach feature (`channel.web.cdp`, PR #226), so `@bubblegum-ai/node`'s
+  `attach()` correctly refused against it (`BridgeError -32003 ... upgrade
+  bubblegum-ai`). `0.0.6a1` is the first PyPI engine that advertises
+  `channel.web.cdp`, realigning the published engine with the npm client.
+- No code changes beyond the version bump — CDP support already merged on `main`.
+
 ## npm: one-click publish + Node client demo examples
 
 - `npm-publish.yml` now supports a **one-click "publish for real"**: a manual
