@@ -53,7 +53,7 @@ from bubblegum.core.grounding.errors import (
 from bubblegum.core.grounding.hydrator import VisualRefHydrator, is_visual_ref
 from bubblegum.core.grounding.registry import ResolverRegistry
 from bubblegum.core.grounding.resolvers.memory_cache import MemoryCacheResolver
-from bubblegum.core.parser import decompose, extract_expected, infer_action_type, llm_decompose
+from bubblegum.core.parser import decompose, extract_expected, infer_action_type, llm_decompose, substitute_dynamic_tokens
 from bubblegum.core.planner import build_options, build_validation_plan, context_request, make_intent
 from bubblegum.core.recovery import remove_explicit_selector, used_explicit_selector
 from bubblegum.core.mobile.memory_signature import build_mobile_memory_signature
@@ -1157,6 +1157,11 @@ async def _decompose_for(
                 target_phrase = llm.target_phrase
             if input_value is None:
                 input_value = llm.input_value
+
+    # Expand dynamic-value tokens (e.g. {{today+7d|%d/%m/%Y}}) so a tester can
+    # parameterise dates/times in the phrase. Token-free values pass through
+    # untouched. Applied last so both parsed and explicit values are covered.
+    input_value = substitute_dynamic_tokens(input_value)
 
     return action_type, target_phrase, input_value
 

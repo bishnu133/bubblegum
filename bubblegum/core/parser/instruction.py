@@ -68,6 +68,29 @@ _TRAILING_WIDGET_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Trailing *positional* context that names where on the page a control lives —
+# "Click the Save button on the Challenges page", "... in the header", "the
+# Customer Care menu in the top navigation bar". Resolvers match on the control
+# itself, so this locational tail is noise that dilutes text matching. We strip
+# it during target isolation. Deliberately narrow: only page-region nouns, and
+# only after a leading preposition, so a control literally named "Header" (bare,
+# no preposition) is left alone — and meaningful relational scopes that end in a
+# widget noun ("in the country dropdown", "in the confirmation modal") never
+# match here because they don't end on a region noun.
+_TRAILING_CONTEXT_RE = re.compile(
+    # Require the article ("... on **the** Challenges page") so a target that
+    # merely contains a preposition-like word ("Sign In") is never mis-split.
+    r"\s+(?:on|in|at|within|inside|from)\s+the\s+"
+    # Optional name/qualifier words ("Challenges", "top", "main") that precede
+    # the region noun — lazy so we strip the shortest tail that still ends on a
+    # region noun ("the Challenges page", "the top navigation bar").
+    r"(?:[\w'-]+\s+)*?"
+    r"(?:page|screen|view|header|footer|navbar|nav(?:igation)?(?:\s+bar)?"
+    r"|menu\s*bar|menubar|tool\s*bar|toolbar|side\s*bar|sidebar|banner)"
+    r"\s*[\.!?]?\s*$",
+    re.IGNORECASE,
+)
+
 
 # Mobile gesture vocabulary (M1). Each rule is anchored at the start of the
 # instruction so a gesture verb only matches when it leads the phrase — a
@@ -127,12 +150,27 @@ def _clean(value: str | None) -> str | None:
     return out or None
 
 
+def _strip_trailing_context(value: str | None) -> str | None:
+    """Drop a trailing positional phrase ("... in the header") from a target.
+
+    Returns the trimmed target, or the original when stripping would empty it.
+    """
+    if value is None:
+        return None
+    stripped = _TRAILING_CONTEXT_RE.sub("", value)
+    cleaned = _clean(stripped)
+    return cleaned if cleaned else value
+
+
 def _strip_widget_suffix(value: str | None) -> str | None:
     if value is None:
         return None
-    stripped = _TRAILING_WIDGET_SUFFIX_RE.sub("", value)
+    # Isolate the target: drop locational context first, then the widget-kind
+    # suffix (which is carried separately on the relational intent).
+    base = _strip_trailing_context(value) or value
+    stripped = _TRAILING_WIDGET_SUFFIX_RE.sub("", base)
     cleaned = _clean(stripped)
-    return cleaned if cleaned else _clean(value)
+    return cleaned if cleaned else _clean(base)
 
 
 def decompose(instruction: str, kwargs: dict | None = None) -> ParsedIntent:

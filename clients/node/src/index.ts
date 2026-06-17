@@ -29,4 +29,6 @@ export type {
   ErrorInfo,
   SessionSummary,
   StepOptions,
+  ReportOptions,
+  ReportResult,
 } from "./types.js";

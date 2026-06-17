@@ -1,7 +1,7 @@
 import { BridgeClient, BridgeClientOptions } from "./client.js";
 import { BridgeError } from "./errors.js";
 import { ErrorCodes } from "./protocol.js";
-import { SessionSummary, StepOptions, StepResult } from "./types.js";
+import { ReportOptions, ReportResult, SessionSummary, StepOptions, StepResult } from "./types.js";
 
 export type Channel = "web" | "mobile";
 
@@ -178,6 +178,42 @@ export class Bubblegum {
 
   summary(): Promise<SessionSummary> {
     return this.client.request<SessionSummary>("summary", { session_id: this.sessionId });
+  }
+
+  /**
+   * Write reports (Allure / HTML / JSON / JUnit) from every step this session
+   * ran, using the engine's own reporters — the same output the Python/pytest
+   * path produces. Call it once near the end of your run (e.g. in `finally`,
+   * before `close()`):
+   *
+   * ```ts
+   * await bg.report({ html: "reports/run.html", allure: "allure-results" });
+   * // -> { written: { html: "/abs/...", allure: "/abs/..." }, steps: 12 }
+   * ```
+   */
+  report(opts: ReportOptions): Promise<ReportResult> {
+    if (!this.client.hasCapability("report.write")) {
+      throw new BridgeError(
+        ErrorCodes.Unsupported,
+        "this engine does not support report generation (report.write); upgrade bubblegum-ai",
+      );
+    }
+    const resolve = (v: string | boolean | undefined, fallback: string): string | undefined =>
+      v === true ? fallback : v || undefined;
+
+    const params: Record<string, unknown> = { session_id: this.sessionId };
+    const html = resolve(opts.html, "bubblegum_report.html");
+    const json = resolve(opts.json, "bubblegum_report.json");
+    const junit = resolve(opts.junit, "bubblegum_report.xml");
+    const allure = resolve(opts.allure, "allure-results");
+    if (html) params.html = html;
+    if (json) params.json = json;
+    if (junit) params.junit = junit;
+    if (allure) params.allure = allure;
+    if (opts.title) params.title = opts.title;
+    if (opts.suiteName) params.suite_name = opts.suiteName;
+
+    return this.client.request<ReportResult>("report.write", params);
   }
 
   /** Close the engine session and tear down the bridge process. */

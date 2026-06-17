@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { BridgeClient, Bubblegum, BridgeError } from "../dist/index.js";
+import { BridgeClient, Bubblegum, BridgeError } from "../dist/esm/index.js";
 
 /** A Transport that records sent lines and auto-replies via a method->handler map. */
 function makeMock(handlers = {}) {
@@ -153,6 +153,40 @@ test("attach() rejects when the engine lacks the channel.web.cdp capability", as
   await assert.rejects(
     Bubblegum.attach({ transport: m.transport, cdpEndpoint: "http://localhost:9222" }),
     (e) => e instanceof BridgeError && /CDP attach/.test(e.message),
+  );
+});
+
+test("report() maps options to report.write and resolves written paths", async () => {
+  let captured;
+  const m = makeMock({
+    handshake: () => ({ engine_version: "0.0.6", protocol_version: 1, capabilities: ["act", "report.write"] }),
+    "session.open": () => ({ session_id: "s" }),
+    "report.write": (p) => {
+      captured = p;
+      return { written: { html: "/abs/run.html", allure: "/abs/allure-results" }, steps: 3 };
+    },
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport });
+  const r = await bg.report({ html: "run.html", allure: true, title: "My Run", suiteName: "h365" });
+  assert.equal(r.steps, 3);
+  assert.equal(r.written.html, "/abs/run.html");
+  // string path passes through; `true` becomes the default dir name; camelCase -> snake_case.
+  assert.equal(captured.html, "run.html");
+  assert.equal(captured.allure, "allure-results");
+  assert.equal(captured.title, "My Run");
+  assert.equal(captured.suite_name, "h365");
+  assert.equal(captured.session_id, "s");
+});
+
+test("report() throws when the engine lacks the report.write capability", async () => {
+  const m = makeMock({
+    handshake: HANDSHAKE, // no report.write
+    "session.open": () => ({ session_id: "s" }),
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport });
+  await assert.throws(
+    () => bg.report({ html: true }),
+    (e) => e instanceof BridgeError && /report generation/.test(e.message),
   );
 });
 

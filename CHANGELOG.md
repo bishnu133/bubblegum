@@ -1,5 +1,59 @@
 # Unreleased
 
+## Release: engine 0.0.6a4 + @bubblegum-ai/node 0.0.6-alpha.1
+
+- Engine `0.0.6a3` → `0.0.6a4` (PyPI): ships the `report.write` bridge
+  capability, dynamic-value tokens, and trailing-context stripping.
+- Client `@bubblegum-ai/node` `0.0.6-alpha.0` → `0.0.6-alpha.1` (npm): ships
+  `bg.report(...)` and the dual ESM/CommonJS build.
+- Release order matters: publish the **engine first** (the client's `report()`
+  capability-checks for `report.write` and throws against an older engine).
+
+## Node client: reports + dual ESM/CommonJS build
+
+- **Reports from the Node client.** New `report.write` bridge method (capability
+  `report.write`) writes Allure / HTML / JSON / JUnit from the session's
+  accumulated `StepResult`s, reusing the same writers as the pytest plugin — so a
+  Node-driven run gets identical reports without pytest. Exposed as
+  `bg.report({ html, allure, junit, json, title, suiteName })` →
+  `{ written, steps }`; each format optional (`true` = default name). Engine
+  coverage in `tests/unit/test_bridge.py`; client coverage in
+  `clients/node/test/client.test.mjs`.
+- **Dual ESM + CommonJS build** for `@bubblegum-ai/node`. `tsc` now emits ESM to
+  `dist/esm` and CommonJS to `dist/cjs` (with per-dir `package.json` `type`
+  markers); the package `exports` map routes `import` and `require` accordingly.
+  Consumers on CommonJS runners (e.g. Jest's default runtime) can `require(...)`
+  without the `.mts` rename or loader flags; ESM `import` is unchanged. CJS load
+  smoke-tested in `clients/node/test/cjs-require.test.cjs`.
+
+## Parameterised values + target-isolation polish + one-click PyPI
+
+- **Dynamic-value tokens** (parameterised dates/times). Any step value may now
+  contain a `{{ ... }}` token that expands at run time, so a date picker can be
+  fed a *relative* date instead of a literal that goes stale:
+  `act('Enter "{{today+7d|%d/%m/%Y}}" into Start date')`,
+  `act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment')`. Bases `today` /
+  `now` / `tomorrow` / `yesterday`; chainable signed offsets `+7d -3d +2w +1mo
+  -1y +2h +30min +45s`; optional `|strftime` format (defaults `%Y-%m-%d` and
+  `%Y-%m-%d %H:%M`). Token-free and unrecognised values pass through untouched.
+  Substitution runs in `_decompose_for` so it covers every channel and both the
+  Python SDK and the Node client over the bridge. New module
+  `bubblegum/core/parser/dynamic_value.py`; coverage in
+  `tests/unit/test_dynamic_value_tokens.py`.
+- **Trailing positional-context stripping.** Target isolation now drops a
+  trailing "where on the page" tail so it stops diluting text matching:
+  `Click the Save button on the Challenges page` → `Save`, `Click the Customer
+  Care menu in the top navigation bar` → `Customer Care menu`. Deliberately
+  narrow — requires a preposition + article + page-region noun (`page`,
+  `screen`, `header`, `footer`, `nav(igation) bar`, `toolbar`, `sidebar`,
+  `banner`, …), so bare region names and meaningful relational scopes
+  (`in the confirmation modal`, `from the country dropdown`) are untouched.
+  Coverage in `tests/unit/test_trailing_context_strip.py`.
+- **One-click PyPI publish.** `publish.yml` now takes a `publish` boolean on
+  `workflow_dispatch` (mirroring `npm-publish.yml`): unchecked = dry-run to
+  TestPyPI, checked = real release to PyPI from the Actions UI — no tag, no
+  stale-commit risk. The existing `v*` tag-push path is unchanged.
+
 ## 0.0.6a3 — hover role-fit (no more button-vs-span ambiguity)
 
 - The `hover` action now shares the interactive-role preference of `click`/`tap`

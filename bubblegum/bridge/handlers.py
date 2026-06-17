@@ -107,6 +107,45 @@ class BridgeHandlers:
         session = self.sessions.get(params.get("session_id"))
         return session.summary()
 
+    # -- reporting -------------------------------------------------------
+    async def report_write(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Write reports from the session's accumulated StepResults.
+
+        Reuses the same writers as the pytest plugin, so a Node-driven run gets
+        identical Allure/HTML/JSON/JUnit output. Each format key is optional and
+        carries an output path (an ``allure`` directory). Reporting modules are
+        imported lazily so the bridge stays cheap to start when no report is
+        requested.
+        """
+        session = self.sessions.get(params.get("session_id"))
+        results = session.results
+        title = params.get("title") or "Bubblegum Test Report"
+        suite_name = params.get("suite_name") or "bubblegum"
+
+        written: dict[str, str] = {}
+        try:
+            if params.get("html"):
+                from bubblegum.reporting.html_report import write_html_report
+                written["html"] = str(write_html_report(results, params["html"], title=title))
+            if params.get("json"):
+                from bubblegum.reporting.json_report import write_json_report
+                written["json"] = str(write_json_report(results, params["json"], title=title))
+            if params.get("junit"):
+                from bubblegum.reporting.junit_report import write_junit_report
+                written["junit"] = str(write_junit_report(results, params["junit"], suite_name=suite_name))
+            if params.get("allure"):
+                from bubblegum.reporting.allure_report import write_allure_results
+                written["allure"] = str(write_allure_results(results, params["allure"], suite_name=suite_name))
+        except OSError as exc:
+            raise p.BridgeError(p.ENGINE_ERROR, f"report.write failed: {exc}") from exc
+
+        if not written:
+            raise p.BridgeError(
+                p.INVALID_PARAMS,
+                "report.write: specify at least one of html / json / junit / allure",
+            )
+        return {"written": written, "steps": len(results)}
+
     # -- runtime config --------------------------------------------------
     async def configure_runtime(self, params: dict[str, Any]) -> dict[str, Any]:
         from bubblegum import configure_runtime as _configure
@@ -128,6 +167,7 @@ class BridgeHandlers:
         server.register("is_checked", self.is_checked)
         server.register("selected_value", self.selected_value)
         server.register("summary", self.summary)
+        server.register("report.write", self.report_write)
         server.register("configure_runtime", self.configure_runtime)
 
 
