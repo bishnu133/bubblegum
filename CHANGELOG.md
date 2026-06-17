@@ -1,5 +1,16 @@
 # Unreleased
 
+## 0.0.6a5 — fix: report.write over the bridge
+
+- Fixed `report.write` (Node-client reporting) crashing with
+  `TypeError: 'method' object is not iterable`. `BubblegumSession.results` is a
+  **method**, but the bridge handler used it as a property and passed the bound
+  method to the reporters. Now normalized (calls it when callable). The unit-test
+  fake modelled `results` as a property, which hid the bug — it now mirrors the
+  real method shape so the regression is covered.
+- Engine `0.0.6a4` → `0.0.6a5`. Node client unchanged (`bg.report(...)` is fixed
+  purely engine-side; upgrade with `pip install -U "bubblegum-ai==0.0.6a5"`).
+
 ## Release: engine 0.0.6a4 + @bubblegum-ai/node 0.0.6-alpha.1
 
 - Engine `0.0.6a3` → `0.0.6a4` (PyPI): ships the `report.write` bridge
