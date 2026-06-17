@@ -34,9 +34,12 @@ def role_fit_score(role: str, action_type: str) -> float:
     the ranker can pick the most intent-appropriate one (e.g. button > link
     for click, textbox > link for type).
     """
-    if action_type in ("click", "tap"):
+    if action_type in ("click", "tap", "hover"):
         # combobox: a <button role="combobox"> trigger is the primary
         # clickable surface that opens its listbox -- treat it like button.
+        # hover targets the same interactive surfaces (e.g. an antd
+        # ant-dropdown-trigger button), so it shares this role preference and
+        # won't tie a <button> with its inner text <span>.
         if role in {"button", "switch", "combobox"}:
             return 1.0
         # option: a <li role="option"> inside an opened listbox is a

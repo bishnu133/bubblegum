@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from bubblegum.adapters.web.playwright.adapter import _ACTION_DISPATCH, PlaywrightAdapter
+from bubblegum.core.grounding.signals import role_fit_score
 from bubblegum.core.parser.instruction import decompose
 from bubblegum.core.schemas import ActionPlan
 
@@ -35,6 +36,15 @@ def test_actionplan_accepts_hover():
 
 def test_hover_is_in_dispatch_table():
     assert "hover" in _ACTION_DISPATCH
+
+
+def test_hover_prefers_interactive_roles_over_text():
+    # Guards the antd `ant-dropdown-trigger` case: a <button> must outrank its
+    # inner text <span> for hover, so the two don't tie into an ambiguous error.
+    assert role_fit_score("button", "hover") == 1.0
+    assert role_fit_score("combobox", "hover") == 1.0
+    assert role_fit_score("", "hover") == 0.0
+    assert role_fit_score("button", "hover") > role_fit_score("", "hover")
 
 
 @pytest.mark.asyncio

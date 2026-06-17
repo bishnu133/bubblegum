@@ -1,5 +1,14 @@
 # Unreleased
 
+## 0.0.6a3 — hover role-fit (no more button-vs-span ambiguity)
+
+- The `hover` action now shares the interactive-role preference of `click`/`tap`
+  in `role_fit_score`, so hovering an antd `ant-dropdown-trigger` `<button>`
+  cleanly outranks its inner text `<span>` instead of tying into an
+  `AmbiguousTargetError` (top-2 within the 0.05 gap). Coverage added in
+  `tests/unit/test_hover_action.py`.
+- Version bump `0.0.6a2` → `0.0.6a3`.
+
 ## Engine 0.0.6a2 — CDP attach + hover on PyPI
 
 - Bumped `0.0.6a1` → `0.0.6a2` so the first published build containing **both**
