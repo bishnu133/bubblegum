@@ -46,8 +46,9 @@ class _FakeSession:
         self._results.append(r)
         return r
 
-    @property
     def results(self) -> list[StepResult]:
+        # A method, mirroring the real BubblegumSession.results() — so the
+        # report handler is exercised against the actual call shape.
         return list(self._results)
 
     async def verify(self, instruction, **kwargs):

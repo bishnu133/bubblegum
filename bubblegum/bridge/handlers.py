@@ -118,7 +118,11 @@ class BridgeHandlers:
         requested.
         """
         session = self.sessions.get(params.get("session_id"))
+        # ``results`` is a method on BubblegumSession (and a property on some
+        # fakes) — normalize to the list either way.
         results = session.results
+        if callable(results):
+            results = results()
         title = params.get("title") or "Bubblegum Test Report"
         suite_name = params.get("suite_name") or "bubblegum"
 
