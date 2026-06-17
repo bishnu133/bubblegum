@@ -63,6 +63,28 @@ const r = await bg.recover({ failedSelector: "#login-btn", intent: "Click Login"
 // r.status === "recovered" when Bubblegum healed it
 ```
 
+### Parameterised dates/times (dynamic-value tokens)
+
+For date pickers (or any field) that need a value computed at run time, drop a
+`{{ ... }}` token into the step value instead of a literal that goes stale:
+
+```ts
+// Relative date in the app's display format:
+await bg.act('Enter "{{today+7d|%d/%m/%Y}}" into Start date');     // -> 23/06/2026
+await bg.act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment'); // -> 16/06/2026 04:00
+await bg.act('Enter "{{tomorrow|%d/%m/%Y}}" into End date');
+```
+
+- **Bases:** `today`, `now`, `tomorrow`, `yesterday`.
+- **Offsets (chainable, signed):** `+7d` `-3d` `+2w` `+1mo` `-1y` `+2h` `+30min` `+45s`
+  (`mo` = months, `min` = minutes — spelled out so a bare `m` is never ambiguous).
+- **Format:** anything after `|` is a `strftime` pattern. Defaults are
+  `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.
+
+Token-free values (and any `{{...}}` that isn't a recognised expression) are
+passed through unchanged, so existing literal steps are unaffected. Expansion
+happens engine-side, so it works identically for web, mobile, and CDP attach.
+
 ### Mobile
 
 ```ts

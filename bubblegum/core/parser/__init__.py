@@ -1,5 +1,6 @@
 """Parser helpers for instruction normalization."""
 
+from .dynamic_value import render_token, substitute_dynamic_tokens
 from .instruction import (
     ParsedIntent,
     decompose,
@@ -17,4 +18,6 @@ __all__ = [
     "ParsedIntent",
     "llm_decompose",
     "LLMParsedIntent",
+    "substitute_dynamic_tokens",
+    "render_token",
 ]
