@@ -29,6 +29,7 @@ class _FakeSession:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple, dict]] = []
         self.closed = False
+        self._results: list[StepResult] = []
 
     def _result(self, action: str, status: str = "passed") -> StepResult:
         return StepResult(
@@ -41,7 +42,13 @@ class _FakeSession:
 
     async def act(self, instruction, **kwargs):
         self.calls.append(("act", (instruction,), kwargs))
-        return self._result(instruction)
+        r = self._result(instruction)
+        self._results.append(r)
+        return r
+
+    @property
+    def results(self) -> list[StepResult]:
+        return list(self._results)
 
     async def verify(self, instruction, **kwargs):
         self.calls.append(("verify", (instruction,), kwargs))
@@ -159,6 +166,42 @@ async def test_extract_and_probe_and_summary():
     assert vis["result"] == {"value": True}
     summ = await _call(server, "summary", {"session_id": sid})
     assert summ["result"]["passed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_report_write_emits_requested_formats(tmp_path):
+    server, _, _ = _server_with_fake()
+    sid = await _open(server)
+    await _call(server, "act", {"session_id": sid, "instruction": "Click Login"})
+    await _call(server, "act", {"session_id": sid, "instruction": "Click Logout"})
+
+    html = tmp_path / "report.html"
+    allure = tmp_path / "allure-results"
+    resp = await _call(
+        server,
+        "report.write",
+        {"session_id": sid, "html": str(html), "allure": str(allure), "title": "Run"},
+    )
+    result = resp["result"]
+    assert result["steps"] == 2
+    assert set(result["written"]) == {"html", "allure"}
+    assert html.exists() and html.read_text(encoding="utf-8").strip()
+    assert allure.is_dir() and list(allure.glob("*-result.json"))
+
+
+@pytest.mark.asyncio
+async def test_report_write_requires_a_format():
+    server, _, _ = _server_with_fake()
+    sid = await _open(server)
+    resp = await _call(server, "report.write", {"session_id": sid})
+    assert resp["error"]["code"] == p.INVALID_PARAMS
+
+
+@pytest.mark.asyncio
+async def test_report_write_capability_is_advertised():
+    server, _, _ = _server_with_fake()
+    resp = await _call(server, "handshake")
+    assert "report.write" in resp["result"]["capabilities"]
 
 
 @pytest.mark.asyncio

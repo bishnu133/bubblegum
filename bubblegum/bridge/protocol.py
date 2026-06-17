@@ -44,6 +44,7 @@ CAPABILITIES: tuple[str, ...] = (
     "state_probes",   # is_visible / is_checked / selected_value
     "summary",
     "configure_runtime",
+    "report.write",   # write Allure/HTML/JSON/JUnit reports from the session's results
     "channel.web",
     "channel.mobile",
     "channel.web.cdp",   # attach to a client-owned Chromium over CDP (session.open cdp_endpoint)

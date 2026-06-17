@@ -1,5 +1,22 @@
 # Unreleased
 
+## Node client: reports + dual ESM/CommonJS build
+
+- **Reports from the Node client.** New `report.write` bridge method (capability
+  `report.write`) writes Allure / HTML / JSON / JUnit from the session's
+  accumulated `StepResult`s, reusing the same writers as the pytest plugin — so a
+  Node-driven run gets identical reports without pytest. Exposed as
+  `bg.report({ html, allure, junit, json, title, suiteName })` →
+  `{ written, steps }`; each format optional (`true` = default name). Engine
+  coverage in `tests/unit/test_bridge.py`; client coverage in
+  `clients/node/test/client.test.mjs`.
+- **Dual ESM + CommonJS build** for `@bubblegum-ai/node`. `tsc` now emits ESM to
+  `dist/esm` and CommonJS to `dist/cjs` (with per-dir `package.json` `type`
+  markers); the package `exports` map routes `import` and `require` accordingly.
+  Consumers on CommonJS runners (e.g. Jest's default runtime) can `require(...)`
+  without the `.mts` rename or loader flags; ESM `import` is unchanged. CJS load
+  smoke-tested in `clients/node/test/cjs-require.test.cjs`.
+
 ## Parameterised values + target-isolation polish + one-click PyPI
 
 - **Dynamic-value tokens** (parameterised dates/times). Any step value may now

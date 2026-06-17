@@ -1,0 +1,13 @@
+{
+  // CommonJS build: same sources, emitted as require()-able modules into
+  // dist/cjs. Pairs CommonJS module output with classic ("Node10") resolution
+  // (NodeNext resolution is only valid with NodeNext module). The ESM-style
+  // ".js" import specifiers in src still resolve to the emitted dist/cjs/*.js.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "outDir": "dist/cjs"
+  },
+  "include": ["src"]
+}

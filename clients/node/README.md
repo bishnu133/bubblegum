@@ -132,11 +132,43 @@ otherwise. CDP attach is Chromium-only.
 | `bg.isVisible / isChecked / selectedValue(target)` | `Promise<boolean \| string>` | |
 | `bg.explain(instruction)` | `Promise<string>` | dry-run rationale |
 | `bg.summary()` | `Promise<SessionSummary>` | |
+| `bg.report(opts)` | `Promise<ReportResult>` | write Allure/HTML/JSON/JUnit from the run |
 | `bg.close()` | `Promise<void>` | closes the session + bridge |
 
 `options` is forwarded verbatim to the engine (`timeout_ms`, `selector`,
 `action_type`, `value`, `assertion_type`, `expected_value`, `max_cost_level`, …),
 matching the Python how-to guides.
+
+### Reports (Allure / HTML / JSON / JUnit)
+
+The engine remembers every step a session runs, so you can emit the same reports
+the Python/pytest path produces — no pytest required. Call `bg.report(...)` once
+near the end (in a `finally`, before `close()`):
+
+```ts
+try {
+  await bg.act('Enter "tom" into Username');
+  await bg.act("Click Login");
+  await bg.verify("Dashboard is visible");
+} finally {
+  await bg.report({
+    html: "reports/run.html",      // single-file HTML
+    allure: "allure-results",      // Allure 2 dir -> `allure serve allure-results`
+    junit: "reports/junit.xml",    // CI ingestion
+    json: "reports/run.json",      // machine-readable
+    title: "Smoke run",
+    suiteName: "h365-portal",
+  });
+  await bg.close();
+}
+```
+
+Each format is optional; pass `true` instead of a path to use the default name
+(`bubblegum_report.html` / `.json` / `.xml`, `allure-results/`). Paths are
+resolved relative to the **engine process's working directory** (where the bridge
+was spawned — normally your project root). Returns
+`{ written: { html: "/abs/…", … }, steps }`. Requires the engine to advertise
+`report.write` (Bubblegum ≥ 0.0.6); older engines throw a clear error.
 
 ### Advanced: `BridgeClient`
 
@@ -151,11 +183,26 @@ The client pins to a compatible engine. It refuses to start against a
 keep serving older clients (additive-first). This package's major/minor track the
 engine; install a matching `bubblegum-ai`.
 
+## Module formats (ESM + CommonJS)
+
+This package ships **both** ES modules and CommonJS, so it works whether your
+test runner loads ESM or CJS — no `.mts` rename or loader flags needed:
+
+```ts
+import { Bubblegum } from "@bubblegum-ai/node";        // ESM / TypeScript
+```
+```js
+const { Bubblegum } = require("@bubblegum-ai/node");   // CommonJS (e.g. Jest default)
+```
+
+Node picks `dist/esm` for `import` and `dist/cjs` for `require` via the package
+`exports` map; TypeScript types resolve for both.
+
 ## Develop
 
 ```bash
 npm install
-npm run build      # tsc -> dist/
+npm run build      # tsc -> dist/esm (ESM) + dist/cjs (CommonJS)
 npm test           # build + node:test (no Python needed; mock transport)
 npm run typecheck
 ```
