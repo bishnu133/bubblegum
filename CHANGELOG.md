@@ -1,5 +1,14 @@
 # Unreleased
 
+## Release: engine 0.0.6a4 + @bubblegum-ai/node 0.0.6-alpha.1
+
+- Engine `0.0.6a3` → `0.0.6a4` (PyPI): ships the `report.write` bridge
+  capability, dynamic-value tokens, and trailing-context stripping.
+- Client `@bubblegum-ai/node` `0.0.6-alpha.0` → `0.0.6-alpha.1` (npm): ships
+  `bg.report(...)` and the dual ESM/CommonJS build.
+- Release order matters: publish the **engine first** (the client's `report()`
+  capability-checks for `report.write` and throws against an older engine).
+
 ## Node client: reports + dual ESM/CommonJS build
 
 - **Reports from the Node client.** New `report.write` bridge method (capability

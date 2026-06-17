@@ -1,6 +1,6 @@
 {
   "name": "@bubblegum-ai/node",
-  "version": "0.0.6-alpha.0",
+  "version": "0.0.6-alpha.1",
   "description": "Node/TypeScript client for the Bubblegum engine — drive AI-powered, natural-language Playwright/Appium test steps from JS/TS via the Bubblegum JSON-RPC bridge.",
   "type": "module",
   "exports": {
