@@ -59,11 +59,24 @@ class _TriggerLocator:
     def __init__(self, tag: str) -> None:
         self._tag = tag
         self.clicks = 0
+        self.force_clicks = 0
 
     async def evaluate(self, _expr: str, *args: Any, **kwargs: Any) -> str:
         return self._tag
 
     async def click(self, *args: Any, **kwargs: Any) -> None:
+        if kwargs.get("force"):
+            self.force_clicks += 1
+        self.clicks += 1
+
+
+class _OverlayTriggerLocator(_TriggerLocator):
+    """Mimics Ant Design: a normal click is intercepted; only force works."""
+
+    async def click(self, *args: Any, **kwargs: Any) -> None:
+        if not kwargs.get("force"):
+            raise TimeoutError("selection-item <span> intercepts pointer events")
+        self.force_clicks += 1
         self.clicks += 1
 
 
@@ -116,9 +129,25 @@ def test_custom_combobox_opens_then_clicks_exact_option():
 
     assert result.success is True
     assert trigger.clicks == 1, "should open the dropdown before selecting"
+    assert trigger.force_clicks == 0, "a plain-clickable trigger needs no force"
     assert option.clicked is True
     # Exact-name option match is tried first.
     assert page.get_by_role_calls[0] == ("option", "Participant", True)
+
+
+def test_custom_combobox_force_opens_when_overlay_intercepts():
+    # Ant Design: the inner role=combobox <input> is covered by a selection
+    # <span>, so a normal click is intercepted — the adapter must force it open.
+    trigger = _OverlayTriggerLocator("INPUT")
+    option = _OptionLocator(name="Participant", clickable=True)
+    page = _ComboPage(trigger, {("option", "Participant", True): option})
+    adapter = PlaywrightAdapter(page)
+
+    result = _run(adapter.execute(_plan("Participant"), _target()))
+
+    assert result.success is True
+    assert trigger.force_clicks == 1, "overlay interception must fall back to force click"
+    assert option.clicked is True
 
 
 def test_custom_combobox_falls_back_to_non_exact_option():

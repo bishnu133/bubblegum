@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Ant Design-style Select (overlay interception)</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
+  /* Mirrors antd's structure closely enough to reproduce the real failure:
+     an inner role="combobox" <input> covered by a selection <span>, so a
+     normal Playwright click is intercepted and only a force click opens it. */
+  .ant-select { position: relative; display: inline-block; min-width: 14em; }
+  .ant-select-selector {
+    position: relative;
+    padding: 0.4em 0.8em;
+    min-height: 1.6em;
+    border: 1px solid #999;
+    border-radius: 3px;
+    background: white;
+    cursor: pointer;
+  }
+  /* The search input is absolutely positioned to fill the selector and is the
+     element that carries role="combobox" — exactly antd's layout. */
+  .ant-select-selection-search-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0.4em 0.8em;
+    border: 0;
+    background: transparent;
+    outline: none;
+  }
+  /* The selection label sits ON TOP of the input, so it intercepts pointer
+     events aimed at the input (this is what breaks a non-forced click). */
+  .ant-select-selection-item {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+    color: #111;
+  }
+  #type-listbox {
+    position: absolute;
+    margin-top: 0.25em;
+    list-style: none;
+    padding: 0.25em 0;
+    border: 1px solid #999;
+    border-radius: 3px;
+    min-width: 14em;
+    background: white;
+    z-index: 100;
+  }
+  #type-listbox[hidden] { display: none; }
+  #type-listbox [role="option"] { padding: 0.4em 0.8em; cursor: pointer; }
+  #type-listbox [role="option"]:hover { background: #f0f0f0; }
+</style>
+</head>
+<body>
+<h1>Ant Design-style Select</h1>
+<p>
+  The inner <code>role="combobox"</code> <code>&lt;input&gt;</code> is covered by
+  the <code>.ant-select-selection-item</code> span, which intercepts a normal
+  click (Playwright reports "&lt;span&gt; intercepts pointer events"). The
+  current value <strong>"Participant"</strong> is also one of the options, so a
+  text-based click would be ambiguous — selection must target the option by role.
+</p>
+
+<div class="ant-select" id="search-type">
+  <div class="ant-select-selector">
+    <input
+      class="ant-select-selection-search-input"
+      id="search-type-selector"
+      type="search"
+      role="combobox"
+      readonly
+      aria-expanded="false"
+      aria-haspopup="listbox"
+      aria-autocomplete="list"
+      aria-controls="type-listbox"
+      autocomplete="off"
+    />
+    <span class="ant-select-selection-item" title="Participant">Participant</span>
+  </div>
+</div>
+
+<ul id="type-listbox" role="listbox" aria-label="Search type" hidden>
+  <li role="option" data-value="participant">Participant</li>
+  <li role="option" data-value="tracker">Tracker</li>
+  <li role="option" data-value="qr">QR</li>
+  <li role="option" data-value="lpid">LPID</li>
+</ul>
+
+<p id="result"></p>
+
+<script>
+  const root = document.getElementById('search-type');
+  const selector = root.querySelector('.ant-select-selector');
+  const input = document.getElementById('search-type-selector');
+  const label = root.querySelector('.ant-select-selection-item');
+  const listbox = document.getElementById('type-listbox');
+  const result = document.getElementById('result');
+
+  function toggle(open) {
+    listbox.hidden = !open;
+    input.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  // antd opens on mousedown of the selector; the event bubbles up from the
+  // overlay span / inner input, mirroring the real widget.
+  selector.addEventListener('mousedown', (e) => {
+    e.preventDefault();           // antd prevents the input from focusing/typing
+    toggle(listbox.hidden);
+  });
+
+  listbox.addEventListener('click', (e) => {
+    const opt = e.target.closest('[role="option"]');
+    if (!opt) return;
+    label.textContent = opt.textContent;
+    label.title = opt.textContent;
+    toggle(false);
+    result.textContent = 'Selected: ' + opt.textContent;
+  });
+</script>
+</body>
+</html>

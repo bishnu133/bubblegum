@@ -1,5 +1,21 @@
 # Unreleased
 
+## 0.0.6a7 — fix(web): force-open Ant Design-style comboboxes (overlay interception)
+
+- The custom-combobox `select` (0.0.6a6) opened the trigger with a normal click,
+  which Ant Design (and similar widgets) break: the inner `role="combobox"`
+  `<input>` is covered by a `.ant-select-selection-item` `<span>` that intercepts
+  the click (Playwright: "`<span>` intercepts pointer events"), so opening timed
+  out. `PlaywrightAdapter._do_select` now **force-clicks the trigger open when a
+  normal click is intercepted** (a short normal-click probe runs first, so
+  plain-clickable `<button>`/`<div>` comboboxes keep their full actionability
+  checks).
+- New `ant_select` widget-lab page reproduces the overlay structure (inner
+  `role=combobox` input under a selection span, current value also an option).
+  Coverage: unit `test_custom_combobox_force_opens_when_overlay_intercepts` and
+  the `--playwright` integration `test_one_step_select_from_ant_style_overlay_combobox`.
+- Engine `0.0.6a6` → `0.0.6a7` (PyPI). npm client unchanged (`0.0.6-alpha.2`).
+
 ## 0.0.6a6 — feat(web): one-step selection from custom (non-native) comboboxes
 
 - Engine `0.0.6a5` → `0.0.6a6` (PyPI `bubblegum-ai`). Upgrade with

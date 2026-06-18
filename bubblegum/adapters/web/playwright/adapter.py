@@ -472,7 +472,7 @@ class PlaywrightAdapter(BaseAdapter):
         the trigger displays the currently-selected value and an option carries
         that same text — the option is targeted explicitly.
         """
-        await trigger.click(timeout=timeout)
+        await self._open_combobox(trigger, timeout)
 
         # Bound the fallback probes so a miss can't burn the full timeout on
         # every attempt; the exact-name match below covers the common case.
@@ -494,6 +494,23 @@ class PlaywrightAdapter(BaseAdapter):
             f"could not find a dropdown option matching {value!r} after opening "
             f"the combobox (looked for role=option / role=menuitem)"
         ) from last_exc
+
+    async def _open_combobox(self, trigger, timeout: int) -> None:
+        """Click a combobox trigger open, forcing past overlay interception.
+
+        Ant Design (and similar) overlay a selection ``<span>`` on top of the
+        inner ``role="combobox"`` ``<input>``; Playwright reports that span as
+        intercepting the click and a normal click times out. The overlay is part
+        of the same widget, so a force click at the trigger's position opens the
+        listbox exactly as a human click would. A short normal-click probe is
+        tried first so genuinely-clickable triggers (``<button>``/``<div>``
+        comboboxes) keep their full actionability checks.
+        """
+        probe = min(timeout, 1500)
+        try:
+            await trigger.click(timeout=probe)
+        except Exception:
+            await trigger.click(timeout=timeout, force=True)
 
     async def _do_upload(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value
