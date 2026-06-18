@@ -1,5 +1,30 @@
 # Unreleased
 
+## 0.0.6a10 — feat(web): table assertions (columns + cell values by row)
+
+- New page-scoped **table verification**. `verify` can now assert a data table's
+  columns and cell values instead of only checking that text exists somewhere on
+  the page — the real automation need ("does column X exist?", "is the value for
+  this row, under that column, what the DB says?").
+  - **Structured (deterministic):**
+    `verify("…", assertion_type="table", columns=[…])` and
+    `verify("…", assertion_type="table", row_match={col: val}, cell={col: val})`.
+  - **Natural language (AI-style):**
+    `verify("the table has columns PPHID, Account Status and Profile Status")`,
+    `verify('in the row where Name is "X", Account Status is "Active"')`,
+    `verify('the Account Status column shows "Active"')`.
+  - Reads native `<table>`, **Ant Design `.ant-table`** (header/body split across
+    two inner tables — the exact H365 structure), and ARIA `role=table/grid`.
+    Matching is whitespace-normalised, case-insensitive, and tolerates a value
+    rendered inside a badge (e.g. a "✓ Active" pill). The assertion polls until
+    it holds or the timeout elapses, so it waits out async-loaded rows.
+  - Node client: new typed `bg.verifyTable({ columns?, row?, cell?, timeoutMs? })`.
+- Coverage: `tests/unit/test_table_assertions.py` (NL parsing, matcher eval,
+  verify routing), `tests/integration/test_table_assertions_web.py` against a new
+  `ant_table` widget-lab page, and a Node `verifyTable` forwarding test.
+- Engine `0.0.6a9` → `0.0.6a10`; `@bubblegum-ai/node` `0.0.6-alpha.2` →
+  `0.0.6-alpha.3`.
+
 ## 0.0.6a9 — fix(web): match Ant Design option rows directly by class + title/text
 
 - 0.0.6a8 resolved role-less options via the trigger's `aria-controls` listbox,

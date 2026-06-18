@@ -200,3 +200,27 @@ test("close() closes the session then the bridge", async () => {
   await bg.close();
   assert.ok(m.methods().some((x) => x.method === "session.close"));
 });
+
+test("verifyTable() forwards assertion_type=table with columns/row/cell", async () => {
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-t" }),
+    verify: (p) => ({
+      status: "passed", action: p.instruction, target: null,
+      confidence: 1, duration_ms: 1, __opts: p.options,
+    }),
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
+  await bg.verifyTable({
+    columns: ["PPHID", "Account Status"],
+    row: { Name: "Bishnu Test Account" },
+    cell: { "Account Status": "Active" },
+    timeoutMs: 2000,
+  });
+  const req = m.methods().find((x) => x.method === "verify");
+  assert.equal(req.params.options.assertion_type, "table");
+  assert.deepEqual(req.params.options.columns, ["PPHID", "Account Status"]);
+  assert.deepEqual(req.params.options.row, { Name: "Bishnu Test Account" });
+  assert.deepEqual(req.params.options.cell, { "Account Status": "Active" });
+  assert.equal(req.params.options.timeout_ms, 2000);
+});

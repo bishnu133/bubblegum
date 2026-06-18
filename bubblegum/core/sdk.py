@@ -451,6 +451,13 @@ async def verify(
     if kwargs.get("assertion_type") == "visual":
         return await _verify_visual(adapter, channel, instruction, kwargs, t0)
 
+    # Table assertions are page-scoped: read the table(s) and check columns /
+    # cell values rather than grounding a single element. Routed explicitly via
+    # assertion_type="table", or inferred when the phrase clearly describes a
+    # table/column assertion (so plain-English verifies work too).
+    if kwargs.get("assertion_type") == "table" or _looks_like_table_assertion(instruction, kwargs):
+        return await _verify_table(adapter, channel, instruction, kwargs, options, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -561,6 +568,84 @@ async def _verify_a11y(adapter, channel: str, instruction: str, kwargs: dict, t0
     return _a11y_result(
         instruction=instruction, t0=t0, passed=passed, message=message,
         error=error, metadata=metadata,
+    )
+
+
+def _looks_like_table_assertion(instruction: str, kwargs: dict) -> bool:
+    """True when the phrase clearly describes a table/column assertion.
+
+    Conservative so it never hijacks ordinary text verifies: only fires when the
+    caller hasn't asked for a different assertion_type and the rule-based table
+    parser recognises the instruction.
+    """
+    at = kwargs.get("assertion_type")
+    if at and at != "table":
+        return False
+    from bubblegum.core.table import parse_table_spec
+
+    return parse_table_spec(instruction) is not None
+
+
+async def _verify_table(adapter, channel: str, instruction: str, kwargs: dict, options, t0: float) -> StepResult:
+    """Assert columns / cell values in a data table (page-scoped).
+
+    Skips element grounding: reads every table on the page and checks the matcher
+    (columns present, and/or a value under a column for a row matched by another
+    column). Polls until the assertion holds or the timeout elapses, so it waits
+    out async-loaded rows (e.g. results after a search click).
+    """
+    from bubblegum.core import table as tbl
+
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="table assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="assertion_type='table' is only supported on the web channel"),
+            ref="table", resolver_name="table",
+        )
+
+    matcher = tbl.build_table_matcher(instruction, kwargs)
+    if not matcher:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=("could not understand the table assertion; pass columns / "
+                     "row_match / cell, or phrase like 'the table has columns A, B' "
+                     "or 'in the row where Name is \"X\", Status is \"Active\"'"),
+            error=ErrorInfo(error_type="TableAssertionError",
+                            message="no columns/row_match/cell and the phrase did not parse"),
+            ref="table", resolver_name="table",
+        )
+
+    await _maybe_wait_until_stable(adapter, options)
+
+    timeout_ms = kwargs.get("timeout_ms", options.timeout_ms)
+    deadline = time.monotonic() + max(0, timeout_ms) / 1000.0
+    passed, detail = False, "no tables found on the page"
+    tables: list = []
+    while True:
+        try:
+            tables = await adapter.extract_tables()
+        except Exception as exc:  # noqa: BLE001 — surface adapter/browser errors as a failed step
+            passed, detail = False, f"table extraction error: {exc}"
+            break
+        passed, detail = tbl.evaluate_table(matcher, tables)
+        if passed or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(0.3)
+
+    error = None if passed else ErrorInfo(error_type="TableAssertionError", message=detail)
+    metadata = {
+        "table_assertion": {
+            "matcher": tbl.describe_table_matcher(matcher),
+            "detail": detail,
+            "passed": passed,
+            "headers_seen": [t.get("headers", []) for t in tables][:5],
+        }
+    }
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=detail,
+        error=error, metadata=metadata, ref="table", resolver_name="table",
     )
 
 

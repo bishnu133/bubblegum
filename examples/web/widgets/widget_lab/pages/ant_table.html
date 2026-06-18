@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Ant Design-style data table</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; }
+  table { border-collapse: collapse; table-layout: fixed; }
+  th, td { border: 1px solid #ddd; padding: 0.5em 0.8em; text-align: left; }
+  .ant-table-header th { background: #fafafa; font-weight: 600; }
+  .status { display: inline-flex; align-items: center; gap: 0.25em; }
+  .ok { color: #237804; }
+</style>
+</head>
+<body>
+<h1>Ant Design-style data table</h1>
+<p>
+  Mirrors antd's split layout: the header and body are <em>separate</em>
+  <code>&lt;table&gt;</code> elements inside one <code>.ant-table</code> container
+  (so extraction must scope by the container), plus an aria-hidden
+  <code>.ant-table-measure-row</code> that must be skipped. The status cells wrap
+  the value in a badge to exercise contained-text matching.
+</p>
+
+<div class="ant-table ant-table-bordered" data-testid="participant-table-test-id">
+  <div class="ant-table-container">
+    <div class="ant-table-header">
+      <table>
+        <colgroup><col><col><col><col><col></colgroup>
+        <thead class="ant-table-thead">
+          <tr>
+            <th class="ant-table-cell">PPHID</th>
+            <th class="ant-table-cell">ERID</th>
+            <th class="ant-table-cell">Name</th>
+            <th class="ant-table-cell">Account Status</th>
+            <th class="ant-table-cell">Profile Status</th>
+          </tr>
+        </thead>
+      </table>
+    </div>
+    <div class="ant-table-body">
+      <table>
+        <colgroup><col><col><col><col><col></colgroup>
+        <tbody class="ant-table-tbody">
+          <tr aria-hidden="true" class="ant-table-measure-row" style="height:0">
+            <td style="padding:0;border:0;height:0"></td>
+          </tr>
+          <tr class="ant-table-row" data-row-key="9ca8">
+            <td class="ant-table-cell">9ca87fc7-bacc-4458-b8ce-3ee228534382</td>
+            <td class="ant-table-cell">30A981AB47F5</td>
+            <td class="ant-table-cell">Bishnu Test Account</td>
+            <td class="ant-table-cell"><span class="status ok">✓ Active</span></td>
+            <td class="ant-table-cell"><span class="status ok">✓ Verified</span></td>
+          </tr>
+          <tr class="ant-table-row" data-row-key="1111">
+            <td class="ant-table-cell">1111aaaa-bbbb-cccc-dddd-222233334444</td>
+            <td class="ant-table-cell">22B770CD18E2</td>
+            <td class="ant-table-cell">Other Person</td>
+            <td class="ant-table-cell"><span class="status">Withdrawn</span></td>
+            <td class="ant-table-cell"><span class="status">Unverified</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -104,6 +104,69 @@ def _sanitize_retry_reason(exc: Exception) -> str:
 _ARTIFACTS_DIR = Path("artifacts")
 
 
+# JS run in the page to extract data tables for table assertions. Returns
+# [{headers:[...], rows:[{header: cellText}], kind}]. Handles native <table>,
+# Ant Design .ant-table (header/body split across two inner <table>s), and ARIA
+# role=table/grid. Cells are mapped to headers by column index.
+_EXTRACT_TABLES_JS = r"""
+() => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const tables = [];
+  const seenTables = new Set();
+
+  const pushRows = (headers, rowEls, cellSel) => {
+    const rows = [];
+    rowEls.forEach((tr) => {
+      if (tr.getAttribute && tr.getAttribute('aria-hidden') === 'true') return;
+      const cells = Array.from(tr.querySelectorAll(cellSel)).map((c) => norm(c.textContent));
+      if (!cells.length) return;
+      const row = {};
+      headers.forEach((h, i) => { row[h] = cells[i] != null ? cells[i] : ''; });
+      rows.push(row);
+    });
+    return rows;
+  };
+
+  // 1) Ant Design tables (scope by container; header & body are separate tables).
+  document.querySelectorAll('.ant-table').forEach((t) => {
+    const headers = Array.from(t.querySelectorAll('.ant-table-thead th')).map((th) => norm(th.textContent));
+    if (!headers.length) return;
+    const rowEls = Array.from(t.querySelectorAll('.ant-table-tbody tr'));
+    const rows = pushRows(headers, rowEls, 'td');
+    tables.push({ headers, rows, kind: 'ant' });
+    t.querySelectorAll('table').forEach((x) => seenTables.add(x));
+  });
+
+  // 2) Native <table> not already covered by an Ant container.
+  document.querySelectorAll('table').forEach((t) => {
+    if (seenTables.has(t) || t.closest('.ant-table')) return;
+    let headers = Array.from(t.querySelectorAll('thead th')).map((th) => norm(th.textContent));
+    if (!headers.length) {
+      const first = t.querySelector('tr');
+      if (first) headers = Array.from(first.querySelectorAll('th,td')).map((c) => norm(c.textContent));
+    }
+    if (!headers.length) return;
+    const bodyRows = t.querySelectorAll('tbody tr');
+    const rowEls = Array.from(bodyRows.length ? bodyRows : t.querySelectorAll('tr'));
+    const rows = pushRows(headers, rowEls, 'td');
+    tables.push({ headers, rows, kind: 'native' });
+  });
+
+  // 3) ARIA grid/table built from non-table elements.
+  document.querySelectorAll('[role="table"], [role="grid"]').forEach((t) => {
+    if (t.tagName === 'TABLE' || t.closest('.ant-table')) return;
+    const headers = Array.from(t.querySelectorAll('[role="columnheader"]')).map((c) => norm(c.textContent));
+    if (!headers.length) return;
+    const rowEls = Array.from(t.querySelectorAll('[role="row"]'));
+    const rows = pushRows(headers, rowEls, '[role="gridcell"], [role="cell"]');
+    tables.push({ headers, rows, kind: 'aria' });
+  });
+
+  return tables;
+}
+"""
+
+
 # Phase 22E-6: roles that toggle in-page state (or open a popup) and never
 # trigger a page navigation per ARIA semantics. Clicking one of these skips
 # the post-click wait_for_url probe in _do_click, which otherwise burns its
@@ -716,6 +779,16 @@ class PlaywrightAdapter(BaseAdapter):
             }
         )
         return diag
+
+    async def extract_tables(self) -> list[dict]:
+        """Extract data tables from the page for table assertions.
+
+        Handles native ``<table>`` (thead/tbody), Ant Design ``.ant-table``
+        (which splits the header and body into separate inner tables, so it is
+        scoped by the ``.ant-table`` container), and ARIA ``role=table``/``grid``.
+        Returns ``[{"headers": [str], "rows": [{header: cell_text}], "kind": str}]``.
+        """
+        return await self._page.evaluate(_EXTRACT_TABLES_JS)
 
     async def assert_network(self, matcher: dict, *, timeout_ms: int = 5_000) -> tuple[bool, str]:
         """Assert a backend response matching ``matcher`` occurred (W4).

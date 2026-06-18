@@ -34,6 +34,20 @@ export interface AttachOptions extends Omit<LaunchOptions, "channel"> {
   cdpEndpoint: string;
 }
 
+/** Arguments for {@link Bubblegum.verifyTable}. */
+export interface TableAssertion {
+  /** Column headers that must all be present. */
+  columns?: string[];
+  /** Column -> value used to locate the row(s) (e.g. a key sourced from a DB). */
+  row?: Record<string, string>;
+  /** Column -> expected value asserted in the matched row(s). */
+  cell?: Record<string, string>;
+  /** Optional human-readable step label for the report. */
+  description?: string;
+  /** Per-call timeout; the assertion polls the table until it holds or this elapses. */
+  timeoutMs?: number;
+}
+
 export interface RecoverArgs {
   failedSelector: string;
   intent: string;
@@ -133,6 +147,28 @@ export class Bubblegum {
       instruction,
       options,
     });
+  }
+
+  /**
+   * Assert columns / cell values in a data table (Ant Design / native / ARIA).
+   *
+   * - `columns`: header names that must all be present.
+   * - `row`: column -> value used to locate the row(s) (e.g. a key from your DB).
+   * - `cell`: column -> expected value asserted in the matched row(s).
+   *
+   * At least one of `columns` / `cell` should be provided. Matching is
+   * whitespace-normalised, case-insensitive, and tolerates a value rendered
+   * inside a badge (expected is matched as a substring of the cell).
+   *
+   * @example
+   * await bg.verifyTable({ columns: ["PPHID", "Account Status", "Profile Status"] });
+   * await bg.verifyTable({ row: { Name: dbName }, cell: { "Account Status": dbStatus } });
+   */
+  verifyTable(spec: TableAssertion): Promise<StepResult> {
+    const { description, timeoutMs, ...rest } = spec;
+    const options: StepOptions = { assertion_type: "table", ...rest };
+    if (timeoutMs !== undefined) options.timeout_ms = timeoutMs;
+    return this.verify(description ?? "table assertion", options);
   }
 
   recover(args: RecoverArgs): Promise<StepResult> {
