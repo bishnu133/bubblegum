@@ -1,5 +1,27 @@
 # Unreleased
 
+## 0.0.6a13 — feat(web): click by table cell (column + row) and by link text
+
+- Two new ways to click an element addressed by **what it is**, not its (often
+  dynamic) text — e.g. a table link whose label is a UUID:
+  - **By table coordinates:** "under the PPHID column, click the 1st row value",
+    "Click the PPHID link in the first result row", "click the last row Name",
+    or 'in the row where Name is "X", click the PPHID value'. Structured form:
+    `act("…", column="PPHID", row="first")` / `row=-1` / `row_match={"Name": x}`.
+    Locates the table (Ant `.ant-table`, native `<table>`, ARIA grid), the column
+    by header, the row by index (1-based, -1 = last) or by another column's value,
+    and clicks the cell's link/button (or the cell).
+  - **By link text:** "click the link with text \"<id>\"" or `act("…",
+    link_text=id)` — exact → case-insensitive → substring; great for DB-sourced
+    ids.
+- Node client: `bg.clickInTable({ column, row?|rowMatch?, timeoutMs? })` and
+  `bg.clickLink(text, { exact?, timeoutMs? })`.
+- Coverage: `tests/unit/test_table_action.py`, Node forwarding tests, and
+  `tests/integration/test_table_action_web.py` against the `ant_table` page
+  (PPHID cells now contain dynamic-id links). Validated against the real H365
+  table markup. Engine `0.0.6a12` → `0.0.6a13`; `@bubblegum-ai/node`
+  `0.0.6-alpha.3` → `0.0.6-alpha.4`.
+
 ## 0.0.6a12 — fix(web): DOM fallback disambiguates multiple nameless selects
 
 - "Select X from the Y dropdown" now works on pages with **several nameless

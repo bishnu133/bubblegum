@@ -242,6 +242,120 @@ _FIND_SELECT_TRIGGER_JS = r"""
 """
 
 
+# JS: click a link by its (possibly dynamic) text. Exact → case-insensitive →
+# substring. Marks the match with a temporary attribute and returns its selector.
+_FIND_LINK_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const want = norm(args && args.text);
+  const wantL = want.toLowerCase();
+  const exact = !!(args && args.exact);
+  const visible = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const links = Array.from(document.querySelectorAll('a, [role="link"]')).filter(visible);
+  if (!want || !links.length) return null;
+  let match = links.find((a) => norm(a.textContent) === want);
+  if (!match && !exact) match = links.find((a) => norm(a.textContent).toLowerCase() === wantL);
+  if (!match && !exact) match = links.find((a) => norm(a.textContent).toLowerCase().includes(wantL));
+  if (!match) return null;
+  document.querySelectorAll('[data-bg-link]').forEach((n) => n.removeAttribute('data-bg-link'));
+  match.setAttribute('data-bg-link', '1');
+  return { selector: '[data-bg-link="1"]', text: norm(match.textContent) };
+}
+"""
+
+
+# JS: click an element in a table cell, addressed by column header + row
+# (1-based index, -1 = last, or a {column: value} match). Handles native
+# <table>, Ant Design .ant-table (header/body split), and ARIA grids. Returns a
+# selector for the clickable child of the cell (a/button/input) or the cell.
+_FIND_TABLE_CELL_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const key = (s) => norm(s).toLowerCase();
+  const colWant = key(args && args.column);
+  const rowIndex = (args && args.rowIndex != null) ? args.rowIndex : null;
+  const rowMatch = (args && args.rowMatch) || null;
+  const preferClickable = !(args && args.preferClickable === false);
+
+  const findHeaderIdx = (headers) => {
+    let i = headers.findIndex((h) => key(h) === colWant);
+    if (i < 0) i = headers.findIndex((h) => colWant && (key(h).includes(colWant) || colWant.includes(key(h))));
+    return i;
+  };
+
+  // Build [{headers:[txt], rows:[[tdEl,...]]}] across table flavours.
+  const tables = [];
+  document.querySelectorAll('.ant-table').forEach((t) => {
+    const headers = Array.from(t.querySelectorAll('.ant-table-thead th')).map((th) => norm(th.textContent));
+    if (!headers.length) return;
+    const rows = [];
+    t.querySelectorAll('.ant-table-tbody tr').forEach((tr) => {
+      if (tr.getAttribute('aria-hidden') === 'true') return;
+      const cells = Array.from(tr.querySelectorAll('td'));
+      if (cells.length) rows.push(cells);
+    });
+    tables.push({ headers, rows });
+    t.querySelectorAll('table').forEach((x) => x.setAttribute('data-bg-seen', '1'));
+  });
+  document.querySelectorAll('table').forEach((t) => {
+    if (t.getAttribute('data-bg-seen') === '1' || t.closest('.ant-table')) return;
+    let headers = Array.from(t.querySelectorAll('thead th')).map((th) => norm(th.textContent));
+    if (!headers.length) { const fr = t.querySelector('tr'); if (fr) headers = Array.from(fr.querySelectorAll('th,td')).map((c) => norm(c.textContent)); }
+    if (!headers.length) return;
+    const body = t.querySelectorAll('tbody tr');
+    const trs = body.length ? body : t.querySelectorAll('tr');
+    const rows = [];
+    trs.forEach((tr) => { const cells = Array.from(tr.querySelectorAll('td')); if (cells.length) rows.push(cells); });
+    tables.push({ headers, rows });
+  });
+  document.querySelectorAll('[data-bg-seen]').forEach((n) => n.removeAttribute('data-bg-seen'));
+  document.querySelectorAll('[role="table"], [role="grid"]').forEach((t) => {
+    if (t.tagName === 'TABLE' || t.closest('.ant-table')) return;
+    const headers = Array.from(t.querySelectorAll('[role="columnheader"]')).map((c) => norm(c.textContent));
+    if (!headers.length) return;
+    const rows = [];
+    t.querySelectorAll('[role="row"]').forEach((r) => {
+      const cells = Array.from(r.querySelectorAll('[role="gridcell"], [role="cell"]'));
+      if (cells.length) rows.push(cells);
+    });
+    tables.push({ headers, rows });
+  });
+
+  // Pick the first table that has the column and a usable row.
+  for (const tbl of tables) {
+    const ci = findHeaderIdx(tbl.headers);
+    if (ci < 0 || !tbl.rows.length) continue;
+
+    let row = null;
+    if (rowMatch) {
+      row = tbl.rows.find((cells) => Object.keys(rowMatch).every((k) => {
+        let mi = tbl.headers.findIndex((h) => key(h) === key(k));
+        if (mi < 0) mi = tbl.headers.findIndex((h) => key(h).includes(key(k)) || key(k).includes(key(h)));
+        if (mi < 0 || !cells[mi]) return false;
+        return norm(cells[mi].textContent).toLowerCase().includes(key(rowMatch[k]));
+      })) || null;
+    } else {
+      let idx = (rowIndex == null) ? 1 : rowIndex;
+      if (idx < 0) idx = tbl.rows.length + idx + 1; // -1 => last
+      if (idx >= 1 && idx <= tbl.rows.length) row = tbl.rows[idx - 1];
+    }
+    if (!row || !row[ci]) continue;
+
+    const cell = row[ci];
+    let target = cell;
+    if (preferClickable) {
+      const click = cell.querySelector('a, button, [role="link"], [role="button"], input, [onclick], [tabindex]');
+      if (click) target = click;
+    }
+    document.querySelectorAll('[data-bg-cell]').forEach((n) => n.removeAttribute('data-bg-cell'));
+    target.setAttribute('data-bg-cell', '1');
+    return { selector: '[data-bg-cell="1"]', text: norm(target.textContent), tag: target.tagName };
+  }
+  return null;
+}
+"""
+
+
 # Phase 22E-6: roles that toggle in-page state (or open a popup) and never
 # trigger a page navigation per ARIA semantics. Clicking one of these skips
 # the post-click wait_for_url probe in _do_click, which otherwise burns its
@@ -864,6 +978,42 @@ class PlaywrightAdapter(BaseAdapter):
         Returns ``[{"headers": [str], "rows": [{header: cell_text}], "kind": str}]``.
         """
         return await self._page.evaluate(_EXTRACT_TABLES_JS)
+
+    async def find_link(self, text: str, *, exact: bool = False) -> str | None:
+        """Return a selector for a visible link whose text matches ``text``.
+
+        Tries exact (normalised) match, then case-insensitive, then substring.
+        Useful when the link label is dynamic (e.g. an id pulled from a DB).
+        """
+        result = await self._page.evaluate(
+            _FIND_LINK_JS, {"text": text or "", "exact": bool(exact)}
+        )
+        if not result:
+            return None
+        logger.debug("find_link %r -> %s", text, result)
+        return result.get("selector")
+
+    async def find_table_cell(
+        self, *, column: str, row_index: int | None = None,
+        row_match: dict | None = None, prefer_clickable: bool = True,
+    ) -> str | None:
+        """Return a selector for an element in a table cell.
+
+        Locates the table whose header matches ``column``, selects the row by
+        ``row_index`` (1-based; -1 = last) or by ``row_match`` ({column: value}),
+        and returns the clickable element inside that cell (a/button/input) when
+        ``prefer_clickable``, else the cell itself. Handles native ``<table>``,
+        Ant Design ``.ant-table`` (header/body split), and ARIA grids.
+        """
+        result = await self._page.evaluate(
+            _FIND_TABLE_CELL_JS,
+            {"column": column or "", "rowIndex": row_index,
+             "rowMatch": row_match or None, "preferClickable": bool(prefer_clickable)},
+        )
+        if not result:
+            return None
+        logger.debug("find_table_cell col=%r row=%r/%r -> %s", column, row_index, row_match, result)
+        return result.get("selector")
 
     async def find_select_trigger(self, target_phrase: str, value: str) -> str | None:
         """Resolve a dropdown/select trigger from the DOM and return a selector.

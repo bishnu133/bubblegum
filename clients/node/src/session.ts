@@ -34,6 +34,18 @@ export interface AttachOptions extends Omit<LaunchOptions, "channel"> {
   cdpEndpoint: string;
 }
 
+/** Arguments for {@link Bubblegum.clickInTable}. */
+export interface TableCellTarget {
+  /** Column header that identifies the cell. */
+  column: string;
+  /** Row selector: 1-based index, -1 = last, or a word like "first" / "last". */
+  row?: number | string;
+  /** Locate the row by another column's value instead of an index (e.g. a DB key). */
+  rowMatch?: Record<string, string>;
+  /** Per-call timeout. */
+  timeoutMs?: number;
+}
+
 /** Arguments for {@link Bubblegum.verifyTable}. */
 export interface TableAssertion {
   /** Column headers that must all be present. */
@@ -147,6 +159,36 @@ export class Bubblegum {
       instruction,
       options,
     });
+  }
+
+  /**
+   * Click an element inside a table cell, addressed by column + row.
+   *
+   * The cell's clickable child (a link / button) is clicked when present — ideal
+   * when the visible text is dynamic (a UUID, a DB id) and so can't be named.
+   *
+   * @example
+   * await bg.clickInTable({ column: "PPHID", row: "first" });
+   * await bg.clickInTable({ column: "PPHID", rowMatch: { Name: dbName } });
+   */
+  clickInTable(spec: TableCellTarget): Promise<StepResult> {
+    const { column, row, rowMatch, timeoutMs } = spec;
+    const options: StepOptions = { action_type: "click", column };
+    if (rowMatch) options.row_match = rowMatch;
+    else if (row !== undefined) options.row = row;
+    if (timeoutMs !== undefined) options.timeout_ms = timeoutMs;
+    return this.act(`click the ${column} cell`, options);
+  }
+
+  /**
+   * Click a link by its text (exact, then case-insensitive, then substring).
+   * Handy when the link label is a dynamic value pulled from a DB.
+   */
+  clickLink(text: string, options?: { exact?: boolean; timeoutMs?: number }): Promise<StepResult> {
+    const opts: StepOptions = { action_type: "click", link_text: text };
+    if (options?.exact !== undefined) opts.exact = options.exact;
+    if (options?.timeoutMs !== undefined) opts.timeout_ms = options.timeoutMs;
+    return this.act(`click the link "${text}"`, opts);
   }
 
   /**

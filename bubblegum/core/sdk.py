@@ -316,19 +316,27 @@ async def act(
     _merge_context(intent, ui_ctx)
     _maybe_inject_vision_candidates(intent)
 
-    # 3. Ground
-    try:
-        target, traces = await _ground_with_wait(adapter, intent)
-    except BubblegumError as exc:
-        # Dropdown/select fallback: a custom combobox whose a11y name is too poor
-        # to ground uniquely can still be resolved from the DOM by its label /
-        # placeholder / displayed value. This is what lets "select X from the Y
-        # dropdown" work across apps even when several nameless comboboxes exist.
-        fallback = await _maybe_resolve_select_trigger(adapter, channel, intent)
-        if fallback is None:
-            duration_ms = int((time.monotonic() - t0) * 1000)
-            return _failed_result(instruction, exc, duration_ms)
-        target, traces = fallback, []
+    # 3. Ground.
+    # Table / link DOM actions first: "click the <col> value in the <row> row"
+    # and "click the link <text>" address an element by table coordinates or
+    # link text — resolved deterministically from the DOM rather than by name,
+    # so they work when the visible text is dynamic (a UUID, a DB value, ...).
+    table_target = await _maybe_resolve_table_or_link(adapter, channel, instruction, kwargs)
+    if table_target is not None:
+        target, traces = table_target, []
+    else:
+        try:
+            target, traces = await _ground_with_wait(adapter, intent)
+        except BubblegumError as exc:
+            # Dropdown/select fallback: a custom combobox whose a11y name is too
+            # poor to ground uniquely can still be resolved from the DOM by its
+            # label / placeholder / displayed value. This lets "select X from the
+            # Y dropdown" work across apps even with several nameless comboboxes.
+            fallback = await _maybe_resolve_select_trigger(adapter, channel, intent)
+            if fallback is None:
+                duration_ms = int((time.monotonic() - t0) * 1000)
+                return _failed_result(instruction, exc, duration_ms)
+            target, traces = fallback, []
 
     target, hydration_error, _hydration_meta = _maybe_hydrate_visual_target(intent=intent, target=target)
     if hydration_error is not None:
@@ -1317,6 +1325,48 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
 # yet (SPA late render). Ambiguity / cost-policy blocks are NOT retried — more
 # attempts cannot change those outcomes.
 _RETRYABLE_GROUND_ERRORS = (ResolutionFailedError, LowConfidenceError)
+
+
+async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, kwargs: dict):
+    """Resolve a table-cell click or link-by-text click from the DOM.
+
+    Returns a ResolvedTarget for the cell's clickable element / matched link, or
+    None when the step isn't a table/link action or nothing matches. Lets a
+    tester address an element by table coordinates ("the PPHID value in the 1st
+    row") or link text — robust when the visible text is dynamic.
+    """
+    if channel != "web":
+        return None
+    from bubblegum.core.table import parse_table_action
+
+    spec = parse_table_action(instruction, kwargs)
+    if not spec:
+        return None
+
+    try:
+        if spec["kind"] == "link":
+            finder = getattr(adapter, "find_link", None)
+            ref = await finder(spec["text"], exact=spec.get("exact", False)) if finder else None
+            resolver_name = "link_dom"
+        else:
+            finder = getattr(adapter, "find_table_cell", None)
+            ref = await finder(
+                column=spec["column"],
+                row_index=spec.get("row_index"),
+                row_match=spec.get("row_match"),
+            ) if finder else None
+            resolver_name = "table_cell_dom"
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("table/link DOM resolution errored: %s", exc)
+        return None
+
+    if not ref:
+        return None
+    logger.debug("Resolved '%s' via %s (%s)", instruction, resolver_name, ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.9, resolver_name=resolver_name,
+        metadata={"table_or_link_dom": True, "spec": spec},
+    )
 
 
 async def _maybe_resolve_select_trigger(adapter, channel: str, intent: StepIntent):

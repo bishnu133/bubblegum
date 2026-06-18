@@ -280,3 +280,134 @@ def describe_table_matcher(matcher: dict) -> str:
     if matcher.get("cell"):
         bits.append("cell " + ", ".join(f"{k}={v!r}" for k, v in matcher["cell"].items()))
     return "; ".join(bits) or "table assertion"
+
+
+# ---------------------------------------------------------------------------
+# Table / link ACTIONS — click an element in a cell, or click a link by text
+# ---------------------------------------------------------------------------
+
+_ORDINALS = {
+    "first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3,
+    "fourth": 4, "4th": 4, "fifth": 5, "5th": 5, "sixth": 6, "6th": 6,
+    "seventh": 7, "7th": 7, "eighth": 8, "8th": 8, "ninth": 9, "9th": 9,
+    "tenth": 10, "10th": 10, "last": -1,
+}
+
+# Trailing nouns that describe the cell target rather than the column name.
+_CELL_NOUN = r"(?:value|element|link|cell|button|item|text)"
+# Noise words that can precede "row" (e.g. "first result row", "data row").
+_ROW_NOISE = r"(?:result|results|data|table|search)\s+"
+
+
+def _parse_row_spec(text: str):
+    """Parse a row selector → ("index", n) (1-based; -1 = last) or ("match", {col: val})."""
+    s = _norm(text).casefold()
+    if not s:
+        return None
+    if s in _ORDINALS:
+        return ("index", _ORDINALS[s])
+    m = re.match(r"^(?:row\s*)?(\d+)(?:st|nd|rd|th)?$", s)
+    if m:
+        return ("index", int(m.group(1)))
+    m = re.search(r"where\s+(.+?)\s+(?:is|=|equals?)\s+(.+)$", text, re.IGNORECASE)
+    if m:
+        return ("match", {_strip_quotes(m.group(1)): _strip_quotes(m.group(2))})
+    return None
+
+
+def _cell_spec(column: str, row_text: str) -> dict | None:
+    column = re.sub(rf"\s+{_CELL_NOUN}$", "", _strip_quotes(column), flags=re.IGNORECASE).strip()
+    rs = _parse_row_spec(row_text)
+    if not column or rs is None:
+        return None
+    spec: dict[str, Any] = {"kind": "cell", "column": column}
+    if rs[0] == "index":
+        spec["row_index"] = rs[1]
+    else:
+        spec["row_match"] = rs[1]
+    return spec
+
+
+def parse_table_action(instruction: str, kwargs: dict[str, Any] | None = None) -> dict | None:
+    """Parse a click-in-table or click-link action. Returns None if not matched.
+
+    Returns one of:
+      {"kind": "link", "text": str, "exact": bool}
+      {"kind": "cell", "column": str, "row_index": int}       # 1-based; -1 = last
+      {"kind": "cell", "column": str, "row_match": {col: val}}
+    """
+    kwargs = kwargs or {}
+
+    # --- Structured kwargs win -------------------------------------------------
+    if kwargs.get("link_text"):
+        return {"kind": "link", "text": str(kwargs["link_text"]), "exact": bool(kwargs.get("exact", False))}
+    col = kwargs.get("column")
+    if col is not None and any(k in kwargs for k in ("row", "row_index", "row_match")):
+        spec: dict[str, Any] = {"kind": "cell", "column": str(col)}
+        if kwargs.get("row_match"):
+            spec["row_match"] = dict(kwargs["row_match"])
+        elif kwargs.get("row_index") is not None:
+            spec["row_index"] = int(kwargs["row_index"])
+        else:
+            row = kwargs.get("row")
+            if isinstance(row, int):
+                spec["row_index"] = row
+            else:
+                rs = _parse_row_spec(str(row))
+                if rs is None:
+                    return None
+                spec["row_index" if rs[0] == "index" else "row_match"] = rs[1]
+        return spec
+
+    text = (instruction or "").strip()
+    low = text.casefold()
+
+    # --- Cell actions (require both a column and a row in the phrase) ----------
+    if "column" in low or "row" in low:
+        # "in the row where KEY is VAL[,] click [the] COL [value]"
+        m = re.search(
+            rf"\brow\s+(?:where|with|for)\s+(?P<rk>.+?)\s+(?:is|=|equals?)\s+(?P<rv>.+?)\s*[,;]\s*"
+            rf"(?:click|tap|press|select)\s+(?:on\s+)?(?:the\s+)?(?P<col>.+?)(?:\s+{_CELL_NOUN})?\s*$",
+            text, re.IGNORECASE,
+        )
+        if m:
+            col = re.sub(rf"\s+{_CELL_NOUN}$", "", _strip_quotes(m.group("col")), flags=re.IGNORECASE).strip()
+            if col:
+                return {"kind": "cell", "column": col,
+                        "row_match": {_strip_quotes(m.group("rk")): _strip_quotes(m.group("rv"))}}
+
+        patterns = (
+            # "under [the] COL column[,] click [on] [the] ROW row [value]"
+            rf"under\s+(?:the\s+)?(?P<col>.+?)\s+column\b[\s,]*"
+            rf"(?:click|tap|press|select)?\s*(?:on\s+)?(?:the\s+)?(?P<row>.+?)\s+(?:{_ROW_NOISE})?row\b",
+            # "click [the] COL (value|link|cell) in|of|for [the] ROW row"
+            rf"(?:click|tap|press|select)\s+(?:on\s+)?(?:the\s+)?(?P<col>.+?)\s+{_CELL_NOUN}\s+"
+            rf"(?:in|of|for|from)\s+(?:the\s+)?(?P<row>.+?)\s+(?:{_ROW_NOISE})?row\b",
+            # "in [the] ROW row[,] click [the] COL [value]"
+            rf"in\s+(?:the\s+)?(?P<row>.+?)\s+(?:{_ROW_NOISE})?row\b[\s,]*"
+            rf"(?:click|tap|press|select)\s+(?:on\s+)?(?:the\s+)?(?P<col>.+?)(?:\s+{_CELL_NOUN})?\s*$",
+            # "click [on] [the] ROW row['s] COL [value]"
+            rf"(?:click|tap|press|select)\s+(?:on\s+)?(?:the\s+)?(?P<row>.+?)\s+(?:{_ROW_NOISE})?row(?:'s|s)?\s+"
+            rf"(?P<col>.+?)(?:\s+{_CELL_NOUN})?\s*$",
+        )
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                spec = _cell_spec(m.group("col"), m.group("row"))
+                if spec:
+                    return spec
+
+    # --- Link by text ----------------------------------------------------------
+    # "click [on] [the] link [with text|labelled|that says|named|:] <text>"
+    m = re.search(
+        r"(?:click|tap|press|open|follow)\s+(?:on\s+)?(?:the\s+)?link\b"
+        r"(?:\s+(?:with\s+(?:the\s+)?text|with\s+the\s+text|labell?ed|that\s+says|named|titled|text|:))?"
+        r"\s*[:\-]?\s*(?P<text>.+?)\s*$",
+        text, re.IGNORECASE,
+    )
+    if m:
+        link_text = _strip_quotes(m.group("text"))
+        if link_text:
+            return {"kind": "link", "text": link_text, "exact": False}
+
+    return None

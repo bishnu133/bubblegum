@@ -224,3 +224,44 @@ test("verifyTable() forwards assertion_type=table with columns/row/cell", async 
   assert.deepEqual(req.params.options.cell, { "Account Status": "Active" });
   assert.equal(req.params.options.timeout_ms, 2000);
 });
+
+test("clickInTable() forwards column + row (index word) for a cell click", async () => {
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-c" }),
+    act: (p) => ({ status: "passed", action: p.instruction, target: null, confidence: 1, duration_ms: 1 }),
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
+  await bg.clickInTable({ column: "PPHID", row: "first" });
+  const req = m.methods().find((x) => x.method === "act");
+  assert.equal(req.params.options.action_type, "click");
+  assert.equal(req.params.options.column, "PPHID");
+  assert.equal(req.params.options.row, "first");
+});
+
+test("clickInTable() forwards rowMatch as row_match", async () => {
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-c2" }),
+    act: (p) => ({ status: "passed", action: p.instruction, target: null, confidence: 1, duration_ms: 1 }),
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
+  await bg.clickInTable({ column: "PPHID", rowMatch: { Name: "Bishnu Test Account" } });
+  const req = m.methods().find((x) => x.method === "act");
+  assert.deepEqual(req.params.options.row_match, { Name: "Bishnu Test Account" });
+  assert.equal(req.params.options.row, undefined);
+});
+
+test("clickLink() forwards link_text", async () => {
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-l" }),
+    act: (p) => ({ status: "passed", action: p.instruction, target: null, confidence: 1, duration_ms: 1 }),
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
+  await bg.clickLink("9ca87fc7-bacc", { exact: true });
+  const req = m.methods().find((x) => x.method === "act");
+  assert.equal(req.params.options.action_type, "click");
+  assert.equal(req.params.options.link_text, "9ca87fc7-bacc");
+  assert.equal(req.params.options.exact, true);
+});
