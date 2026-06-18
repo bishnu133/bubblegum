@@ -472,54 +472,89 @@ class PlaywrightAdapter(BaseAdapter):
         displays the currently-selected value and an option carries that same
         text.
 
-        Resolution order:
+        Resolution order (first hit wins):
           1. ARIA-correct widgets expose role="option"/"menuitem" — match by name.
-          2. Widgets that don't (e.g. Ant Design's rc-select renders
-             role-less <div class="ant-select-item-option" title="...">) are
-             resolved via the listbox the trigger *owns* (aria-controls /
-             aria-owns), matching the option by text or title inside it — which
-             also keeps the search off the trigger's own selection label.
+          2. Library option rows that are role-less. Ant Design's rc-select
+             renders the *visible* option as
+             ``<div class="ant-select-item-option" title="V">`` (content in a
+             ``.ant-select-item-option-content`` child) and its aria-controls
+             points at a separate off-screen listbox, so it is matched directly
+             by option class + title/text. The trigger's own label is a different
+             class (``.ant-select-selection-item``) and is never matched.
+          3. Generic: any element with the exact text, scoped to an open popup
+             (listbox/menu/dropdown), then the aria-controls/aria-owns listbox.
         """
         await self._open_combobox(trigger, timeout)
 
-        # Bound the fallback probes so a miss can't burn the full timeout on
-        # every attempt; the exact-name match below covers the common case.
         probe = min(timeout, 3000)
         last_exc: Exception | None = None
 
-        # 1) Standard ARIA listbox / menu options.
-        role_attempts = (
-            (self._page.get_by_role("option", name=value, exact=True), timeout),
-            (self._page.get_by_role("option", name=value), probe),
-            (self._page.get_by_role("menuitem", name=value, exact=True), probe),
-            (self._page.get_by_role("menuitem", name=value), probe),
+        # Wait (bounded, best-effort) for the popup to materialize after opening,
+        # so the count()-guarded attempts below see a settled DOM rather than
+        # racing an animating dropdown.
+        opened = self._page.locator(
+            '[role="option"], [role="menuitem"], .ant-select-item-option, '
+            '[role="listbox"], [role="menu"], .ant-select-dropdown'
         )
-        for option, attempt_timeout in role_attempts:
+        try:
+            await opened.first.wait_for(state="visible", timeout=probe)
+        except Exception:  # noqa: BLE001 — proceed; the attempts still guard themselves
+            pass
+
+        attempts: list = []
+
+        # 1) Standard ARIA listbox / menu options.
+        attempts += [
+            self._page.get_by_role("option", name=value, exact=True),
+            self._page.get_by_role("option", name=value),
+            self._page.get_by_role("menuitem", name=value, exact=True),
+            self._page.get_by_role("menuitem", name=value),
+        ]
+
+        # 2) Role-less library option rows (Ant Design rc-select & lookalikes):
+        #    <div class="ant-select-item-option" title="V">. The trigger's own
+        #    label is .ant-select-selection-item, so it is never matched here.
+        esc = value.replace("\\", "\\\\").replace('"', '\\"')
+        attempts += [
+            self._page.locator(f'.ant-select-item-option[title="{esc}"]'),
+            self._page.locator(".ant-select-item-option", has_text=value),
+        ]
+
+        # 3a) Generic: exact text/title inside any open popup container.
+        popup = self._page.locator(
+            '[role="listbox"], [role="menu"], .ant-select-dropdown, '
+            '[class*="dropdown"], [class*="menu"], [class*="popover"], [class*="popup"]'
+        )
+        attempts += [
+            popup.get_by_text(value, exact=True),
+            popup.get_by_title(value, exact=True),
+        ]
+
+        # 3b) The listbox the trigger explicitly owns (aria-controls / aria-owns).
+        container = await self._owned_listbox(trigger)
+        if container is not None:
+            attempts += [
+                container.get_by_text(value, exact=True),
+                container.get_by_title(value, exact=True),
+                container.get_by_text(value),
+            ]
+
+        # count() returns immediately (no implicit wait), so non-matching shapes
+        # are skipped instantly instead of each burning the probe timeout — only
+        # a shape that actually matches is clicked.
+        for option in attempts:
             try:
-                await option.first.click(timeout=attempt_timeout)
+                if await option.count() == 0:
+                    continue
+                await option.first.click(timeout=probe)
                 return
             except Exception as exc:  # noqa: BLE001 — try the next option shape
                 last_exc = exc
 
-        # 2) Role-less popups (Ant Design & friends): scope to the owned listbox.
-        container = await self._owned_listbox(trigger)
-        if container is not None:
-            text_attempts = (
-                container.get_by_text(value, exact=True),
-                container.get_by_title(value, exact=True),
-                container.get_by_text(value),
-            )
-            for option in text_attempts:
-                try:
-                    await option.first.click(timeout=probe)
-                    return
-                except Exception as exc:  # noqa: BLE001
-                    last_exc = exc
-
         raise ValueError(
             f"could not find a dropdown option matching {value!r} after opening "
-            f"the combobox (looked for role=option/menuitem, then the "
-            f"aria-controls/aria-owns listbox by text/title)"
+            f"the combobox (tried role=option/menuitem, .ant-select-item-option "
+            f"by title/text, open-popup text/title, and the aria-controls listbox)"
         ) from last_exc
 
     async def _owned_listbox(self, trigger):

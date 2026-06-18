@@ -1,5 +1,23 @@
 # Unreleased
 
+## 0.0.6a9 — fix(web): match Ant Design option rows directly by class + title/text
+
+- 0.0.6a8 resolved role-less options via the trigger's `aria-controls` listbox,
+  but Ant Design's `rc-select` points `aria-controls` at a *separate, off-screen*
+  a11y listbox — the **visible**, clickable rows live in the `.ant-select-dropdown`
+  popup as `<div class="ant-select-item-option" title="V">` (label in a
+  `.ant-select-item-option-content` child). So the option still wasn't found.
+  `_do_select` now also matches the visible option **directly** by
+  `.ant-select-item-option[title="…"]` / by option-class text, plus a generic
+  open-popup (`role=listbox`/`menu`/`.ant-select-dropdown`) text/title match.
+  Verified the selector resolves uniquely against the real captured DOM (and
+  does not hit the trigger's `.ant-select-selection-item` label).
+- Resolution now waits once for the popup to render, then uses `count()` to skip
+  non-matching shapes instantly (no per-attempt timeout burn).
+- The `ant_select` widget-lab page now mirrors the real structure (portal
+  `.ant-select-dropdown` with role-less rows + a separate off-screen
+  `aria-controls` listbox). Engine `0.0.6a8` → `0.0.6a9`; npm unchanged.
+
 ## 0.0.6a8 — fix(web): resolve role-less combobox options via the owned listbox
 
 - Ant Design's `rc-select` renders option rows as **role-less**

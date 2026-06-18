@@ -78,22 +78,35 @@
       aria-expanded="false"
       aria-haspopup="listbox"
       aria-autocomplete="list"
-      aria-controls="type-listbox"
-      aria-owns="type-listbox"
+      aria-controls="search-type-selector_list"
+      aria-owns="search-type-selector_list"
       autocomplete="off"
     />
     <span class="ant-select-selection-item" title="Participant">Participant</span>
   </div>
 </div>
 
-<!-- Role-less option rows, like rc-select. The listbox id matches the
-     trigger's aria-controls/aria-owns so it can be resolved as the owned popup. -->
-<div id="type-listbox" hidden>
-  <div class="ant-select-item-option" title="Participant" data-value="participant">Participant</div>
-  <div class="ant-select-item-option" title="Tracker" data-value="tracker">Tracker</div>
-  <div class="ant-select-item-option" title="QR" data-value="qr">QR</div>
-  <div class="ant-select-item-option" title="LPID" data-value="lpid">LPID</div>
+<!-- Portal-style dropdown with role-LESS option rows, like rc-select: the
+     visible options are <div class="ant-select-item-option" title="V"> with the
+     label in a .ant-select-item-option-content child. There is no role=option,
+     and the trigger's aria-controls points at a *separate* off-screen listbox
+     (below), so options must be matched by class + title/text. -->
+<div id="type-listbox" class="ant-select-dropdown" hidden>
+  <div class="rc-virtual-list">
+    <div class="rc-virtual-list-holder">
+      <div class="rc-virtual-list-holder-inner">
+        <div id="search-participant" class="ant-select-item ant-select-item-option ant-select-item-option-selected" title="Participant" data-value="participant"><div class="ant-select-item-option-content">Participant</div></div>
+        <div id="search-tracker" class="ant-select-item ant-select-item-option" title="Tracker" data-value="tracker"><div class="ant-select-item-option-content">Tracker</div></div>
+        <div id="search-qrReceipt" class="ant-select-item ant-select-item-option" title="QR" data-value="qr"><div class="ant-select-item-option-content">QR</div></div>
+        <div id="search-lpid" class="ant-select-item ant-select-item-option" title="LPID" data-value="lpid"><div class="ant-select-item-option-content">LPID</div></div>
+      </div>
+    </div>
+  </div>
 </div>
+
+<!-- rc-select's separate, off-screen a11y listbox that aria-controls targets.
+     It deliberately does NOT hold the clickable visible options. -->
+<div id="search-type-selector_list" role="listbox" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);"></div>
 
 <p id="result"></p>
 
