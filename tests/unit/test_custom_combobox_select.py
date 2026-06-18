@@ -56,13 +56,21 @@ class _OptionLocator:
 
 
 class _TriggerLocator:
-    def __init__(self, tag: str) -> None:
+    def __init__(self, tag: str, attrs: dict[str, str] | None = None) -> None:
         self._tag = tag
+        self._attrs = attrs or {}
         self.clicks = 0
         self.force_clicks = 0
 
+    @property
+    def first(self) -> "_TriggerLocator":
+        return self
+
     async def evaluate(self, _expr: str, *args: Any, **kwargs: Any) -> str:
         return self._tag
+
+    async def get_attribute(self, name: str) -> str | None:
+        return self._attrs.get(name)
 
     async def click(self, *args: Any, **kwargs: Any) -> None:
         if kwargs.get("force"):
@@ -89,16 +97,45 @@ class _NativeSelectLocator(_TriggerLocator):
         self.select_calls.append((args, kwargs))
 
 
-class _ComboPage:
-    """Returns the trigger from .locator(); serves options from get_by_role()."""
+class _ListboxContainer:
+    """Stands in for the aria-controls listbox; serves options by text/title."""
 
-    def __init__(self, trigger, options: dict[tuple[str, str, bool], _OptionLocator]) -> None:
+    def __init__(self, by_text: dict[tuple[str, bool], _OptionLocator] | None = None,
+                 by_title: dict[tuple[str, bool], _OptionLocator] | None = None) -> None:
+        self._by_text = by_text or {}
+        self._by_title = by_title or {}
+        self.text_calls: list[tuple[str, bool]] = []
+        self.title_calls: list[tuple[str, bool]] = []
+
+    def get_by_text(self, text: str, exact: bool = False) -> _OptionLocator:
+        self.text_calls.append((text, exact))
+        return self._by_text.get((text, exact), _OptionLocator(name=text, clickable=False))
+
+    def get_by_title(self, title: str, exact: bool = False) -> _OptionLocator:
+        self.title_calls.append((title, exact))
+        return self._by_title.get((title, exact), _OptionLocator(name=title, clickable=False))
+
+
+class _ComboPage:
+    """Returns the trigger from .locator(); serves options from get_by_role().
+
+    An optional ``container`` is returned from ``.locator()`` when the ref is an
+    ``[id="..."]`` attribute selector — i.e. the aria-controls listbox lookup.
+    """
+
+    def __init__(self, trigger, options: dict[tuple[str, str, bool], _OptionLocator],
+                 container: _ListboxContainer | None = None) -> None:
         self._trigger = trigger
         self._options = options
+        self._container = container
         self.url = "http://example.test/start"
         self.get_by_role_calls: list[tuple[str, str, bool]] = []
+        self.locator_refs: list[str] = []
 
-    def locator(self, _ref: str):
+    def locator(self, ref: str):
+        self.locator_refs.append(ref)
+        if ref.startswith('[id=') and self._container is not None:
+            return self._container
         return self._trigger
 
     def get_by_role(self, role: str, name: str = "", exact: bool = False) -> _OptionLocator:
@@ -163,6 +200,41 @@ def test_custom_combobox_falls_back_to_non_exact_option():
     assert option.clicked is True
     assert ("option", "Tracker", True) in page.get_by_role_calls
     assert ("option", "Tracker", False) in page.get_by_role_calls
+
+
+def test_role_less_combobox_resolves_option_via_owned_listbox():
+    # Ant Design rc-select: option <div>s carry no role=option, so role lookups
+    # all miss; resolution must fall through to the aria-controls listbox and
+    # match by text. The trigger also shows "Participant" (title) but lives
+    # outside the listbox, so scoping to the container avoids it.
+    trigger = _OverlayTriggerLocator("INPUT", attrs={"aria-controls": "search-type-selector_list"})
+    option = _OptionLocator(name="Participant", clickable=True)
+    container = _ListboxContainer(by_text={("Participant", True): option})
+    page = _ComboPage(trigger, options={}, container=container)  # no role=option matches
+    adapter = PlaywrightAdapter(page)
+
+    result = _run(adapter.execute(_plan("Participant"), _target()))
+
+    assert result.success is True
+    assert option.clicked is True
+    # It scoped to the owned listbox id and matched by exact text.
+    assert '[id="search-type-selector_list"]' in page.locator_refs
+    assert ("Participant", True) in container.text_calls
+
+
+def test_role_less_combobox_falls_back_to_title():
+    # Some rows expose the value only via the title attribute, not text.
+    trigger = _OverlayTriggerLocator("INPUT", attrs={"aria-owns": "type_list"})
+    option = _OptionLocator(name="QR", clickable=True)
+    container = _ListboxContainer(by_title={("QR", True): option})
+    page = _ComboPage(trigger, options={}, container=container)
+    adapter = PlaywrightAdapter(page)
+
+    result = _run(adapter.execute(_plan("QR"), _target()))
+
+    assert result.success is True
+    assert option.clicked is True
+    assert '[id="type_list"]' in page.locator_refs
 
 
 def test_custom_combobox_no_matching_option_fails_clearly():

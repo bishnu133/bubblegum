@@ -1,5 +1,20 @@
 # Unreleased
 
+## 0.0.6a8 — fix(web): resolve role-less combobox options via the owned listbox
+
+- Ant Design's `rc-select` renders option rows as **role-less**
+  `<div class="ant-select-item-option" title="…">` inside a virtualized list, so
+  the `get_by_role("option")` lookup added in 0.0.6a7 found nothing and `select`
+  failed with "could not find a dropdown option …". `_do_select` now falls
+  through to the listbox the trigger **owns** (`aria-controls` / `aria-owns`) and
+  matches the option by **text, then title** *within that container* — standard
+  ARIA, and scoping to the popup keeps the match off the trigger's own selection
+  label (which carries the same value text). Standard `role=option`/`menuitem`
+  widgets are still matched first.
+- The `ant_select` widget-lab page is now role-less to mirror real rc-select;
+  unit coverage adds the owned-listbox text and title fallbacks.
+- Engine `0.0.6a7` → `0.0.6a8` (PyPI). npm client unchanged (`0.0.6-alpha.2`).
+
 ## 0.0.6a7 — fix(web): force-open Ant Design-style comboboxes (overlay interception)
 
 - The custom-combobox `select` (0.0.6a6) opened the trigger with a normal click,

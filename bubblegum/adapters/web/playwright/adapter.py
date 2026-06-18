@@ -467,33 +467,81 @@ class PlaywrightAdapter(BaseAdapter):
 
         Opens the trigger, then clicks the matching option. The listbox is
         frequently portal-rendered to <body> (out of the trigger's subtree), so
-        options are searched from the page, not the trigger. Searching by
-        role="option"/"menuitem" name also sidesteps the common ambiguity where
-        the trigger displays the currently-selected value and an option carries
-        that same text — the option is targeted explicitly.
+        options are searched from the page, not the trigger. Targeting the option
+        (not the trigger) also sidesteps the common ambiguity where the trigger
+        displays the currently-selected value and an option carries that same
+        text.
+
+        Resolution order:
+          1. ARIA-correct widgets expose role="option"/"menuitem" — match by name.
+          2. Widgets that don't (e.g. Ant Design's rc-select renders
+             role-less <div class="ant-select-item-option" title="...">) are
+             resolved via the listbox the trigger *owns* (aria-controls /
+             aria-owns), matching the option by text or title inside it — which
+             also keeps the search off the trigger's own selection label.
         """
         await self._open_combobox(trigger, timeout)
 
         # Bound the fallback probes so a miss can't burn the full timeout on
         # every attempt; the exact-name match below covers the common case.
         probe = min(timeout, 3000)
-        attempts = (
+        last_exc: Exception | None = None
+
+        # 1) Standard ARIA listbox / menu options.
+        role_attempts = (
             (self._page.get_by_role("option", name=value, exact=True), timeout),
             (self._page.get_by_role("option", name=value), probe),
             (self._page.get_by_role("menuitem", name=value, exact=True), probe),
             (self._page.get_by_role("menuitem", name=value), probe),
         )
-        last_exc: Exception | None = None
-        for option, attempt_timeout in attempts:
+        for option, attempt_timeout in role_attempts:
             try:
                 await option.first.click(timeout=attempt_timeout)
                 return
             except Exception as exc:  # noqa: BLE001 — try the next option shape
                 last_exc = exc
+
+        # 2) Role-less popups (Ant Design & friends): scope to the owned listbox.
+        container = await self._owned_listbox(trigger)
+        if container is not None:
+            text_attempts = (
+                container.get_by_text(value, exact=True),
+                container.get_by_title(value, exact=True),
+                container.get_by_text(value),
+            )
+            for option in text_attempts:
+                try:
+                    await option.first.click(timeout=probe)
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+
         raise ValueError(
             f"could not find a dropdown option matching {value!r} after opening "
-            f"the combobox (looked for role=option / role=menuitem)"
+            f"the combobox (looked for role=option/menuitem, then the "
+            f"aria-controls/aria-owns listbox by text/title)"
         ) from last_exc
+
+    async def _owned_listbox(self, trigger):
+        """Locator for the popup a combobox owns via aria-controls / aria-owns.
+
+        Returns None when the trigger advertises no owned popup. The id is
+        matched with an attribute selector (not ``#id``) so ids containing
+        characters that are special in CSS still resolve, and the popup is found
+        wherever it is portal-rendered.
+        """
+        try:
+            node = trigger.first
+            owned = await node.get_attribute("aria-controls")
+            if not owned:
+                owned = await node.get_attribute("aria-owns")
+        except Exception:
+            return None
+        if not owned:
+            return None
+        # aria-controls/owns may list several ids; the listbox is the first.
+        listbox_id = owned.split()[0]
+        return self._page.locator(f'[id="{listbox_id}"]')
 
     async def _open_combobox(self, trigger, timeout: int) -> None:
         """Click a combobox trigger open, forcing past overlay interception.

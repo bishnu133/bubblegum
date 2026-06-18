@@ -2,12 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Widget Lab — Ant Design-style Select (overlay interception)</title>
+<title>Widget Lab — Ant Design-style Select (overlay + role-less options)</title>
 <style>
   body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 32em; }
-  /* Mirrors antd's structure closely enough to reproduce the real failure:
-     an inner role="combobox" <input> covered by a selection <span>, so a
-     normal Playwright click is intercepted and only a force click opens it. */
+  /* Mirrors antd/rc-select closely enough to reproduce two real failures:
+     (1) an inner role="combobox" <input> covered by a selection <span>, so a
+         normal Playwright click is intercepted and only a force click opens it;
+     (2) option rows are role-LESS <div class="ant-select-item-option"> (with a
+         title attr), so they must be resolved via the aria-controls listbox by
+         text/title rather than get_by_role("option"). */
   .ant-select { position: relative; display: inline-block; min-width: 14em; }
   .ant-select-selector {
     position: relative;
@@ -18,8 +21,6 @@
     background: white;
     cursor: pointer;
   }
-  /* The search input is absolutely positioned to fill the selector and is the
-     element that carries role="combobox" — exactly antd's layout. */
   .ant-select-selection-search-input {
     position: absolute;
     inset: 0;
@@ -42,27 +43,28 @@
   #type-listbox {
     position: absolute;
     margin-top: 0.25em;
-    list-style: none;
-    padding: 0.25em 0;
     border: 1px solid #999;
     border-radius: 3px;
     min-width: 14em;
     background: white;
+    padding: 0.25em 0;
     z-index: 100;
   }
   #type-listbox[hidden] { display: none; }
-  #type-listbox [role="option"] { padding: 0.4em 0.8em; cursor: pointer; }
-  #type-listbox [role="option"]:hover { background: #f0f0f0; }
+  .ant-select-item-option { padding: 0.4em 0.8em; cursor: pointer; }
+  .ant-select-item-option:hover { background: #f0f0f0; }
 </style>
 </head>
 <body>
 <h1>Ant Design-style Select</h1>
 <p>
   The inner <code>role="combobox"</code> <code>&lt;input&gt;</code> is covered by
-  the <code>.ant-select-selection-item</code> span, which intercepts a normal
-  click (Playwright reports "&lt;span&gt; intercepts pointer events"). The
-  current value <strong>"Participant"</strong> is also one of the options, so a
-  text-based click would be ambiguous — selection must target the option by role.
+  the <code>.ant-select-selection-item</code> span (intercepts a normal click),
+  and the option rows are <strong>role-less</strong>
+  <code>&lt;div class="ant-select-item-option" title="…"&gt;</code> — exactly
+  what rc-select renders. The current value <strong>"Participant"</strong> is
+  also an option, so resolution must scope to the
+  <code>aria-controls</code> listbox by text/title, not page-wide.
 </p>
 
 <div class="ant-select" id="search-type">
@@ -77,18 +79,21 @@
       aria-haspopup="listbox"
       aria-autocomplete="list"
       aria-controls="type-listbox"
+      aria-owns="type-listbox"
       autocomplete="off"
     />
     <span class="ant-select-selection-item" title="Participant">Participant</span>
   </div>
 </div>
 
-<ul id="type-listbox" role="listbox" aria-label="Search type" hidden>
-  <li role="option" data-value="participant">Participant</li>
-  <li role="option" data-value="tracker">Tracker</li>
-  <li role="option" data-value="qr">QR</li>
-  <li role="option" data-value="lpid">LPID</li>
-</ul>
+<!-- Role-less option rows, like rc-select. The listbox id matches the
+     trigger's aria-controls/aria-owns so it can be resolved as the owned popup. -->
+<div id="type-listbox" hidden>
+  <div class="ant-select-item-option" title="Participant" data-value="participant">Participant</div>
+  <div class="ant-select-item-option" title="Tracker" data-value="tracker">Tracker</div>
+  <div class="ant-select-item-option" title="QR" data-value="qr">QR</div>
+  <div class="ant-select-item-option" title="LPID" data-value="lpid">LPID</div>
+</div>
 
 <p id="result"></p>
 
@@ -113,7 +118,7 @@
   });
 
   listbox.addEventListener('click', (e) => {
-    const opt = e.target.closest('[role="option"]');
+    const opt = e.target.closest('.ant-select-item-option');
     if (!opt) return;
     label.textContent = opt.textContent;
     label.title = opt.textContent;
