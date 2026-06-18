@@ -425,14 +425,75 @@ class PlaywrightAdapter(BaseAdapter):
 
     async def _do_select(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
-        # Testers write the *visible* option ("France"), but a <select> often
-        # carries a different value attribute (<option value="FR">France</option>).
-        # Try value-match first (fast path / backward compatible), then fall back
-        # to label-match so natural-language selection works either way.
+
+        # Native <select> vs. custom combobox. Playwright's select_option() only
+        # drives a real <select>; the div/button-based comboboxes shipped by
+        # Ant Design / MUI / Angular CDK / React-Select expose role="combobox"
+        # but cannot be selected that way — you must open the popup and click an
+        # option. Detect by tag name (both surface as role=combobox in the a11y
+        # tree, so role alone can't tell them apart). evaluate() is unavailable
+        # on test doubles; treat that (None) as native to stay backward
+        # compatible with the legacy select_option path.
+        tag = await self._safe_tag_name(locator)
+        if tag is not None and tag != "select":
+            await self._select_from_custom_combobox(locator, value, timeout)
+            return
+
+        # Native <select>. Testers write the *visible* option ("France"), but a
+        # <select> often carries a different value attribute
+        # (<option value="FR">France</option>). Try value-match first (fast path
+        # / backward compatible), then fall back to label-match so
+        # natural-language selection works either way.
         try:
             await locator.select_option(value, timeout=timeout)
         except Exception:
             await locator.select_option(label=value, timeout=timeout)
+
+    async def _safe_tag_name(self, locator) -> str | None:
+        """Lower-cased tagName of the resolved element, or None if undetectable.
+
+        Returns None on any failure (e.g. evaluate() missing on a test double,
+        or a strict-mode multi-match) so callers can fall back to legacy
+        behaviour rather than erroring.
+        """
+        try:
+            tag = await locator.evaluate("el => el.tagName")
+        except Exception:
+            return None
+        return (tag or "").strip().lower() or None
+
+    async def _select_from_custom_combobox(self, trigger, value: str, timeout: int) -> None:
+        """Select ``value`` from a non-native combobox (Ant Design / MUI / CDK).
+
+        Opens the trigger, then clicks the matching option. The listbox is
+        frequently portal-rendered to <body> (out of the trigger's subtree), so
+        options are searched from the page, not the trigger. Searching by
+        role="option"/"menuitem" name also sidesteps the common ambiguity where
+        the trigger displays the currently-selected value and an option carries
+        that same text — the option is targeted explicitly.
+        """
+        await trigger.click(timeout=timeout)
+
+        # Bound the fallback probes so a miss can't burn the full timeout on
+        # every attempt; the exact-name match below covers the common case.
+        probe = min(timeout, 3000)
+        attempts = (
+            (self._page.get_by_role("option", name=value, exact=True), timeout),
+            (self._page.get_by_role("option", name=value), probe),
+            (self._page.get_by_role("menuitem", name=value, exact=True), probe),
+            (self._page.get_by_role("menuitem", name=value), probe),
+        )
+        last_exc: Exception | None = None
+        for option, attempt_timeout in attempts:
+            try:
+                await option.first.click(timeout=attempt_timeout)
+                return
+            except Exception as exc:  # noqa: BLE001 — try the next option shape
+                last_exc = exc
+        raise ValueError(
+            f"could not find a dropdown option matching {value!r} after opening "
+            f"the combobox (looked for role=option / role=menuitem)"
+        ) from last_exc
 
     async def _do_upload(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value

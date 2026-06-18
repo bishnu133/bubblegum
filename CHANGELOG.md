@@ -1,5 +1,26 @@
 # Unreleased
 
+## feat(web): one-step selection from custom (non-native) comboboxes
+
+- **`select` now drives div/button-based comboboxes**, not just native
+  `<select>`. Ant Design / MUI / Angular CDK / React-Select render
+  `role="combobox"` triggers whose options live in a portal listbox;
+  `locator.select_option()` can't drive these. `PlaywrightAdapter._do_select`
+  now detects the trigger is not a `<select>` (by tag name — both surface as
+  `role=combobox` in the a11y tree) and instead **opens the trigger, then clicks
+  the matching `role="option"`/`role="menuitem"`**. The native `<select>` path
+  is unchanged.
+- This lets testers select from custom dropdowns with a single plain-English
+  line and **no DOM selectors** — e.g. `Select "Participant" from the search
+  type dropdown`. Searching options by accessible name also resolves the common
+  ambiguity where the trigger displays the selected value and an option carries
+  the same text (the option is targeted explicitly). The existing two-step flow
+  (`Open the X dropdown` + `Click <option>`) keeps working.
+- Coverage: `tests/unit/test_custom_combobox_select.py` (dispatch: native vs.
+  custom, exact→non-exact option fallback, clear error on no match) and
+  `tests/integration/test_custom_combobox_select_web.py` (live `--playwright`
+  flow against the `combobox` / `nameless_combobox` / `select` widget-lab pages).
+
 ## 0.0.6a5 — fix: report.write over the bridge
 
 - Fixed `report.write` (Node-client reporting) crashing with
