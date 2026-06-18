@@ -1,6 +1,13 @@
 # Unreleased
 
-## feat(web): one-step selection from custom (non-native) comboboxes
+## 0.0.6a6 — feat(web): one-step selection from custom (non-native) comboboxes
+
+- Engine `0.0.6a5` → `0.0.6a6` (PyPI `bubblegum-ai`). Upgrade with
+  `pip install -U "bubblegum-ai==0.0.6a6"`.
+- `@bubblegum-ai/node` `0.0.6-alpha.1` → `0.0.6-alpha.2` (npm): **version-parity
+  bump only — no client code change.** The feature is entirely engine-side; the
+  existing client already forwards the natural-language step. The `alpha.1`
+  client also works against engine `0.0.6a6`.
 
 - **`select` now drives div/button-based comboboxes**, not just native
   `<select>`. Ant Design / MUI / Angular CDK / React-Select render
