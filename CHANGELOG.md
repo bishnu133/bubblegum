@@ -1,5 +1,22 @@
 # Unreleased
 
+## 0.0.6a11 — fix(grounding): reliably resolve nameless/value-named selects
+
+- A "select X from the Y dropdown" step could flake between resolving (~0.72)
+  and failing with `LowConfidence` (~0.57) depending on whether the page exposed
+  the combobox as nameless or with its value as the accessible name. The
+  grounding engine now, **only for dropdown/select intents**, accepts the best
+  `combobox`/`listbox` candidate above the reject threshold (0.50) instead of
+  requiring the 0.70 review bar — a custom select legitimately tops out at
+  role-fit confidence. It fires for a uniquely-identifiable combobox (named, or
+  the single combobox on the page); multiple indistinguishable nameless
+  comboboxes still fail safely rather than guessing.
+- Clearer `LowConfidenceError` message (no longer hard-codes "reject threshold
+  0.50").
+- No behaviour change for non-dropdown steps. Coverage:
+  `tests/unit/test_dropdown_select_relax.py`. Engine `0.0.6a10` → `0.0.6a11`;
+  npm client unchanged (`0.0.6-alpha.3`).
+
 ## 0.0.6a10 — feat(web): table assertions (columns + cell values by row)
 
 - New page-scoped **table verification**. `verify` can now assert a data table's

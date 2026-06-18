@@ -62,6 +62,25 @@ _REVIEW_THRESHOLD:  float = 0.70
 _AMBIGUOUS_GAP:     float = 0.05
 _REJECT_THRESHOLD:  float = 0.50
 
+_DROPDOWN_KEYWORDS = ("dropdown", "combobox", "combo box", "listbox", "picker", "selector")
+
+
+def _is_dropdown_select_intent(intent: StepIntent) -> bool:
+    """True when the step clearly targets a dropdown / select control.
+
+    Used to relax the final confidence gate for nameless custom comboboxes,
+    whose best honest score is role-fit (~0.57) rather than a name match.
+    """
+    if getattr(intent, "action_type", None) == "select":
+        return True
+    ri = intent.context.get("relational_intent")
+    if isinstance(ri, dict) and str(ri.get("control_kind_hint", "")).lower() in (
+        "combobox", "select", "dropdown"
+    ):
+        return True
+    text = (intent.instruction or "").lower()
+    return any(k in text for k in _DROPDOWN_KEYWORDS)
+
 
 class GroundingEngine:
     """
@@ -208,6 +227,37 @@ class GroundingEngine:
                 )
                 self._check_ambiguity(unique_candidates, intent)
                 return best, all_traces
+
+            # Dropdown/select relax: a custom combobox (Ant Design / MUI / CDK)
+            # has no useful accessible name — its value often becomes its name —
+            # so "select X from the Y dropdown" tops out at role-fit confidence
+            # (~0.57) and would be rejected at the review bar even though the
+            # combobox is the correct target. When the step clearly means a
+            # dropdown, accept the best combobox/listbox candidate above the
+            # reject threshold instead of failing. Ambiguity is still checked
+            # among the comboboxes, so two equally-likely selects raise the usual
+            # AmbiguousTargetError rather than silently picking one.
+            if _is_dropdown_select_intent(intent):
+                combos = [
+                    c for c in unique_candidates
+                    if str(c.metadata.get("role", "")).lower() in ("combobox", "listbox")
+                ]
+                if len(combos) == 1:
+                    best_combo = combos[0]
+                    # A named combobox (its value often becomes its accessible
+                    # name) is uniquely identifiable; accept it. A nameless one is
+                    # only safe when it is genuinely the single combobox on the
+                    # page — multiple nameless comboboxes collapse to the same
+                    # "role=combobox" ref and must stay ambiguous.
+                    has_name = bool(str(best_combo.metadata.get("name", "")).strip())
+                    raw_same_ref = sum(1 for c in all_candidates if c.ref == best_combo.ref)
+                    if best_combo.confidence >= self.reject_threshold and (has_name or raw_same_ref == 1):
+                        logger.debug(
+                            "Resolved dropdown '%s' via combobox relax — confidence %.2f",
+                            intent.instruction, best_combo.confidence,
+                        )
+                        return best_combo, all_traces
+
             raise LowConfidenceError(
                 step=intent.instruction,
                 candidates=all_candidates,

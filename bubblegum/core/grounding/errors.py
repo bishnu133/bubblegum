@@ -114,7 +114,7 @@ class LowConfidenceError(BubblegumError):
     ) -> None:
         message = (
             f"Low confidence for '{step}': "
-            f"best candidate scored {best_confidence:.2f} (below reject threshold 0.50). "
+            f"best candidate scored {best_confidence:.2f} (below the acceptance threshold). "
             f"Found {len(candidates)} candidate(s)."
         )
         super().__init__(step=step, message=message, candidates=candidates, screenshot=screenshot)
