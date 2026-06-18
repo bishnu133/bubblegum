@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget Lab — Multiple nameless selects (DOM disambiguation)</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; }
+  .row { display: flex; gap: 2em; align-items: center; margin-bottom: 1em; }
+  .ant-select { position: relative; display: inline-block; min-width: 12em; }
+  .ant-select-selector { position: relative; padding: 0.4em 0.8em; min-height: 1.6em;
+    border: 1px solid #999; border-radius: 3px; background: #fff; cursor: pointer; }
+  .ant-select-selection-search-input { position: absolute; inset: 0; width: 100%; height: 100%;
+    margin: 0; padding: 0.4em 0.8em; border: 0; background: transparent; outline: none; }
+  .ant-select-selection-item { position: relative; z-index: 2; }
+  .ant-select-dropdown { position: absolute; margin-top: 0.25em; border: 1px solid #999;
+    border-radius: 3px; min-width: 12em; background: #fff; padding: 0.25em 0; z-index: 100; }
+  .ant-select-dropdown[hidden] { display: none; }
+  .ant-select-item-option { padding: 0.4em 0.8em; cursor: pointer; }
+  .ant-select-item-option:hover { background: #f0f0f0; }
+</style>
+</head>
+<body>
+<h1>Multiple nameless selects</h1>
+<p>
+  Two Ant Design-style selects with <strong>no associated label</strong>. The
+  first (the "search type") currently shows <code>Participant</code>; the second
+  shows <code>Bulk Operations</code>. The a11y snapshot can't tell them apart by
+  name, so resolution falls back to the DOM and disambiguates by the displayed
+  value — "Select Participant from the search type dropdown" must drive the first.
+</p>
+
+<div class="row">
+  <!-- 1) search-type select (shows the value we'll select) -->
+  <div class="ant-select" id="search-type">
+    <div class="ant-select-selector">
+      <input class="ant-select-selection-search-input" id="search-type-selector" type="search"
+             role="combobox" readonly aria-expanded="false" aria-haspopup="listbox"
+             aria-controls="search-type-selector_list" aria-owns="search-type-selector_list" autocomplete="off" />
+      <span class="ant-select-selection-item" title="Participant">Participant</span>
+    </div>
+    <div id="type-dropdown" class="ant-select-dropdown" hidden>
+      <div class="ant-select-item ant-select-item-option" title="Participant"><div class="ant-select-item-option-content">Participant</div></div>
+      <div class="ant-select-item ant-select-item-option" title="Tracker"><div class="ant-select-item-option-content">Tracker</div></div>
+      <div class="ant-select-item ant-select-item-option" title="QR"><div class="ant-select-item-option-content">QR</div></div>
+    </div>
+    <div id="search-type-selector_list" role="listbox" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);"></div>
+  </div>
+
+  <!-- 2) a decoy nameless combobox -->
+  <div class="ant-select" id="bulk-ops">
+    <div class="ant-select-selector">
+      <input class="ant-select-selection-search-input" type="search" role="combobox" readonly
+             aria-expanded="false" aria-haspopup="listbox" autocomplete="off" />
+      <span class="ant-select-selection-item" title="Bulk Operations">Bulk Operations</span>
+    </div>
+  </div>
+</div>
+
+<p id="result"></p>
+
+<script>
+  const root = document.getElementById('search-type');
+  const selector = root.querySelector('.ant-select-selector');
+  const input = document.getElementById('search-type-selector');
+  const label = root.querySelector('.ant-select-selection-item');
+  const dd = document.getElementById('type-dropdown');
+  const result = document.getElementById('result');
+
+  selector.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const open = dd.hidden;
+    dd.hidden = !open;
+    input.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  dd.addEventListener('click', (e) => {
+    const opt = e.target.closest('.ant-select-item-option');
+    if (!opt) return;
+    label.textContent = opt.textContent;
+    label.title = opt.textContent;
+    dd.hidden = true;
+    result.textContent = 'Selected: ' + opt.textContent;
+  });
+</script>
+</body>
+</html>

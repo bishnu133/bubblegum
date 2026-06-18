@@ -167,6 +167,81 @@ _EXTRACT_TABLES_JS = r"""
 """
 
 
+# JS run in the page to pick the best dropdown/select trigger for a step. Scores
+# each visible select/combobox by label (strongest), displayed value, placeholder
+# and text against the target phrase + value, marks the winner with a temporary
+# attribute, and returns {selector, ...}. Lets a "select X from the Y dropdown"
+# step resolve a nameless custom combobox by its surrounding context.
+_FIND_SELECT_TRIGGER_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const valN = norm(args && args.value);
+  const tokens = phrase.split(' ').filter((t) => t.length > 2);
+
+  const SEL = 'select, [role="combobox"], .ant-select, .MuiSelect-select, [class*="select__control"]';
+  let els = Array.from(document.querySelectorAll(SEL))
+    .filter((e) => !e.matches('.ant-select-selection-search-input')); // use the container, not inner input
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const st = window.getComputedStyle(e);
+    return st.visibility !== 'hidden' && st.display !== 'none';
+  };
+  els = els.filter(visible);
+  // De-duplicate nested matches (e.g. a [role=combobox] inside an .ant-select).
+  els = els.filter((e) => !els.some((o) => o !== e && o.contains(e)));
+  if (!els.length) return null;
+
+  const textOf = (n) => norm(n && (n.getAttribute && n.getAttribute('title') || n.textContent));
+
+  const labelText = (e) => {
+    const parts = [];
+    if (e.id) {
+      const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]');
+      if (l) parts.push(l.textContent);
+    }
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    const fi = e.closest('.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
+    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]'); if (l) parts.push(l.textContent); }
+    let p = e.previousElementSibling, hops = 0;
+    while (p && hops < 3) { if (p.tagName === 'LABEL' || /label/i.test(p.className)) parts.push(p.textContent); p = p.previousElementSibling; hops++; }
+    return norm(parts.join(' '));
+  };
+  const displayed = (e) => {
+    const item = e.querySelector('.ant-select-selection-item');
+    if (item) return textOf(item);
+    if (e.tagName === 'SELECT') { const o = e.options && e.options[e.selectedIndex]; return norm(o ? o.text : ''); }
+    const inp = e.querySelector('input'); if (inp && inp.value) return norm(inp.value);
+    return norm(e.textContent);
+  };
+  const placeholder = (e) => { const inp = e.querySelector('input'); return norm((inp && inp.placeholder) || e.getAttribute('placeholder') || ''); };
+
+  const overlap = (txt) => { if (!tokens.length || !txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1;
+  els.forEach((e, i) => {
+    const lbl = labelText(e), disp = displayed(e), ph = placeholder(e);
+    let score = 0;
+    score += 3.0 * overlap(lbl);                 // associated label — strongest signal
+    score += 0.8 * overlap(ph);                  // placeholder hint
+    score += 0.5 * overlap(disp);                // displayed-text hint
+    if (valN && disp === valN) score += 1.5;     // already shows the value we want
+    score += (els.length - i) * 0.001;           // tiny earlier-in-DOM tie-breaker
+    if (score > bestScore) { bestScore = score; best = e; }
+  });
+  if (!best) return null;
+
+  document.querySelectorAll('[data-bg-select]').forEach((n) => n.removeAttribute('data-bg-select'));
+  best.setAttribute('data-bg-select', '1');
+  return { selector: '[data-bg-select="1"]', score: bestScore, count: els.length,
+           label: labelText(best), displayed: displayed(best) };
+}
+"""
+
+
 # Phase 22E-6: roles that toggle in-page state (or open a popup) and never
 # trigger a page navigation per ARIA semantics. Clicking one of these skips
 # the post-click wait_for_url probe in _do_click, which otherwise burns its
@@ -789,6 +864,24 @@ class PlaywrightAdapter(BaseAdapter):
         Returns ``[{"headers": [str], "rows": [{header: cell_text}], "kind": str}]``.
         """
         return await self._page.evaluate(_EXTRACT_TABLES_JS)
+
+    async def find_select_trigger(self, target_phrase: str, value: str) -> str | None:
+        """Resolve a dropdown/select trigger from the DOM and return a selector.
+
+        A last-resort path for custom comboboxes (Ant Design / MUI / CDK) whose
+        accessible name is too poor for the a11y snapshot to ground uniquely.
+        Scores every visible select/combobox by its associated label, placeholder,
+        currently-displayed value, and role/text against the step's target phrase
+        and value, marks the best match with a temporary attribute, and returns a
+        selector for it. Returns None when no select-like control is visible.
+        """
+        result = await self._page.evaluate(
+            _FIND_SELECT_TRIGGER_JS, {"phrase": target_phrase or "", "value": value or ""}
+        )
+        if not result:
+            return None
+        logger.debug("find_select_trigger %r/%r -> %s", target_phrase, value, result)
+        return result.get("selector")
 
     async def assert_network(self, matcher: dict, *, timeout_ms: int = 5_000) -> tuple[bool, str]:
         """Assert a backend response matching ``matcher`` occurred (W4).

@@ -1,5 +1,22 @@
 # Unreleased
 
+## 0.0.6a12 — fix(web): DOM fallback disambiguates multiple nameless selects
+
+- "Select X from the Y dropdown" now works on pages with **several nameless
+  comboboxes** (the case a11 still failed: best 0.57, "15 candidates"). When the
+  a11y snapshot can't ground a unique combobox, the SDK falls back to a
+  DOM-based resolver that scores every visible select/combobox by its associated
+  **label** (strongest), **placeholder**, **currently-displayed value**, and
+  text against the step's target phrase and value, then drives the best match.
+  This picks the right control whether it's identified by a form label
+  ("Participant status", "Reason") or by the value it shows ("search type" →
+  the select showing "Participant"). Works across Ant Design / MUI / CDK /
+  native `<select>`.
+- Coverage: `tests/unit/test_select_trigger_fallback.py` and a new `multi_select`
+  widget-lab page + `tests/integration/test_multi_select_web.py`. The scoring was
+  validated against the real captured H365 markup.
+- Engine `0.0.6a11` → `0.0.6a12`; npm client unchanged (`0.0.6-alpha.3`).
+
 ## 0.0.6a11 — fix(grounding): reliably resolve nameless/value-named selects
 
 - A "select X from the Y dropdown" step could flake between resolving (~0.72)

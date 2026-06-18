@@ -320,8 +320,15 @@ async def act(
     try:
         target, traces = await _ground_with_wait(adapter, intent)
     except BubblegumError as exc:
-        duration_ms = int((time.monotonic() - t0) * 1000)
-        return _failed_result(instruction, exc, duration_ms)
+        # Dropdown/select fallback: a custom combobox whose a11y name is too poor
+        # to ground uniquely can still be resolved from the DOM by its label /
+        # placeholder / displayed value. This is what lets "select X from the Y
+        # dropdown" work across apps even when several nameless comboboxes exist.
+        fallback = await _maybe_resolve_select_trigger(adapter, channel, intent)
+        if fallback is None:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            return _failed_result(instruction, exc, duration_ms)
+        target, traces = fallback, []
 
     target, hydration_error, _hydration_meta = _maybe_hydrate_visual_target(intent=intent, target=target)
     if hydration_error is not None:
@@ -1310,6 +1317,38 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
 # yet (SPA late render). Ambiguity / cost-policy blocks are NOT retried — more
 # attempts cannot change those outcomes.
 _RETRYABLE_GROUND_ERRORS = (ResolutionFailedError, LowConfidenceError)
+
+
+async def _maybe_resolve_select_trigger(adapter, channel: str, intent: StepIntent):
+    """DOM fallback for dropdown/select intents that failed to ground.
+
+    Returns a ResolvedTarget pointing at the best select trigger (resolved by the
+    adapter from label / placeholder / displayed value), or None when this isn't
+    a web dropdown intent or no select-like control is found.
+    """
+    if channel != "web":
+        return None
+    from bubblegum.core.grounding.engine import _is_dropdown_select_intent
+
+    if not _is_dropdown_select_intent(intent):
+        return None
+    finder = getattr(adapter, "find_select_trigger", None)
+    if finder is None:
+        return None
+    try:
+        ref = await finder(intent.target_phrase or "", intent.input_value or "")
+    except Exception as exc:  # noqa: BLE001 — fallback must never mask the original error
+        logger.debug("select-trigger DOM fallback errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved dropdown '%s' via DOM select-trigger fallback (%s)", intent.instruction, ref)
+    return ResolvedTarget(
+        ref=ref,
+        confidence=0.6,
+        resolver_name="select_trigger_dom",
+        metadata={"role": "combobox", "select_trigger_dom": True},
+    )
 
 
 async def _ground_with_wait(adapter, intent: StepIntent):
