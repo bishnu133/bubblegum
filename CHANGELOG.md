@@ -1,5 +1,17 @@
 # Unreleased
 
+## 0.0.6a14 — fix(web): verify checks quoted text inside a descriptive phrase
+
+- `verify` now treats **quoted text as the literal thing to assert**, so a
+  natural description works: `verify('the page is shown with an "Update account
+  status" button')` checks for `Update account status`, and
+  `verify('account status is "Active"')` checks for `Active` — instead of
+  failing because the whole sentence isn't literally on the page. Multiple
+  quoted phrases must all be visible (`verify('shows "Active" and "Verified"')`).
+  Unquoted verifies and an explicit `expected_value` are unchanged.
+- Coverage: `tests/unit/test_verify_quoted_text.py`. Engine `0.0.6a13` →
+  `0.0.6a14`; npm client unchanged (`0.0.6-alpha.4`).
+
 ## 0.0.6a13 — feat(web): click by table cell (column + row) and by link text
 
 - Two new ways to click an element addressed by **what it is**, not its (often

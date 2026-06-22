@@ -39,6 +39,7 @@ import asyncio
 import difflib
 import inspect
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -427,6 +428,24 @@ async def act(
     )
 
 
+_QUOTED_RE = re.compile(r'"([^"]+)"|“([^”]+)”|‘([^’]+)’|\'([^\']+)\'')
+
+
+def _quoted_segments(instruction: str) -> list[str]:
+    """Return non-empty quoted substrings (straight, smart, single) in order.
+
+    Lets a verify name the literal text to look for inside a descriptive phrase,
+    e.g. 'the page shows an "Update account status" button' -> ["Update account
+    status"]. Paired quotes only, so apostrophes in contractions don't match.
+    """
+    out: list[str] = []
+    for m in _QUOTED_RE.finditer(instruction or ""):
+        seg = next((g for g in m.groups() if g), "").strip()
+        if seg:
+            out.append(seg)
+    return out
+
+
 async def verify(
     instruction: str,
     channel: str = "web",
@@ -498,8 +517,30 @@ async def verify(
         return _failed_result(instruction, exc, duration_ms)
 
     assertion_type  = kwargs.get("assertion_type", "text_visible")
-    expected_value  = kwargs.get("expected_value") or extract_expected(instruction)
     timeout_ms      = kwargs.get("timeout_ms", options.timeout_ms)
+    explicit        = kwargs.get("expected_value")
+
+    # Prefer quoted text as the literal thing to find. Testers naturally quote
+    # the element/value they mean, e.g. verify('... an "Update account status"
+    # button') or verify('account status is "Active"') — so check the quoted
+    # text rather than the whole descriptive sentence (which isn't on the page).
+    quoted = _quoted_segments(instruction) if explicit is None else []
+
+    if assertion_type == "text_visible" and len(quoted) >= 2:
+        # Several quoted phrases — all must be visible.
+        results = []
+        for seg in quoted:
+            vp = build_validation_plan(assertion_type="text_visible", expected_value=seg, timeout_ms=timeout_ms)
+            results.append((seg, await adapter.validate(vp)))
+        passed = all(r.passed for _, r in results)
+        actual = "; ".join(f"{s!r}={'ok' if r.passed else r.actual_value}" for s, r in results)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        v_result = ValidationResult(passed=passed, actual_value=actual, duration_ms=duration_ms)
+        error = None if passed else ErrorInfo(error_type="ValidationFailedError", message=f"Validation failed: {actual}")
+        return make_verification_result(status=verification_status(v_result), instruction=instruction,
+                                        target=target, traces=traces, duration_ms=duration_ms, result=v_result, error=error)
+
+    expected_value = explicit if explicit is not None else (quoted[0] if quoted else extract_expected(instruction))
 
     v_plan = build_validation_plan(assertion_type=assertion_type, expected_value=expected_value, timeout_ms=timeout_ms)
     v_result = await adapter.validate(v_plan)
