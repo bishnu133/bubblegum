@@ -1,5 +1,18 @@
 # Unreleased
 
+## 0.0.6a16 — fix(web): DOM clickable fallback for ambiguous clicks
+
+- When a click can't be ground to a unique element from the a11y snapshot
+  (e.g. Ant renders two equal `role=button` candidates for one labelled button),
+  `act` now falls back to a DOM resolver that finds the single interactive
+  element by accessible name + role (the quoted text in the step, else the
+  target phrase), collapsing nested matches to the outermost interactive
+  ancestor. Same proven pattern as the select / link / table-cell fallbacks —
+  so `Click the "Update account status" button` resolves across apps instead of
+  raising AmbiguousTargetError.
+- Coverage: `tests/unit/test_clickable_fallback.py`; logic validated against the
+  real H365 button markup. Engine `0.0.6a15` → `0.0.6a16`; npm unchanged.
+
 ## 0.0.6a15 — fix(grounding): role-aware tie-break for clicks (button vs text twin)
 
 - A click on a labelled control that wraps a same-text node (e.g. `<button><span>

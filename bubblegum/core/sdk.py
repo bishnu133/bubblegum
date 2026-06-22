@@ -329,11 +329,15 @@ async def act(
         try:
             target, traces = await _ground_with_wait(adapter, intent)
         except BubblegumError as exc:
-            # Dropdown/select fallback: a custom combobox whose a11y name is too
-            # poor to ground uniquely can still be resolved from the DOM by its
-            # label / placeholder / displayed value. This lets "select X from the
-            # Y dropdown" work across apps even with several nameless comboboxes.
+            # DOM fallbacks when grounding can't pin a unique element from the
+            # a11y snapshot (nameless/ambiguous custom widgets):
+            #  - a dropdown/select trigger resolved by label/placeholder/value;
+            #  - any interactive element resolved by accessible name + role
+            #    (handles a button wrapping a same-text span, where the snapshot
+            #    ties two candidates and refuses to auto-execute).
             fallback = await _maybe_resolve_select_trigger(adapter, channel, intent)
+            if fallback is None:
+                fallback = await _maybe_resolve_clickable(adapter, channel, instruction, intent)
             if fallback is None:
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 return _failed_result(instruction, exc, duration_ms)
@@ -1407,6 +1411,35 @@ async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, 
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name=resolver_name,
         metadata={"table_or_link_dom": True, "spec": spec},
+    )
+
+
+async def _maybe_resolve_clickable(adapter, channel: str, instruction: str, intent: StepIntent):
+    """DOM fallback for an ambiguous/low-confidence click.
+
+    Finds a single interactive element by accessible name + role (the quoted
+    text in the step, else the target phrase). Returns a ResolvedTarget or None.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("click", "tap"):
+        return None
+    finder = getattr(adapter, "find_clickable", None)
+    if finder is None:
+        return None
+    quoted = _quoted_segments(instruction)
+    text = quoted[0] if quoted else (intent.target_phrase or "")
+    if not text.strip():
+        return None
+    try:
+        ref = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — keep the original grounding error if this fails
+        logger.debug("clickable DOM fallback errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved click '%s' via DOM clickable fallback (%s)", instruction, ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.75, resolver_name="clickable_dom",
+        metadata={"role": "button", "clickable_dom": True},
     )
 
 

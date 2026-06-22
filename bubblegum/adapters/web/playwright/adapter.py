@@ -242,6 +242,55 @@ _FIND_SELECT_TRIGGER_JS = r"""
 """
 
 
+# JS: click any interactive element by accessible name (button/link/menuitem/
+# tab/...). Exact → case-insensitive → substring; collapses nested matches to the
+# outermost interactive ancestor and prefers button/link roles. Marks the winner.
+_FIND_CLICKABLE_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const want = norm(args && args.text);
+  const wantL = want.toLowerCase();
+  const exact = !!(args && args.exact);
+  if (!want) return null;
+  const SEL = 'button, [role="button"], a, [role="link"], [role="menuitem"], [role="tab"],'
+            + ' input[type="submit"], input[type="button"], summary, [onclick]';
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const nameOf = (e) => {
+    const al = e.getAttribute && e.getAttribute('aria-label');
+    if (al) return norm(al);
+    if (e.tagName === 'INPUT') return norm(e.value);
+    const t = norm(e.textContent);
+    if (t) return t;
+    return norm(e.getAttribute && e.getAttribute('title'));
+  };
+  let els = Array.from(document.querySelectorAll(SEL)).filter(visible);
+  let matches = els.filter((e) => nameOf(e) === want);
+  if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase() === wantL);
+  if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wantL));
+  if (!matches.length) return null;
+  // Outermost interactive ancestor (drop a matched element nested in another).
+  matches = matches.filter((e) => !matches.some((o) => o !== e && o.contains(e)));
+  const rank = (e) => {
+    const tag = e.tagName.toLowerCase();
+    const role = (e.getAttribute && e.getAttribute('role')) || '';
+    if (tag === 'button' || role === 'button' || e.type === 'submit' || e.type === 'button') return 3;
+    if (tag === 'a' || role === 'link') return 2;
+    return 1;
+  };
+  matches.sort((a, b) => rank(b) - rank(a));
+  const best = matches[0];
+  document.querySelectorAll('[data-bg-click]').forEach((n) => n.removeAttribute('data-bg-click'));
+  best.setAttribute('data-bg-click', '1');
+  return { selector: '[data-bg-click="1"]', count: matches.length, name: nameOf(best), tag: best.tagName };
+}
+"""
+
+
 # JS: click a link by its (possibly dynamic) text. Exact → case-insensitive →
 # substring. Marks the match with a temporary attribute and returns its selector.
 _FIND_LINK_JS = r"""
@@ -978,6 +1027,23 @@ class PlaywrightAdapter(BaseAdapter):
         Returns ``[{"headers": [str], "rows": [{header: cell_text}], "kind": str}]``.
         """
         return await self._page.evaluate(_EXTRACT_TABLES_JS)
+
+    async def find_clickable(self, text: str, *, exact: bool = False) -> str | None:
+        """Return a selector for a single interactive element named ``text``.
+
+        Searches buttons / links / menuitems / tabs (and other clickable roles)
+        by accessible name (aria-label / value / text / title), exact then
+        case-insensitive then substring, and collapses nested matches to the
+        outermost interactive ancestor. A last-resort click resolver for when the
+        a11y snapshot ties (e.g. a button wrapping a same-text span).
+        """
+        result = await self._page.evaluate(
+            _FIND_CLICKABLE_JS, {"text": text or "", "exact": bool(exact)}
+        )
+        if not result:
+            return None
+        logger.debug("find_clickable %r -> %s", text, result)
+        return result.get("selector")
 
     async def find_link(self, text: str, *, exact: bool = False) -> str | None:
         """Return a selector for a visible link whose text matches ``text``.
