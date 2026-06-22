@@ -1,5 +1,18 @@
 # Unreleased
 
+## 0.0.6a15 — fix(grounding): role-aware tie-break for clicks (button vs text twin)
+
+- A click on a labelled control that wraps a same-text node (e.g. `<button><span>
+  Update account status</span></button>`) no longer raises a 0.00-gap
+  AmbiguousTargetError. When two candidates tie on confidence, the engine now
+  prefers the one whose role best fits the action (button/link/option… over a
+  non-interactive text twin) and only reports ambiguity when they're genuinely
+  equivalent. Duplicates of the same *specific* ref are collapsed; distinct
+  generic role-only refs (e.g. several nameless comboboxes) stay distinct, so
+  real ambiguity is still surfaced.
+- Coverage: `tests/unit/test_ambiguity_role_tiebreak.py`. Engine `0.0.6a14` →
+  `0.0.6a15`; npm client unchanged (`0.0.6-alpha.4`).
+
 ## 0.0.6a14 — fix(web): verify checks quoted text inside a descriptive phrase
 
 - `verify` now treats **quoted text as the literal thing to assert**, so a

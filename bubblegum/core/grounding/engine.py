@@ -65,6 +65,50 @@ _REJECT_THRESHOLD:  float = 0.50
 _DROPDOWN_KEYWORDS = ("dropdown", "combobox", "combo box", "listbox", "picker", "selector")
 
 
+def _is_specific_ref(ref: str) -> bool:
+    """True when a ref uniquely identifies an element, so duplicates of it are
+    truly the same target. A bare role ref like ``role=combobox`` (no name) is
+    *generic* — it can match several distinct elements — so it is NOT collapsed,
+    preserving genuine ambiguity (e.g. multiple nameless comboboxes)."""
+    r = (ref or "").strip()
+    if r.startswith(("text=", "#", ".", "[", "css=", "xpath=", "/")):
+        return True
+    if r.startswith("role=") and "[name=" in r:
+        return True
+    return False
+
+
+def _dedupe_by_ref(candidates: list[ResolvedTarget]) -> list[ResolvedTarget]:
+    """Collapse duplicates of the same *specific* ref (the same locator emitted
+    twice, or found by several resolvers), keeping the highest-confidence entry
+    and preferring one that carries a role. Generic role-only refs are left
+    untouched so distinct nameless elements stay distinct."""
+    best: dict[str, ResolvedTarget] = {}
+    for c in candidates:
+        if not _is_specific_ref(c.ref):
+            continue
+        prev = best.get(c.ref)
+        if (
+            prev is None
+            or c.confidence > prev.confidence
+            or (c.confidence == prev.confidence
+                and not str(prev.metadata.get("role", "")).strip()
+                and str(c.metadata.get("role", "")).strip())
+        ):
+            best[c.ref] = c
+    seen: set[str] = set()
+    out: list[ResolvedTarget] = []
+    for c in candidates:
+        if not _is_specific_ref(c.ref):
+            out.append(c)  # generic ref — keep every occurrence
+            continue
+        if c.ref in seen:
+            continue
+        seen.add(c.ref)
+        out.append(best[c.ref])
+    return out
+
+
 def _is_dropdown_select_intent(intent: StepIntent) -> bool:
     """True when the step clearly targets a dropdown / select control.
 
@@ -188,19 +232,19 @@ class GroundingEngine:
             if tier_num == 1 and best.confidence >= self.accept_threshold:
                 logger.debug("Tier 1 resolved '%s' — confidence %.2f", intent.instruction, best.confidence)
                 self._check_ambiguity(tier_candidates, intent)
-                return best, all_traces
+                return self._best_for_action(tier_candidates, intent), all_traces
 
             # Tier 2: stop on review_threshold
             if tier_num == 2 and best.confidence >= self.review_threshold:
                 logger.debug("Tier 2 resolved '%s' — confidence %.2f", intent.instruction, best.confidence)
                 self._check_ambiguity(tier_candidates, intent)
-                return best, all_traces
+                return self._best_for_action(tier_candidates, intent), all_traces
 
             # Tier 3: stop on review_threshold
             if tier_num == 3 and best.confidence >= self.review_threshold:
                 logger.debug("Tier 3 resolved '%s' — confidence %.2f", intent.instruction, best.confidence)
                 self._check_ambiguity(tier_candidates, intent)
-                return best, all_traces
+                return self._best_for_action(tier_candidates, intent), all_traces
 
         # All tiers exhausted.
         # A perfect deterministic match (exact role + name + uniqueness) tops out
@@ -226,7 +270,7 @@ class GroundingEngine:
                     intent.instruction, best.confidence,
                 )
                 self._check_ambiguity(unique_candidates, intent)
-                return best, all_traces
+                return self._best_for_action(unique_candidates, intent), all_traces
 
             # Dropdown/select relax: a custom combobox (Ant Design / MUI / CDK)
             # has no useful accessible name — its value often becomes its name —
@@ -352,7 +396,28 @@ class GroundingEngine:
                 )
                 break
 
-        return candidates, traces
+        # Collapse identical refs (the same locator found by several resolvers,
+        # or emitted twice) so duplicates never read as competing candidates.
+        return _dedupe_by_ref(candidates), traces
+
+    def _action_role_fit(self, target: ResolvedTarget, intent: StepIntent) -> float:
+        """How well the candidate's role fits the action (button=1.0 for click,
+        text/no-role=0.0). Used to break confidence ties toward the interactive
+        element — e.g. a <button> over its inner text span."""
+        from bubblegum.core.grounding.signals import role_fit_score
+
+        return role_fit_score(str(target.metadata.get("role", "")), getattr(intent, "action_type", "") or "")
+
+    def _rank_for_action(self, candidates: list[ResolvedTarget], intent: StepIntent) -> list[ResolvedTarget]:
+        """Rank by confidence (desc), breaking ties by action role-fit (desc)."""
+        ranked = self.ranker.rank(candidates)
+        ranked.sort(key=lambda c: self._action_role_fit(c, intent), reverse=True)  # stable secondary
+        ranked.sort(key=lambda c: c.confidence, reverse=True)                       # stable primary
+        return ranked
+
+    def _best_for_action(self, candidates: list[ResolvedTarget], intent: StepIntent) -> ResolvedTarget:
+        ranked = self._rank_for_action(candidates, intent)
+        return ranked[0] if ranked else self.ranker.best(candidates)
 
     def _check_ambiguity(
         self, candidates: list[ResolvedTarget], intent: StepIntent
@@ -363,13 +428,19 @@ class GroundingEngine:
 
         Skipped for verify/extract: any matching element is acceptable for reading
         actions, so ambiguity between equally-confident candidates is harmless.
+
+        Role-aware: when two candidates tie on confidence but one is clearly more
+        actionable for the action (e.g. a <button> vs its inner text span of equal
+        score), the interactive one wins and it is not treated as ambiguous.
         """
         if intent.action_type in ("verify", "extract"):
             return
-        ranked = self.ranker.rank(candidates)
+        ranked = self._rank_for_action(candidates, intent)
         if len(ranked) >= 2:
             gap = ranked[0].confidence - ranked[1].confidence
             if gap < self.ambiguous_gap:
+                if self._action_role_fit(ranked[0], intent) > self._action_role_fit(ranked[1], intent):
+                    return
                 raise AmbiguousTargetError(
                     step=intent.instruction,
                     candidates=ranked[:2],
