@@ -34,6 +34,19 @@ export interface AttachOptions extends Omit<LaunchOptions, "channel"> {
   cdpEndpoint: string;
 }
 
+/** One step's outcome from {@link Bubblegum.preflight}. */
+export interface PreflightResult {
+  instruction: string;
+  /** Engine status: "dry_run" when it resolved, "failed" when it didn't. */
+  status: StepResult["status"];
+  /** True when the step resolved to a target (dry_run / passed / recovered). */
+  ok: boolean;
+  confidence: number;
+  resolver: string | null;
+  ref: string | null;
+  error: string | null;
+}
+
 /** Arguments for {@link Bubblegum.clickInTable}. */
 export interface TableCellTarget {
   /** Column header that identifies the cell. */
@@ -143,6 +156,47 @@ export class Bubblegum {
       instruction,
       options,
     });
+  }
+
+  /**
+   * Dry-run a list of steps against the *current* page and report whether each
+   * one resolves — without executing anything. Lets you validate a script (or a
+   * page's worth of steps) in one batch instead of discovering failures one run
+   * at a time.
+   *
+   * Because nothing executes, steps are all checked against the page as it is
+   * now (no navigation between them) — so call it once per page (e.g. after
+   * landing on each screen) with that screen's steps.
+   *
+   * @example
+   * const report = await bg.preflight([
+   *   'Select "Active" from the Participant status dropdown',
+   *   'Select "Change of mind" from the Reason dropdown',
+   *   'Click the Submit button',
+   * ]);
+   * console.table(report);            // see status / confidence / resolver per step
+   * if (report.some(r => !r.ok)) throw new Error("preflight found unresolved steps");
+   */
+  async preflight(
+    steps: Array<string | { instruction: string; options?: StepOptions }>,
+    options?: StepOptions,
+  ): Promise<PreflightResult[]> {
+    const out: PreflightResult[] = [];
+    for (const step of steps) {
+      const instruction = typeof step === "string" ? step : step.instruction;
+      const perStep = typeof step === "string" ? undefined : step.options;
+      const r = await this.act(instruction, { ...options, ...perStep, dry_run: true });
+      out.push({
+        instruction,
+        status: r.status,
+        ok: r.status === "dry_run" || r.status === "passed" || r.status === "recovered",
+        confidence: r.confidence,
+        resolver: r.target?.resolver_name ?? null,
+        ref: r.target?.ref ?? null,
+        error: r.error?.message ?? null,
+      });
+    }
+    return out;
   }
 
   verify(instruction: string, options?: StepOptions): Promise<StepResult> {

@@ -265,3 +265,36 @@ test("clickLink() forwards link_text", async () => {
   assert.equal(req.params.options.link_text, "9ca87fc7-bacc");
   assert.equal(req.params.options.exact, true);
 });
+
+test("preflight() dry-runs each step and reports ok/failed without executing", async () => {
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-pf" }),
+    act: (p) => {
+      assert.equal(p.options.dry_run, true); // never executes
+      if (p.instruction.includes("Bad")) {
+        return { status: "failed", action: p.instruction, target: null, confidence: 0,
+                 duration_ms: 1, error: { error_type: "LowConfidenceError", message: "no match" } };
+      }
+      return { status: "dry_run", action: p.instruction,
+               target: { ref: "role=button", confidence: 0.9, resolver_name: "accessibility_tree" },
+               confidence: 0.9, duration_ms: 1 };
+    },
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
+  const report = await bg.preflight([
+    'Click the "Update account status" button',
+    { instruction: "click cell", options: { column: "PPHID", row: "first" } },
+    "Click the Bad thing",
+  ]);
+  assert.equal(report.length, 3);
+  assert.equal(report[0].ok, true);
+  assert.equal(report[0].resolver, "accessibility_tree");
+  assert.equal(report[1].ok, true);
+  assert.equal(report[2].ok, false);
+  assert.equal(report[2].status, "failed");
+  assert.match(report[2].error, /no match/);
+  // The table step forwarded its structured options alongside dry_run.
+  const cellReq = m.methods().find((x) => x.method === "act" && x.params.options.column === "PPHID");
+  assert.equal(cellReq.params.options.dry_run, true);
+});

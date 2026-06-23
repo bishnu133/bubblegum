@@ -1,5 +1,15 @@
 # Unreleased
 
+## @bubblegum-ai/node 0.0.6-alpha.5 — preflight() script validation
+
+- New `bg.preflight(steps[])`: dry-runs each step against the current page and
+  returns `{ instruction, ok, status, confidence, resolver, ref, error }[]`
+  **without executing anything** — so you can validate a page's steps in one
+  batch (`console.table(report)`) instead of discovering failures one run at a
+  time. Steps may be strings or `{ instruction, options }`. Nothing executes, so
+  call it once per screen with that screen's steps. Engine unchanged
+  (`0.0.6a16`); client `0.0.6-alpha.4` → `0.0.6-alpha.5`.
+
 ## 0.0.6a16 — fix(web): DOM clickable fallback for ambiguous clicks
 
 - When a click can't be ground to a unique element from the a11y snapshot
