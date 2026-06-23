@@ -1,5 +1,17 @@
 # Unreleased
 
+## 0.0.6a17 — fix(web): DOM input fallback for nameless text fields
+
+- `type`/`enter` into a field with **no accessible name** (e.g. a `<textarea>`
+  whose `<label for=...>` points at a missing id — like the H365 "Remarks"
+  field) now resolves via a DOM fallback that scores visible, enabled
+  inputs/textareas by associated label / placeholder / nearby form-item label
+  against the target phrase. Ant-select search inputs and disabled fields are
+  excluded. Same proven pattern as the select / click / link / table fallbacks.
+- Coverage: `tests/unit/test_input_fallback.py`; validated against the real H365
+  Update-Account-Status dialog markup. Engine `0.0.6a16` → `0.0.6a17`; npm
+  unchanged.
+
 ## @bubblegum-ai/node 0.0.6-alpha.5 — preflight() script validation
 
 - New `bg.preflight(steps[])`: dry-runs each step against the current page and

@@ -242,6 +242,61 @@ _FIND_SELECT_TRIGGER_JS = r"""
 """
 
 
+# JS: resolve a text input / textarea by its surrounding context (label,
+# placeholder, name/id, nearby form-item label) for a "type" step whose field
+# has no accessible name. Skips ant-select search inputs and disabled fields.
+_FIND_INPUT_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 2);
+  const SEL = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio])'
+            + ':not([type=submit]):not([type=button]):not([type=file]):not([type=radio]),'
+            + 'textarea, [contenteditable=""], [contenteditable="true"]';
+  let els = Array.from(document.querySelectorAll(SEL))
+    .filter((e) => !e.classList.contains('ant-select-selection-search-input'));
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  els = els.filter(visible);
+  if (!els.length) return null;
+
+  const labelText = (e) => {
+    const parts = [];
+    if (e.id) {
+      const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]');
+      if (l) parts.push(l.textContent);
+    }
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    const fi = e.closest('.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
+    if (fi) { const l = fi.querySelector('label, [class*="label"]'); if (l) parts.push(l.textContent); }
+    if (e.name) parts.push(e.name);
+    if (e.id) parts.push(e.id);
+    return norm(parts.join(' '));
+  };
+  const placeholder = (e) => norm(e.getAttribute('placeholder') || '');
+  const overlap = (txt) => { if (!tokens.length || !txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1;
+  els.forEach((e, i) => {
+    let score = 3.0 * overlap(labelText(e)) + 1.2 * overlap(placeholder(e));
+    if (e.disabled) score -= 5;             // strongly avoid disabled fields
+    score += (els.length - i) * 0.001;      // earlier-in-DOM tie-break
+    if (score > bestScore) { bestScore = score; best = e; }
+  });
+  if (!best || bestScore <= 0) return null;
+  document.querySelectorAll('[data-bg-input]').forEach((n) => n.removeAttribute('data-bg-input'));
+  best.setAttribute('data-bg-input', '1');
+  return { selector: '[data-bg-input="1"]', label: labelText(best), score: bestScore };
+}
+"""
+
+
 # JS: click any interactive element by accessible name (button/link/menuitem/
 # tab/...). Exact → case-insensitive → substring; collapses nested matches to the
 # outermost interactive ancestor and prefers button/link roles. Marks the winner.
@@ -1027,6 +1082,21 @@ class PlaywrightAdapter(BaseAdapter):
         Returns ``[{"headers": [str], "rows": [{header: cell_text}], "kind": str}]``.
         """
         return await self._page.evaluate(_EXTRACT_TABLES_JS)
+
+    async def find_input(self, target_phrase: str) -> str | None:
+        """Resolve a text input / textarea from the DOM and return a selector.
+
+        For ``type`` steps where the field has no accessible name (e.g. a
+        ``<textarea>`` whose ``<label for=...>`` points at a missing id). Scores
+        every visible, enabled input/textarea by associated label, placeholder,
+        name/id and nearby form-item label against the target phrase. Excludes the
+        ant-select search inputs (those are dropdowns, handled elsewhere).
+        """
+        result = await self._page.evaluate(_FIND_INPUT_JS, {"phrase": target_phrase or ""})
+        if not result:
+            return None
+        logger.debug("find_input %r -> %s", target_phrase, result)
+        return result.get("selector")
 
     async def find_clickable(self, text: str, *, exact: bool = False) -> str | None:
         """Return a selector for a single interactive element named ``text``.

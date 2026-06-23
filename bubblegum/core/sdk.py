@@ -339,6 +339,8 @@ async def act(
             if fallback is None:
                 fallback = await _maybe_resolve_clickable(adapter, channel, instruction, intent)
             if fallback is None:
+                fallback = await _maybe_resolve_input(adapter, channel, intent)
+            if fallback is None:
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 return _failed_result(instruction, exc, duration_ms)
             target, traces = fallback, []
@@ -1411,6 +1413,34 @@ async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, 
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name=resolver_name,
         metadata={"table_or_link_dom": True, "spec": spec},
+    )
+
+
+async def _maybe_resolve_input(adapter, channel: str, intent: StepIntent):
+    """DOM fallback for a `type` step whose field has no accessible name.
+
+    Resolves a text input / textarea by its label / placeholder / nearby
+    form-item label (the target phrase). Returns a ResolvedTarget or None.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("type", "fill"):
+        return None
+    finder = getattr(adapter, "find_input", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        return None
+    try:
+        ref = await finder(text)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("input DOM fallback errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved type target via DOM input fallback (%s)", ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.7, resolver_name="input_dom",
+        metadata={"role": "textbox", "input_dom": True},
     )
 
 
