@@ -1,5 +1,22 @@
 # Unreleased
 
+## 0.0.6a21 — fix(web): deterministic resolver for date-range picker start/end inputs
+
+- `type "…" into Start date` / `End date` now pins the exact input of an Ant
+  `RangePicker` from the DOM **before** name-based grounding runs, instead of
+  letting a nameless picker input (no id/label/aria — only a `date-range`
+  attribute or a "Start date"/"End date" placeholder) get mis-matched to some
+  other "date"-ish element on the page. The phrase's side word (`start`/`from`/
+  `begin` vs `end`/`until`/`finish`) selects which input; when a page has more
+  than one range picker, the form-item label breaks the tie. New resolver
+  `date_range_dom` (confidence 0.9).
+- Scoped and safe: only fires for `type`/`fill` steps whose phrase names a side,
+  and is a **no-op on pages without a range picker**, so ordinary text fields are
+  unaffected (they keep resolving via the a11y tree / `input_dom` fallback).
+- Coverage: `tests/unit/test_date_range_fallback.py`; validated against the real
+  H365 Create-Badge "Visibility Period" range picker markup. Engine `0.0.6a20` →
+  `0.0.6a21`; npm client unchanged.
+
 ## 0.0.6a20 — feat: absolute time-of-day in date tokens (`@HH:MM`); consolidates a18+a19
 
 - Dynamic-value date tokens gain an **`@` absolute-time setter** so you can pin a

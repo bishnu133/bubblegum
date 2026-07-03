@@ -276,6 +276,19 @@ want "N days from today at exactly 7:00am" rather than midnight or the current
 time. If `@` is present and you give no `|` format, the default output includes
 the time (`%Y-%m-%d %H:%M`).
 
+**Date range pickers (start/end).** For a two-input range picker (e.g. Ant
+`RangePicker`) whose inputs are nameless, just say **"Start date"** / **"End
+date"** and Bubblegum pins the correct sub-input deterministically:
+
+```python
+await act('Enter "{{today+2d@07:00|%d/%m/%Y %H:%M}}" into Start date', page=page)
+await act('Enter "{{today+12d@23:59|%d/%m/%Y %H:%M}}" into End date', page=page)
+```
+
+If a page has more than one range picker, add the field's label to disambiguate
+(`"into the Visibility Period Start date"`). As a last resort you can always pin
+the input explicitly with `selector='input[date-range="start"]'`.
+
 Units: `d` days, `w` weeks, `mo` months, `y` years, `h` hours, `min` minutes,
 `s` seconds (`mo`/`min` are spelled out so a bare `m` is never ambiguous).
 Default formats are `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.

@@ -323,8 +323,12 @@ async def act(
     # link text — resolved deterministically from the DOM rather than by name,
     # so they work when the visible text is dynamic (a UUID, a DB value, ...).
     table_target = await _maybe_resolve_table_or_link(adapter, channel, instruction, kwargs)
-    if table_target is not None:
-        target, traces = table_target, []
+    # Date-range pickers: "type into Start date / End date" targets a nameless
+    # Ant RangePicker input that name-based grounding mis-hits — pin it from the
+    # DOM first. No-op on pages without a range picker.
+    daterange_target = table_target or await _maybe_resolve_daterange(adapter, channel, intent)
+    if daterange_target is not None:
+        target, traces = daterange_target, []
     else:
         try:
             target, traces = await _ground_with_wait(adapter, intent)
@@ -1413,6 +1417,56 @@ async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, 
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name=resolver_name,
         metadata={"table_or_link_dom": True, "spec": spec},
+    )
+
+
+#: Words in a target phrase that pick the start vs end input of a range picker.
+_RANGE_START_WORDS = ("start", "from", "begin")
+_RANGE_END_WORDS = ("end", "until", "finish")
+
+
+def _date_range_side(target_phrase: str | None) -> str | None:
+    """Return "start"/"end" when the phrase names one side of a date range picker.
+
+    Returns ``None`` for phrases that don't clearly name a side, so the step
+    falls through to normal grounding (this resolver only claims start/end).
+    """
+    tokens = set((target_phrase or "").lower().replace("/", " ").split())
+    if tokens & set(_RANGE_START_WORDS):
+        return "start"
+    if tokens & set(_RANGE_END_WORDS):
+        return "end"
+    return None
+
+
+async def _maybe_resolve_daterange(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for the start/end input of a date **range** picker.
+
+    Ant ``RangePicker`` inputs are nameless (no id/label/aria) and differ only by
+    a ``date-range`` attribute / placeholder, so a "type into Start date" step can
+    ground onto the wrong element. When the phrase names a side ("Start date" /
+    "End date") and the page has a range picker, pin the exact input from the DOM.
+    Runs before grounding; returns ``None`` (no-op) on pages without a picker.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("type", "fill"):
+        return None
+    side = _date_range_side(getattr(intent, "target_phrase", None))
+    if side is None:
+        return None
+    finder = getattr(adapter, "find_date_range_input", None)
+    if finder is None:
+        return None
+    try:
+        ref = await finder(side, intent.target_phrase or "")
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("date-range DOM resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved date-range %s input via DOM (%s)", side, ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.9, resolver_name="date_range_dom",
+        metadata={"role": "textbox", "date_range_dom": True, "which": side},
     )
 
 

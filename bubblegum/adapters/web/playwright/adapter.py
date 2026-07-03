@@ -297,6 +297,71 @@ _FIND_INPUT_JS = r"""
 """
 
 
+# JS: resolve the start/end input of a date **range** picker. These inputs are
+# typically nameless (no id/label/aria) and only distinguishable by a
+# `date-range="start|end"` attribute, a "Start date"/"End date" placeholder, or
+# their position inside `.ant-picker-range` — so name-based grounding can send a
+# "type into Start date" step to the wrong element. Deterministic by construction.
+_FIND_DATE_RANGE_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const which = norm(args && args.which);          // "start" | "end"
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 2);
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+
+  // Candidate range inputs: explicit [date-range] first, else inputs inside an
+  // .ant-picker-range (tagged with their DOM position: 0=start, 1=end).
+  let cands = Array.from(document.querySelectorAll('input[date-range]')).filter(visible);
+  if (!cands.length) {
+    document.querySelectorAll('.ant-picker-range').forEach((p) => {
+      Array.from(p.querySelectorAll('input')).filter(visible).forEach((e, i) => {
+        e.__bgRangePos = i; cands.push(e);
+      });
+    });
+  }
+  if (!cands.length) return null;
+
+  const side = (e) => {
+    const dr = norm(e.getAttribute('date-range'));
+    if (dr === 'start' || dr === 'begin' || dr === 'from') return 'start';
+    if (dr === 'end' || dr === 'to' || dr === 'until') return 'end';
+    const ph = norm(e.getAttribute('placeholder'));
+    if (ph.includes('start') || ph.includes('from') || ph.includes('begin')) return 'start';
+    if (ph.includes('end') || ph.includes('to') || ph.includes('until')) return 'end';
+    if (e.__bgRangePos === 0) return 'start';
+    if (e.__bgRangePos === 1) return 'end';
+    return null;
+  };
+
+  let matches = cands.filter((e) => side(e) === which);
+  if (!matches.length) return null;
+
+  // Multiple range pickers on one page: pick the one whose form-item label best
+  // overlaps the phrase (e.g. "... into the Visibility Period start date").
+  if (matches.length > 1 && tokens.length) {
+    const labelText = (e) => {
+      const fi = e.closest('.ant-form-item, .ant-row, [class*="form-item"], [class*="field"]');
+      const l = fi && fi.querySelector('label, [class*="label"]');
+      return norm(l ? l.textContent : '');
+    };
+    const overlap = (txt) => { let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n; };
+    matches.sort((a, b) => overlap(labelText(b)) - overlap(labelText(a)));
+  }
+
+  const best = matches[0];
+  document.querySelectorAll('[data-bg-daterange]').forEach((n) => n.removeAttribute('data-bg-daterange'));
+  best.setAttribute('data-bg-daterange', '1');
+  return { selector: '[data-bg-daterange="1"]', which };
+}
+"""
+
+
 # JS: click any interactive element by accessible name (button/link/menuitem/
 # tab/...). Exact → case-insensitive → substring; collapses nested matches to the
 # outermost interactive ancestor and prefers button/link roles. Marks the winner.
@@ -1104,6 +1169,24 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_input %r -> %s", target_phrase, result)
+        return result.get("selector")
+
+    async def find_date_range_input(self, which: str, target_phrase: str = "") -> str | None:
+        """Return a selector for the start/end input of a date **range** picker.
+
+        ``which`` is ``"start"`` or ``"end"``. These inputs are usually nameless
+        (Ant ``RangePicker``), so this keys off the ``date-range`` attribute, the
+        placeholder, or DOM position inside ``.ant-picker-range`` — deterministic
+        where name-based grounding is ambiguous. ``target_phrase`` disambiguates
+        when a page has more than one range picker. Returns ``None`` when the page
+        has no range picker (so non-picker pages are unaffected).
+        """
+        result = await self._page.evaluate(
+            _FIND_DATE_RANGE_JS, {"which": which or "", "phrase": target_phrase or ""}
+        )
+        if not result:
+            return None
+        logger.debug("find_date_range_input %r %r -> %s", which, target_phrase, result)
         return result.get("selector")
 
     async def find_clickable(self, text: str, *, exact: bool = False) -> str | None:
