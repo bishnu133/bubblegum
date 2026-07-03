@@ -1,5 +1,22 @@
 # Unreleased
 
+## 0.0.6a18 — feat: uniqueness dynamic-value tokens ({{timestamp}}, {{uuid}}, {{random}})
+
+- Dynamic-value tokens now cover **run-time uniqueness**, not just relative
+  dates, so a field with a unique constraint (a badge name, an email, any
+  create-form value) can be parameterised inline instead of hard-coded:
+  - `{{timestamp}}` — Unix epoch seconds; `:ms` for milliseconds, or a `|`
+    strftime for a readable stamp, e.g. `Badge_{{timestamp|%Y%m%d%H%M%S}}`.
+  - `{{uuid}}` — random uuid4 hex (32 chars); `:N` keeps the first N chars
+    (`{{uuid:8}}`). Unique regardless of the clock.
+  - `{{random}}` — N random digits, default 6 (`{{random:6}}`).
+- Same engine-side substitution path as the date tokens (`_decompose_for` in
+  `sdk.py`), so it works identically for the Python SDK and the Node client
+  across web, mobile, and CDP-attach. Malformed arguments and unrecognised
+  tokens are left verbatim; literal values are untouched.
+- Coverage: extended `tests/unit/test_dynamic_value_tokens.py`. Node README
+  documents both token families. Engine `0.0.6a17` → `0.0.6a18`; npm unchanged.
+
 ## 0.0.6a17 — fix(web): DOM input fallback for nameless text fields
 
 - `type`/`enter` into a field with **no accessible name** (e.g. a `<textarea>`

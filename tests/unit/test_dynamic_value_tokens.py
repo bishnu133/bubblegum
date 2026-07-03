@@ -80,3 +80,59 @@ def test_unknown_token_is_left_verbatim():
 
 def test_whitespace_tolerance():
     assert substitute_dynamic_tokens("{{  today+7d | %d/%m/%Y  }}", now=NOW) == "23/06/2026"
+
+
+# --- Uniqueness tokens: {{timestamp}} / {{uuid}} / {{random}} ----------------
+
+
+def test_timestamp_seconds_default():
+    # Default is Unix epoch seconds; compare against the same clock the test uses
+    # so it is deterministic regardless of the machine's timezone.
+    assert render_token("timestamp", now=NOW) == str(int(NOW.timestamp()))
+
+
+def test_timestamp_milliseconds():
+    assert render_token("timestamp:ms", now=NOW) == str(int(NOW.timestamp() * 1000))
+
+
+def test_timestamp_with_strftime_format():
+    # The readable-stamp form used for unique record names.
+    assert render_token("timestamp|%Y%m%d%H%M%S", now=NOW) == "20260616020000"
+
+
+def test_timestamp_bad_unit_is_left_verbatim():
+    assert render_token("timestamp:nanos", now=NOW) is None
+    assert substitute_dynamic_tokens("{{timestamp:nanos}}", now=NOW) == "{{timestamp:nanos}}"
+
+
+def test_uuid_full_and_truncated():
+    full = render_token("uuid", now=NOW)
+    assert full is not None and len(full) == 32
+    int(full, 16)  # valid hex
+    assert len(render_token("uuid:8", now=NOW)) == 8
+
+
+def test_uuid_is_unique_each_call():
+    assert render_token("uuid", now=NOW) != render_token("uuid", now=NOW)
+
+
+def test_uuid_bad_length_is_left_verbatim():
+    assert render_token("uuid:0", now=NOW) is None
+    assert render_token("uuid:abc", now=NOW) is None
+
+
+def test_random_digits_default_and_sized():
+    default = render_token("random", now=NOW)
+    assert default.isdigit() and len(default) == 6
+    sized = render_token("random:4", now=NOW)
+    assert sized.isdigit() and len(sized) == 4
+
+
+def test_random_bad_arg_is_left_verbatim():
+    assert render_token("random:0", now=NOW) is None
+    assert render_token("random:x", now=NOW) is None
+
+
+def test_uniqueness_token_inside_a_phrase():
+    out = substitute_dynamic_tokens("Badge_{{timestamp}}", now=NOW)
+    assert out == f"Badge_{int(NOW.timestamp())}"
