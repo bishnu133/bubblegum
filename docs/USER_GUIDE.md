@@ -237,6 +237,58 @@ the target, and any value from your sentence.
 
 ---
 
+## Dynamic values (dates, times & uniqueness)
+
+Any value you type can be **computed at run time** with a `{{ ... }}` token
+instead of hard‑coding a literal that goes stale or collides. Works on web and
+mobile, in the Python SDK and the Node client, in any step that carries a value
+(`act`, and the `value=`/`input_value=` overrides). Tokens are expanded
+engine‑side just before the value is used.
+
+```python
+# Relative dates — for date pickers and any date field:
+await act('Enter "{{today+7d|%d/%m/%Y}}" into Start date', page=page)   # -> 23/06/2026
+await act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment', page=page)
+
+# Uniqueness — for a field whose value must differ every run
+# (a badge name, an email, any create‑form field with a unique constraint):
+await act('Enter "Badge_{{timestamp}}" into Display Name', page=page)           # -> Badge_1751558400
+await act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S}}" into Display Name', page=page)  # -> Badge_20260703153012
+await act('Enter "user_{{uuid:8}}@test.com" into Email', page=page)            # -> user_3f9a1c02@test.com
+await act('Enter "SKU-{{random:6}}" into Code', page=page)                     # -> SKU-402913
+```
+
+**Relative dates/times**
+
+| Part | Values |
+| --- | --- |
+| Base | `today`, `now`, `tomorrow`, `yesterday` |
+| Offset (chainable, signed) | `+7d` `-3d` `+2w` `+1mo` `-1y` `+2h` `+30min` `+45s` |
+| Format | anything after `\|` is a `strftime` pattern |
+
+Units: `d` days, `w` weeks, `mo` months, `y` years, `h` hours, `min` minutes,
+`s` seconds (`mo`/`min` are spelled out so a bare `m` is never ambiguous).
+Default formats are `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.
+
+**Uniqueness tokens**
+
+| Token | Produces | Notes |
+| --- | --- | --- |
+| `{{timestamp}}` | Unix epoch **seconds** (e.g. `1751558400`) | `{{timestamp:ms}}` for milliseconds (tighter uniqueness in fast loops); `{{timestamp\|%Y%m%d%H%M%S}}` for a readable stamp |
+| `{{uuid}}` | random uuid4 hex, 32 chars | `{{uuid:8}}` keeps the first 8 chars — unique regardless of the clock |
+| `{{random}}` | 6 random digits | `{{random:N}}` for `N` digits |
+
+> **Reading the value back.** The generated value is used inside the step but is
+> not returned on `StepResult`. If a later step needs the exact value (e.g. to
+> search for the record you just created), compute it in your own code and pass
+> it in both places — e.g. `name = f"Badge_{int(time.time())}"` then
+> `await act(f'Enter "{name}" into Display Name', page=page)`.
+
+Token‑free values (and any `{{...}}` that isn't a recognised expression) are
+passed through unchanged, so existing literal steps are never altered.
+
+---
+
 ## Web
 
 The web channel drives a Playwright **async** `Page`.

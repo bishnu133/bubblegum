@@ -14,8 +14,10 @@
   `sdk.py`), so it works identically for the Python SDK and the Node client
   across web, mobile, and CDP-attach. Malformed arguments and unrecognised
   tokens are left verbatim; literal values are untouched.
-- Coverage: extended `tests/unit/test_dynamic_value_tokens.py`. Node README
-  documents both token families. Engine `0.0.6a17` → `0.0.6a18`; npm unchanged.
+- Coverage: extended `tests/unit/test_dynamic_value_tokens.py`. Documented in
+  `docs/USER_GUIDE.md`, `docs/HOW_TO_USE_TYPESCRIPT.md`, and the Node README
+  (this fills a gap — the date tokens were previously undocumented in the guide).
+  Engine `0.0.6a17` → `0.0.6a18`; npm client unchanged (engine‑side feature).
 
 ## 0.0.6a17 — fix(web): DOM input fallback for nameless text fields
 
