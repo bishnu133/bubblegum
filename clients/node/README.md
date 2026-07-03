@@ -74,11 +74,15 @@ into the step value instead of a literal that goes stale or collides.
 await bg.act('Enter "{{today+7d|%d/%m/%Y}}" into Start date');     // -> 23/06/2026
 await bg.act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment'); // -> 16/06/2026 04:00
 await bg.act('Enter "{{tomorrow|%d/%m/%Y}}" into End date');
+await bg.act('Enter "{{today+2d@07:00|%d/%m/%Y %H:%M}}" into Start'); // -> 05/07/2026 07:00
 ```
 
 - **Bases:** `today`, `now`, `tomorrow`, `yesterday`.
 - **Offsets (chainable, signed):** `+7d` `-3d` `+2w` `+1mo` `-1y` `+2h` `+30min` `+45s`
   (`mo` = months, `min` = minutes — spelled out so a bare `m` is never ambiguous).
+- **Absolute time (`@`, after offsets):** `@07:00` `@7am` `@9:30pm` `@23:59` `@07:00:00`
+  — pins a specific clock time (e.g. "2 days out at 7am"). With `@` and no `|`
+  format, output defaults to `%Y-%m-%d %H:%M`.
 - **Format:** anything after `|` is a `strftime` pattern. Defaults are
   `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.
 

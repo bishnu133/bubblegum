@@ -136,3 +136,43 @@ def test_random_bad_arg_is_left_verbatim():
 def test_uniqueness_token_inside_a_phrase():
     out = substitute_dynamic_tokens("Badge_{{timestamp}}", now=NOW)
     assert out == f"Badge_{int(NOW.timestamp())}"
+
+
+# --- Absolute time-of-day pin: {{today+2d@07:00}} ---------------------------
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        # The headline use case: N days out at a fixed clock time.
+        ("today+2d@07:00|%d/%m/%Y %H:%M", "18/06/2026 07:00"),
+        ("today@07:00|%d/%m/%Y %H:%M", "16/06/2026 07:00"),
+        ("tomorrow@9am|%d/%m/%Y %H:%M", "17/06/2026 09:00"),
+        ("today@9:30pm|%H:%M", "21:30"),
+        ("today@23:59|%H:%M", "23:59"),
+        ("today@7|%H:%M", "07:00"),
+        ("today+1mo+2d@07:00:00|%Y-%m-%d %H:%M:%S", "2026-07-18 07:00:00"),
+        # "now" base: the "@" overrides the wall-clock, offsets still apply.
+        ("now@00:00|%H:%M", "00:00"),
+        ("now-1d@12:00|%d/%m/%Y %H:%M", "15/06/2026 12:00"),
+    ],
+)
+def test_absolute_time_pin(expr, expected):
+    assert render_token(expr, now=NOW) == expected
+
+
+def test_absolute_time_default_format_includes_clock():
+    # No "|" format given, but "@" is present -> default shows the time too.
+    assert render_token("today+2d@07:00", now=NOW) == "2026-06-18 07:00"
+
+
+def test_absolute_time_bad_value_is_left_verbatim():
+    assert render_token("today@25:00", now=NOW) is None
+    assert render_token("today@13pm", now=NOW) is None
+    assert render_token("today@notatime", now=NOW) is None
+    assert substitute_dynamic_tokens("{{today@25:00}}", now=NOW) == "{{today@25:00}}"
+
+
+def test_absolute_time_inside_a_phrase():
+    out = substitute_dynamic_tokens("Start {{today+2d@07:00|%d/%m/%Y %H:%M}}", now=NOW)
+    assert out == "Start 18/06/2026 07:00"

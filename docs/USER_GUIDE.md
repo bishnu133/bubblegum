@@ -250,6 +250,10 @@ engine‑side just before the value is used.
 await act('Enter "{{today+7d|%d/%m/%Y}}" into Start date', page=page)   # -> 23/06/2026
 await act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment', page=page)
 
+# Relative date + an ABSOLUTE time of day (use "@") — "2 days out at 7:00am":
+await act('Enter "{{today+2d@07:00|%d/%m/%Y %H:%M}}" into Start', page=page)  # -> 05/07/2026 07:00
+await act('Enter "{{tomorrow@9am|%d/%m/%Y %H:%M}}" into Visible from', page=page)  # -> ... 09:00
+
 # Uniqueness — for a field whose value must differ every run
 # (a badge name, an email, any create‑form field with a unique constraint):
 await act('Enter "Badge_{{timestamp}}" into Display Name', page=page)           # -> Badge_1751558400
@@ -264,7 +268,13 @@ await act('Enter "SKU-{{random:6}}" into Code', page=page)                     #
 | --- | --- |
 | Base | `today`, `now`, `tomorrow`, `yesterday` |
 | Offset (chainable, signed) | `+7d` `-3d` `+2w` `+1mo` `-1y` `+2h` `+30min` `+45s` |
+| Absolute time (`@`, after offsets) | `@07:00` `@7am` `@9:30pm` `@23:59` `@07:00:00` |
 | Format | anything after `\|` is a `strftime` pattern |
+
+The `@` pins a **specific clock time** (after any date offset) — use it when you
+want "N days from today at exactly 7:00am" rather than midnight or the current
+time. If `@` is present and you give no `|` format, the default output includes
+the time (`%Y-%m-%d %H:%M`).
 
 Units: `d` days, `w` weeks, `mo` months, `y` years, `h` hours, `min` minutes,
 `s` seconds (`mo`/`min` are spelled out so a bare `m` is never ambiguous).

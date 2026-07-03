@@ -1,5 +1,19 @@
 # Unreleased
 
+## 0.0.6a20 — feat: absolute time-of-day in date tokens (`@HH:MM`); consolidates a18+a19
+
+- Dynamic-value date tokens gain an **`@` absolute-time setter** so you can pin a
+  computed date to a specific clock time instead of midnight or "now shifted":
+  - `{{today+2d@07:00|%d/%m/%Y %H:%M}}` — 2 days out, at 07:00.
+  - `{{tomorrow@9am|%d/%m/%Y %H:%M}}` — accepts `9am` / `9:30pm` / `23:59` /
+    `07:00:00`. Applied after any date offset. When `@` is present and no `|`
+    format is given, the default format includes the time (`%Y-%m-%d %H:%M`).
+- Consolidation release: this is the first version published from `main` that
+  contains **both** the uniqueness tokens (`{{timestamp}}`/`{{uuid}}`/`{{random}}`,
+  originally `a18`) and the `a19` web clickable-fallback fix. `a18` was never on
+  `main` and `a19` was cut from `a17` without the tokens; `a20` merges both so
+  `pip install -U bubblegum-ai` gets every feature. Engine `0.0.6a19` → `0.0.6a20`.
+
 ## 0.0.6a18 — feat: uniqueness dynamic-value tokens ({{timestamp}}, {{uuid}}, {{random}})
 
 - Dynamic-value tokens now cover **run-time uniqueness**, not just relative
@@ -18,6 +32,19 @@
   `docs/USER_GUIDE.md`, `docs/HOW_TO_USE_TYPESCRIPT.md`, and the Node README
   (this fills a gap — the date tokens were previously undocumented in the guide).
   Engine `0.0.6a17` → `0.0.6a18`; npm client unchanged (engine‑side feature).
+=======
+## 0.0.6a19 — fix(web): clickable fallback strips trailing widget nouns
+
+- `Click the <X> menu` (and `button`/`link`/`tab`/`option`/`item`/`field`) now
+  resolves the control named `<X>` via the DOM clickable fallback: when the exact
+  phrase doesn't match, it retries with the trailing widget word removed. Fixes
+  `Click the Badges menu` matching the `Badges` nav item whose accessible name is
+  just "Badges". (Only helps when the item is actually visible — an item hidden
+  in an Ant `...` overflow menu must be reached by clicking the overflow first.)
+- No parser behaviour change (the "X menu" target phrase is preserved, as some
+  controls are literally named "… menu"). Note: `0.0.6a18` on PyPI was **not**
+  published from this repository's `main` — this is the next release from `main`
+  after `a17`. Engine `0.0.6a17` → `0.0.6a19`; npm unchanged.
 
 ## 0.0.6a17 — fix(web): DOM input fallback for nameless text fields
 
