@@ -304,9 +304,12 @@ _FIND_CLICKABLE_JS = r"""
 (args) => {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const want = norm(args && args.text);
-  const wantL = want.toLowerCase();
   const exact = !!(args && args.exact);
   if (!want) return null;
+  // Also try the text with a trailing widget noun removed, so "Badges menu"
+  // matches a nav item named "Badges" (the widget word describes the control).
+  const stripped = want.replace(/\s+(menu\s*item|menuitem|menu|button|link|tab|option|item|field)$/i, '').trim();
+  const wants = stripped && stripped !== want ? [want, stripped] : [want];
   const SEL = 'button, [role="button"], a, [role="link"], [role="menuitem"], [role="tab"],'
             + ' input[type="submit"], input[type="button"], summary, [onclick]';
   const visible = (e) => {
@@ -323,10 +326,15 @@ _FIND_CLICKABLE_JS = r"""
     if (t) return t;
     return norm(e.getAttribute && e.getAttribute('title'));
   };
-  let els = Array.from(document.querySelectorAll(SEL)).filter(visible);
-  let matches = els.filter((e) => nameOf(e) === want);
-  if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase() === wantL);
-  if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wantL));
+  const els = Array.from(document.querySelectorAll(SEL)).filter(visible);
+  let matches = [];
+  for (const w of wants) {
+    const wl = w.toLowerCase();
+    matches = els.filter((e) => nameOf(e) === w);
+    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase() === wl);
+    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wl));
+    if (matches.length) break;
+  }
   if (!matches.length) return null;
   // Outermost interactive ancestor (drop a matched element nested in another).
   matches = matches.filter((e) => !matches.some((o) => o !== e && o.contains(e)));

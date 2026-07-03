@@ -1,5 +1,18 @@
 # Unreleased
 
+## 0.0.6a19 — fix(web): clickable fallback strips trailing widget nouns
+
+- `Click the <X> menu` (and `button`/`link`/`tab`/`option`/`item`/`field`) now
+  resolves the control named `<X>` via the DOM clickable fallback: when the exact
+  phrase doesn't match, it retries with the trailing widget word removed. Fixes
+  `Click the Badges menu` matching the `Badges` nav item whose accessible name is
+  just "Badges". (Only helps when the item is actually visible — an item hidden
+  in an Ant `...` overflow menu must be reached by clicking the overflow first.)
+- No parser behaviour change (the "X menu" target phrase is preserved, as some
+  controls are literally named "… menu"). Note: `0.0.6a18` on PyPI was **not**
+  published from this repository's `main` — this is the next release from `main`
+  after `a17`. Engine `0.0.6a17` → `0.0.6a19`; npm unchanged.
+
 ## 0.0.6a17 — fix(web): DOM input fallback for nameless text fields
 
 - `type`/`enter` into a field with **no accessible name** (e.g. a `<textarea>`
