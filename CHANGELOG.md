@@ -1,5 +1,21 @@
 # Unreleased
 
+## 0.0.6a23 — feat(web): resolve hidden file inputs for `upload` steps (multi-section)
+
+- `Upload "<path>" into <target>` now resolves the real `<input type=file>` even
+  when it's **hidden** behind a styled button (Ant/MUI `Upload`), which the a11y
+  tree and the visible-input fallback can't reach. New pre-grounding resolver
+  `file_input_dom` scores every file input by its form-item label, **nearest
+  section heading**, and id/name/testid (camelCase + kebab split into words).
+- Handles **multiple upload widgets on one page** with repeated labels: name the
+  section in the phrase to disambiguate, e.g. `Upload "..." into Awarded Album
+  View` vs `... into Upcoming Album View` (the six Album/Front/Back × Awarded/
+  Upcoming uploaders on the H365 Create-Badge page all resolve uniquely).
+- Scoped and safe: only fires for `upload` steps that name a target, and is a
+  no-op on pages with no file input. Verified end-to-end against a **real Ant v5
+  `Upload`** (file registers in antd's list). Coverage:
+  `tests/unit/test_upload_fallback.py`. Engine `0.0.6a22` → `0.0.6a23`.
+
 ## 0.0.6a22 — fix(web): commit typed value into date/time picker inputs (Enter)
 
 - Typing into a date/time picker input now **activates and commits** the field

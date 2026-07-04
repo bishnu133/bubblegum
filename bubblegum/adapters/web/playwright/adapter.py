@@ -362,6 +362,73 @@ _FIND_DATE_RANGE_JS = r"""
 """
 
 
+# JS: resolve a file `<input type=file>` for an upload step by its surrounding
+# context. These inputs are almost always hidden (Ant/MUI upload widgets wrap a
+# `display:none` input behind a styled button), so the a11y tree and the visible
+# input fallback can't reach them. Scores by form-item label, the nearest section
+# heading (so repeated labels like "Album View" under "Awarded" vs "Upcoming" are
+# distinguishable), and id/name/testid (camelCase + kebab split into words).
+_FIND_FILE_INPUT_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+                                .replace(/[-_]+/g, ' ')
+                                .replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 1);
+  if (!tokens.length) return null;
+
+  const els = Array.from(document.querySelectorAll('input[type=file]'));
+  if (!els.length) return null;
+
+  // Nearest section heading preceding the element in document order.
+  const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]'));
+  const sectionText = (el) => {
+    let best = '';
+    for (const h of headings) {
+      if (el.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_PRECEDING) best = h.textContent;
+      else break;
+    }
+    return norm(best);
+  };
+
+  const contextText = (e) => {
+    const parts = [];
+    if (e.id) {
+      const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]');
+      if (l) parts.push(l.textContent);
+    }
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const fi = e.closest('.ant-form-item, [class*="form-item"], [class*="field"], [class*="uploader"], [class*="upload"]');
+    if (fi) {
+      const l = fi.querySelector('label, [class*="label"], [title]');
+      if (l) parts.push(l.getAttribute('title') || l.textContent);
+      if (fi.getAttribute('data-testid')) parts.push(fi.getAttribute('data-testid'));
+    }
+    if (e.name) parts.push(e.name);
+    if (e.id) parts.push(e.id);
+    if (e.getAttribute('data-testid')) parts.push(e.getAttribute('data-testid'));
+    parts.push(sectionText(e));
+    return norm(parts.join(' '));
+  };
+
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1, bestTxt = '', tie = false;
+  els.forEach((e, i) => {
+    const txt = contextText(e);
+    const score = overlap(txt) + (els.length - i) * 0.0001;   // stable DOM tie-break
+    if (score > bestScore + 1e-9) { bestScore = score; best = e; bestTxt = txt; tie = false; }
+    else if (Math.abs(score - bestScore) <= 1e-4) { tie = true; }
+  });
+  if (!best || bestScore <= 0) return null;
+
+  document.querySelectorAll('[data-bg-file]').forEach((n) => n.removeAttribute('data-bg-file'));
+  best.setAttribute('data-bg-file', '1');
+  return { selector: '[data-bg-file="1"]', label: bestTxt, score: bestScore, tie };
+}
+"""
+
+
 # JS: click any interactive element by accessible name (button/link/menuitem/
 # tab/...). Exact → case-insensitive → substring; collapses nested matches to the
 # outermost interactive ancestor and prefers button/link roles. Marks the winner.
@@ -1225,6 +1292,22 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_date_range_input %r %r -> %s", which, target_phrase, result)
+        return result.get("selector")
+
+    async def find_file_input(self, target_phrase: str) -> str | None:
+        """Return a selector for the ``<input type=file>`` matching ``target_phrase``.
+
+        For ``upload`` steps against widgets (Ant/MUI ``Upload``) whose real file
+        input is hidden behind a styled button — unreachable via the a11y tree.
+        Scores every file input by its form-item label, nearest section heading
+        and id/name/testid, so repeated labels (e.g. "Album View" under two
+        sections) are disambiguated by naming the section in the phrase. Returns
+        ``None`` when the page has no file input (non-upload pages unaffected).
+        """
+        result = await self._page.evaluate(_FIND_FILE_INPUT_JS, {"phrase": target_phrase or ""})
+        if not result:
+            return None
+        logger.debug("find_file_input %r -> %s", target_phrase, result)
         return result.get("selector")
 
     async def find_clickable(self, text: str, *, exact: bool = False) -> str | None:

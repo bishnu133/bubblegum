@@ -367,6 +367,23 @@ await s.act("Expand Shipping section")                  # accordion
 the option is `<option value="FR">France</option>` — Bubblegum matches the
 visible label, falling back from the value automatically.
 
+**File upload (hidden inputs, multiple sections).** `Upload "<path>" into
+<field>` finds the real `<input type=file>` even when it's hidden behind a styled
+"+ Upload" button (Ant/MUI `Upload`). When a page has **several uploaders with
+repeating labels**, name the section to disambiguate — the nearest section
+heading is part of the match:
+
+```python
+await s.act('Upload "/tmp/album.png" into Awarded Album View')
+await s.act('Upload "/tmp/front.png" into Awarded Front View')
+await s.act('Upload "/tmp/back.png" into Upcoming Back View')
+# or spell out the section: '... into the Album View under Upcoming Badge Details'
+```
+
+Pass a list to attach multiple files: `value=["/a.png", "/b.png"]`. As a last
+resort you can pin the input explicitly, e.g.
+`selector='#alreadyEarnedThumbnailImageUploadInput'`.
+
 ### Verify (assertions)
 
 ```python

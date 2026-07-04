@@ -327,8 +327,11 @@ async def act(
     # Ant RangePicker input that name-based grounding mis-hits — pin it from the
     # DOM first. No-op on pages without a range picker.
     daterange_target = table_target or await _maybe_resolve_daterange(adapter, channel, intent)
-    if daterange_target is not None:
-        target, traces = daterange_target, []
+    # Upload steps: pin the hidden <input type=file> from the DOM (Ant/MUI upload
+    # widgets hide it behind a button). No-op on pages without a file input.
+    pre_target = daterange_target or await _maybe_resolve_upload(adapter, channel, intent)
+    if pre_target is not None:
+        target, traces = pre_target, []
     else:
         try:
             target, traces = await _ground_with_wait(adapter, intent)
@@ -1467,6 +1470,36 @@ async def _maybe_resolve_daterange(adapter, channel: str, intent: StepIntent):
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name="date_range_dom",
         metadata={"role": "textbox", "date_range_dom": True, "which": side},
+    )
+
+
+async def _maybe_resolve_upload(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for a file ``<input type=file>`` upload target.
+
+    Upload widgets (Ant/MUI ``Upload``) hide the real file input behind a styled
+    button, so name-based grounding can't reach it. When the step is an upload,
+    pin the input from the DOM by its label / section / id. Runs before grounding;
+    returns ``None`` (no-op) on pages without a file input.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) != "upload":
+        return None
+    finder = getattr(adapter, "find_file_input", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        return None
+    try:
+        ref = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("file-input DOM resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved upload target via DOM file-input fallback (%s)", ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.85, resolver_name="file_input_dom",
+        metadata={"role": "button", "file_input_dom": True},
     )
 
 
