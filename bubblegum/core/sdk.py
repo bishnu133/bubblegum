@@ -333,6 +333,8 @@ async def act(
     # Click/tap while a modal is open: prefer the button inside the dialog (the
     # page copy behind the mask can't be clicked). No-op when no dialog is open.
     pre_target = pre_target or await _maybe_resolve_dialog_click(adapter, channel, intent)
+    # Radio selection: pin the radio wrapper/label from the DOM and click it.
+    pre_target = pre_target or await _maybe_resolve_radio(adapter, channel, intent)
     if pre_target is not None:
         target, traces = pre_target, []
     else:
@@ -508,6 +510,11 @@ async def verify(
     if kwargs.get("assertion_type") == "table" or _looks_like_table_assertion(instruction, kwargs):
         return await _verify_table(adapter, channel, instruction, kwargs, options, t0)
 
+    # Radio/checkbox checked-state assertion ("... radio is selected"): read the
+    # control's state directly (a11y grounding + text_visible can't see it).
+    if _looks_like_selected_assertion(instruction, kwargs):
+        return await _verify_selected(adapter, channel, instruction, kwargs, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -640,6 +647,73 @@ async def _verify_a11y(adapter, channel: str, instruction: str, kwargs: dict, t0
     return _a11y_result(
         instruction=instruction, t0=t0, passed=passed, message=message,
         error=error, metadata=metadata,
+    )
+
+
+_SELECTED_STATE_RE = re.compile(r"\b(selected|checked|ticked|deselected|unchecked|unticked)\b", re.IGNORECASE)
+_NEGATED_STATE_RE = re.compile(r"\b(not\s+(selected|checked|ticked)|deselected|unchecked|unticked)\b", re.IGNORECASE)
+
+
+def _looks_like_selected_assertion(instruction: str, kwargs: dict) -> bool:
+    """True when the phrase asserts a radio/checkbox checked state."""
+    if kwargs.get("assertion_type"):
+        return False
+    low = (instruction or "").lower()
+    return ("radio" in low or "checkbox" in low) and bool(_SELECTED_STATE_RE.search(low))
+
+
+def _radio_label_from_assertion(instruction: str) -> str:
+    """Strip verify verbs / state words / widget nouns to leave the option label."""
+    s = (instruction or "").strip()
+    s = re.sub(r"^(verify|assert|confirm|ensure|check|see|make sure|that)\s+", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^the\s+", "", s, flags=re.IGNORECASE)
+    # Cut from the widget/state marker onward: "... radio is selected" -> "...".
+    s = re.sub(r"\s+(radio(\s+button)?|checkbox|option)\b.*$", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+is\s+(not\s+)?(selected|checked|ticked|deselected|unchecked|unticked)\b.*$", "", s, flags=re.IGNORECASE)
+    return s.strip(" \"'.")
+
+
+async def _verify_selected(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Assert a radio/checkbox is (not) selected by resolving it and reading state.
+
+    Web-only. Reuses the DOM radio finder (label / wrapper / value), so it works
+    for native, Ant and MUI radios where a11y grounding + text_visible can't see
+    the checked state.
+    """
+    finder = getattr(adapter, "find_radio", None)
+    if channel != "web" or finder is None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="radio-state assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError", message="radio-state check is web-only"),
+            ref="radio", resolver_name="radio_dom",
+        )
+    expected_checked = not bool(_NEGATED_STATE_RE.search(instruction or ""))
+    label = _radio_label_from_assertion(instruction)
+    try:
+        res = await finder(label)
+    except Exception as exc:  # noqa: BLE001
+        res = None
+        logger.debug("radio-state find errored: %s", exc)
+    if not res:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"no radio/checkbox matching {label!r}",
+            error=ErrorInfo(error_type="ElementNotFoundError", message=f"no radio matching {label!r}"),
+            ref="radio", resolver_name="radio_dom",
+        )
+    actual_checked = bool(res.get("checked"))
+    passed = actual_checked == expected_checked
+    state = "selected" if actual_checked else "not selected"
+    message = f"{res.get('name') or label!r} is {state}"
+    error = None if passed else ErrorInfo(
+        error_type="ValidationFailedError",
+        message=f"expected {label!r} {'selected' if expected_checked else 'not selected'}, but it is {state}",
+    )
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=message,
+        error=error, metadata={"checked": actual_checked, "expected_checked": expected_checked},
+        ref=res["selector"], resolver_name="radio_dom",
     )
 
 
@@ -1473,6 +1547,43 @@ async def _maybe_resolve_daterange(adapter, channel: str, intent: StepIntent):
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name="date_range_dom",
         metadata={"role": "textbox", "date_range_dom": True, "which": side},
+    )
+
+
+async def _maybe_resolve_radio(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for selecting a radio option by its label.
+
+    Radios are commonly a hidden ``<input type=radio>`` inside a styled wrapper
+    (Ant ``.ant-radio-wrapper``, MUI ``FormControlLabel``), so name-based
+    grounding misses them and a ``select`` step wrongly falls to the dropdown
+    resolver. This pins the wrapper/label from the DOM and coerces the step to a
+    click (selecting a radio == clicking it). No-op on pages without a radio.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in (
+        "select", "check", "click", "tap", "uncheck"
+    ):
+        return None
+    haystack = f"{getattr(intent, 'instruction', '') or ''} {intent.target_phrase or ''}".lower()
+    if "radio" not in haystack:
+        return None
+    finder = getattr(adapter, "find_radio", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        return None
+    try:
+        res = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("radio DOM resolution errored: %s", exc)
+        return None
+    if not res or not res.get("selector"):
+        return None
+    intent.action_type = "click"  # selecting a radio is a click on its wrapper
+    logger.debug("Resolved radio %r via DOM (%s)", text, res["selector"])
+    return ResolvedTarget(
+        ref=res["selector"], confidence=0.9, resolver_name="radio_dom",
+        metadata={"role": "radio", "radio_dom": True, "checked": res.get("checked")},
     )
 
 

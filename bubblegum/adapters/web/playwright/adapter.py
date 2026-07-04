@@ -297,6 +297,71 @@ _FIND_INPUT_JS = r"""
 """
 
 
+# JS: resolve a radio option by its label text and return a clickable target +
+# its checked state. Radios are commonly a hidden (`opacity:0`) `<input
+# type=radio>` inside a styled wrapper/label (Ant `.ant-radio-wrapper`, MUI
+# `FormControlLabel`), so name-based grounding misses them and clicking the input
+# is unreliable — click the wrapper/label instead. Works for native + Ant + MUI.
+_FIND_RADIO_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 1);
+  if (!tokens.length) return null;
+
+  const els = Array.from(document.querySelectorAll('input[type=radio], [role=radio]'));
+  if (!els.length) return null;
+
+  const wrapperOf = (e) => e.closest(
+    'label, .ant-radio-wrapper, [class*="radio-wrapper"], [class*="RadioWrapper"],'
+    + ' [class*="FormControlLabel"], [class*="form-check"]'
+  );
+  const shown = (e) => {
+    const w = wrapperOf(e) || e;
+    const r = w.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(w);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+
+  const labelText = (e) => {
+    const parts = [];
+    const wl = e.closest('label');
+    if (wl) parts.push(wl.textContent);
+    if (e.id) { const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]'); if (l) parts.push(l.textContent); }
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    const w = wrapperOf(e);
+    if (w) parts.push(w.textContent);
+    if (e.value) parts.push(e.value);
+    return norm(parts.join(' '));
+  };
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1;
+  els.filter(shown).forEach((e, i) => {
+    const score = overlap(labelText(e)) + i * 0.0001;
+    if (score > bestScore) { bestScore = score; best = e; }
+  });
+  if (!best || bestScore <= 0) return null;
+
+  const checked = !!best.checked
+    || best.getAttribute('aria-checked') === 'true'
+    || !!(wrapperOf(best) && wrapperOf(best).className &&
+          /(-|\b)(checked|selected|active)\b/.test(wrapperOf(best).className));
+  const target = wrapperOf(best) || best;
+  // A clean, human display name (the visible wrapper text, else aria-label/value)
+  // rather than the concatenated match signals.
+  const w = wrapperOf(best);
+  const displayName = norm((w && w.textContent) || best.getAttribute('aria-label') || best.value || '');
+  document.querySelectorAll('[data-bg-radio]').forEach((n) => n.removeAttribute('data-bg-radio'));
+  target.setAttribute('data-bg-radio', '1');
+  return { selector: '[data-bg-radio="1"]', checked, name: displayName };
+}
+"""
+
+
 # JS: resolve the start/end input of a date **range** picker. These inputs are
 # typically nameless (no id/label/aria) and only distinguishable by a
 # `date-range="start|end"` attribute, a "Start date"/"End date" placeholder, or
@@ -1359,6 +1424,19 @@ class PlaywrightAdapter(BaseAdapter):
             return None
         logger.debug("find_date_range_input %r %r -> %s", which, target_phrase, result)
         return result.get("selector")
+
+    async def find_radio(self, target_phrase: str) -> dict | None:
+        """Resolve a radio option by label text. Returns ``{selector, checked,
+
+        name}`` for the clickable wrapper/label (not the hidden input), or
+        ``None`` when the page has no radio. Used for both selecting a radio and
+        asserting its checked state; works for native, Ant and MUI radios.
+        """
+        result = await self._page.evaluate(_FIND_RADIO_JS, {"phrase": target_phrase or ""})
+        if not result:
+            return None
+        logger.debug("find_radio %r -> %s", target_phrase, result)
+        return result
 
     async def find_file_input(self, target_phrase: str) -> str | None:
         """Return a selector for the ``<input type=file>`` matching ``target_phrase``.

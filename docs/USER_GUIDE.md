@@ -379,6 +379,16 @@ await s.act("Expand Shipping section")                  # accordion
 the option is `<option value="FR">France</option>` — Bubblegum matches the
 visible label, falling back from the value automatically.
 
+**Radio buttons.** `Select "<label>" radio` (or `Choose … radio` / `Click …
+radio`) selects a radio by its visible label — including Ant/MUI radios whose
+real `<input type=radio>` is hidden behind a styled wrapper. Verify the choice
+with `verify("<label> radio is selected")` (see below).
+
+```python
+await s.act('Select "Create cumulative milestone(s)" radio')
+await s.verify("Create cumulative milestone(s) radio is selected")
+```
+
 **File upload (hidden inputs, multiple sections).** `Upload "<path>" into
 <field>` finds the real `<input type=file>` even when it's hidden behind a styled
 "+ Upload" button (Ant/MUI `Upload`). When a page has **several uploaders with
@@ -403,6 +413,10 @@ await s.verify("Welcome back is visible")               # default: text on page
 await s.verify("Dashboard", assertion_type="text_visible", expected_value="Dashboard")
 await s.verify("URL changed", assertion_type="page_transition", expected_value="/home")
 await s.verify("Save button", assertion_type="element_state", expected_value="#save")
+# Radio / checkbox checked state (reads the real state, not just visibility):
+await s.verify("Create cumulative milestone(s) radio is selected")
+await s.verify("None radio is not selected")
+await s.verify("Newsletter checkbox is checked")
 ```
 
 `assertion_type` options (web): `text_visible` (default), `element_state`

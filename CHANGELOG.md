@@ -1,5 +1,22 @@
 # Unreleased
 
+## 0.0.6a26 — feat(web): radio selection + checked-state verification
+
+- **Select a radio by label.** `Select/Choose/Click "<label>" radio [button]` now
+  resolves the radio deterministically and clicks its wrapper/label — fixing Ant
+  (and MUI) radios where the real `<input type=radio>` is hidden (`opacity:0`)
+  behind a styled wrapper, so name grounding missed it and the step wrongly fell
+  to the dropdown resolver (`select_trigger_dom`) without actually selecting
+  anything. New resolver `radio_dom`; the `select` verb is coerced to a click
+  (selecting a radio == clicking it). No-op on pages without a radio.
+- **Verify a radio's state.** `verify("<label> radio is selected")` (and
+  `is not selected` / `checked` / `unchecked`) reads the control's real checked
+  state — the previous `element_state` assertion only checked visibility. Works
+  for native, Ant and MUI radios.
+- Verified end-to-end against a real Ant `Radio.Group` (selection sets the value;
+  positive/negative assertions pass/fail correctly). Coverage:
+  `tests/unit/test_radio_fallback.py`. Engine `0.0.6a25` → `0.0.6a26`.
+
 ## 0.0.6a25 — feat(web): dialog-scoped clicks + named capture/recall of dynamic values
 
 - **Confirmation dialogs.** A click/tap now prefers the button **inside the
