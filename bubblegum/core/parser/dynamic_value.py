@@ -49,6 +49,22 @@ Uniqueness tokens:
   first ``N`` chars (e.g. ``{{uuid:8}}``). Guaranteed unique regardless of clock.
 * ``random``    — a run of random digits, default 6, ``:N`` for ``N`` digits.
 
+Named capture & reuse
+---------------------
+Append ``as <name>`` to **remember** a rendered value under a name, then recall
+it later in the same session with ``{{$<name>}}``. Useful when you generate a
+unique value and need the *same* value in a later step (search for the record you
+just created, assert it on another page, look it up in a DB):
+
+    act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S as badgeName}}" into Display Name')
+    # ... later ...
+    act('Enter "{{$badgeName}}" into Search')
+    verify('{{$badgeName}} is visible')
+
+Recalled names that were never stored are left verbatim (like any unknown token).
+The store lives for the engine session; read it from code via ``variables()`` and
+seed/clear it with ``remember(name, value)`` / ``clear_variables()``.
+
 Units: ``d`` days, ``w`` weeks, ``mo`` months, ``y`` years, ``h`` hours,
 ``min`` minutes, ``s`` seconds. (``mo``/``min`` are spelled out so a bare ``m``
 is never ambiguous between months and minutes.)
@@ -62,10 +78,45 @@ import re
 import uuid as _uuid
 from datetime import datetime, timedelta
 
-__all__ = ["substitute_dynamic_tokens", "render_token"]
+__all__ = [
+    "substitute_dynamic_tokens",
+    "render_token",
+    "remember",
+    "recall",
+    "variables",
+    "clear_variables",
+]
 
 #: Bases that produce a value which must differ each run rather than a date.
 _UNIQUE_BASES = ("timestamp", "uuid", "random")
+
+#: Session-scoped store for `... as name` captures / `{{$name}}` recalls. One
+#: dict per engine process (i.e. per bridge session), so a value generated in one
+#: step can be reused in a later step.
+_VAR_STORE: dict[str, str] = {}
+
+# "<expr> as <name>" capture suffix — the trailing name to remember under.
+_CAPTURE_RE = re.compile(r"^(.*?)\s+as\s+([A-Za-z_][\w]*)\s*$")
+
+
+def remember(name: str, value: str) -> None:
+    """Store ``value`` under ``name`` for later ``{{$name}}`` recall."""
+    _VAR_STORE[str(name)] = str(value)
+
+
+def recall(name: str) -> str | None:
+    """Return the stored value for ``name`` (or ``None`` if unset)."""
+    return _VAR_STORE.get(str(name))
+
+
+def variables() -> dict[str, str]:
+    """Return a copy of all remembered variables in this session."""
+    return dict(_VAR_STORE)
+
+
+def clear_variables() -> None:
+    """Forget all remembered variables (e.g. between test runs)."""
+    _VAR_STORE.clear()
 
 # A {{ ... }} placeholder. Non-greedy so adjacent tokens don't merge.
 _TOKEN_RE = re.compile(r"\{\{\s*(.*?)\s*\}\}")
@@ -161,13 +212,34 @@ def _apply_clock(dt: datetime, timepart: str) -> datetime | None:
     return dt.replace(hour=hour, minute=minute, second=second, microsecond=0)
 
 
-def render_token(expr: str, *, now: datetime | None = None) -> str | None:
+def render_token(
+    expr: str, *, now: datetime | None = None, store: dict[str, str] | None = None
+) -> str | None:
     """Render a single token's inner ``expr`` (the text between ``{{`` ``}}``).
 
     Returns the formatted string, or ``None`` when ``expr`` is not a recognised
-    dynamic-value expression (so the caller can leave it verbatim).
+    dynamic-value expression (so the caller can leave it verbatim). ``store`` is
+    the named-variable map for ``as name`` captures / ``$name`` recalls (defaults
+    to the session-global store).
     """
+    if store is None:
+        store = _VAR_STORE
     base_now = now or datetime.now()
+    stripped = expr.strip()
+
+    # Recall a remembered variable: {{$badgeName}}. Unknown names return None so
+    # the token is left verbatim rather than blanked.
+    if stripped.startswith("$"):
+        return store.get(stripped[1:].strip())
+
+    # Capture: "<expr> as <name>" renders <expr> and remembers it under <name>.
+    capture = _CAPTURE_RE.match(stripped)
+    if capture:
+        core, name = capture.group(1), capture.group(2)
+        rendered = render_token(core, now=now, store=store)
+        if rendered is not None:
+            store[name] = rendered
+        return rendered
 
     body, sep, fmt = expr.partition("|")
     fmt = fmt.strip() if sep else ""
@@ -233,18 +305,23 @@ def render_token(expr: str, *, now: datetime | None = None) -> str | None:
     return dt.strftime(fmt or default_fmt)
 
 
-def substitute_dynamic_tokens(value: str | None, *, now: datetime | None = None) -> str | None:
+def substitute_dynamic_tokens(
+    value: str | None, *, now: datetime | None = None, store: dict[str, str] | None = None
+) -> str | None:
     """Replace every ``{{ ... }}`` dynamic-value token in ``value``.
 
     Unrecognised tokens are left exactly as written. ``None`` and token-free
     strings pass straight through (cheap fast-path), so literal values are never
-    altered. ``now`` is injectable for deterministic tests.
+    altered. ``now`` is injectable for deterministic tests; ``store`` is the
+    named-variable map (defaults to the session-global store).
     """
     if not value or "{{" not in value:
         return value
+    if store is None:
+        store = _VAR_STORE
 
     def _replace(match: re.Match[str]) -> str:
-        rendered = render_token(match.group(1), now=now)
+        rendered = render_token(match.group(1), now=now, store=store)
         return rendered if rendered is not None else match.group(0)
 
     return _TOKEN_RE.sub(_replace, value)

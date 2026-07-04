@@ -1,5 +1,33 @@
 # Unreleased
 
+## 0.0.6a25 — feat(web): dialog-scoped clicks + named capture/recall of dynamic values
+
+- **Confirmation dialogs.** A click/tap now prefers the button **inside the
+  topmost open modal** (Ant confirm, `[role=dialog]`, native `<dialog>`, common
+  modal classes). Previously `Click Submit` on a "Submit Badge?" confirm resolved
+  to the *page's* Submit behind the mask and hung ("…intercepts pointer events").
+  New pre-grounding resolver `dialog_click_dom` splits an `... on <title> dialog`
+  scope tail off the label and matches within the dialog. No-op when no dialog is
+  open. Verified end-to-end against a real Ant `Modal.confirm` (Submit / "No,
+  cancel" both route correctly).
+- **Remember a generated value and reuse it later.** Append `as <name>` to a
+  dynamic token to store its value, then recall it with `{{$name}}` in a later
+  step — so a unique value you generate can be reused to search/validate the same
+  record:
+
+      act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S as badgeName}}" into Display Name')
+      # ...later...
+      act('Enter "Badge_{{$badgeName}}" into Search')
+      verify('{{$badgeName}} is visible')
+
+  The store is per engine session, so reuse across steps works through the Node
+  client with no protocol change. Read it from Python via `bubblegum.variables()`
+  / `recall(name)`; seed or reset with `remember(name, value)` /
+  `clear_variables()`. Unknown `{{$name}}` recalls are left verbatim.
+- Coverage: `tests/unit/test_dialog_click_fallback.py`, capture/recall cases in
+  `test_dynamic_value_tokens.py`. Full unit suite 1864 passed. Engine
+  `0.0.6a24` → `0.0.6a25`.
+
 ## 0.0.6a24 — fix(parser): a verify cue word in a field label no longer hijacks the action
 
 - `Enter "…" into Description shown when viewing an Earned Badge` was

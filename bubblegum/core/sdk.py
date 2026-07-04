@@ -330,6 +330,9 @@ async def act(
     # Upload steps: pin the hidden <input type=file> from the DOM (Ant/MUI upload
     # widgets hide it behind a button). No-op on pages without a file input.
     pre_target = daterange_target or await _maybe_resolve_upload(adapter, channel, intent)
+    # Click/tap while a modal is open: prefer the button inside the dialog (the
+    # page copy behind the mask can't be clicked). No-op when no dialog is open.
+    pre_target = pre_target or await _maybe_resolve_dialog_click(adapter, channel, intent)
     if pre_target is not None:
         target, traces = pre_target, []
     else:
@@ -1470,6 +1473,37 @@ async def _maybe_resolve_daterange(adapter, channel: str, intent: StepIntent):
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name="date_range_dom",
         metadata={"role": "textbox", "date_range_dom": True, "which": side},
+    )
+
+
+async def _maybe_resolve_dialog_click(adapter, channel: str, intent: StepIntent):
+    """Prefer a clickable inside the topmost open dialog for a click/tap step.
+
+    When a blocking modal is open (Ant confirm, ``[role=dialog]``, …), a button
+    with the same name usually also exists on the page behind it — covered by the
+    modal mask, so clicking the page copy hangs. This pins the button inside the
+    dialog. Runs before grounding; returns ``None`` (no-op) when no dialog is open
+    so ordinary flows are unaffected.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("click", "tap"):
+        return None
+    finder = getattr(adapter, "find_dialog_clickable", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or intent.instruction or "").strip()
+    if not text:
+        return None
+    try:
+        ref = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("dialog-click DOM resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved click inside open dialog via DOM (%s)", ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.9, resolver_name="dialog_click_dom",
+        metadata={"role": "button", "dialog_click_dom": True},
     )
 
 

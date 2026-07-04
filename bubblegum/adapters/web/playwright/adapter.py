@@ -486,6 +486,72 @@ _FIND_CLICKABLE_JS = r"""
 """
 
 
+# JS: resolve a clickable INSIDE the topmost open dialog/modal by name. When a
+# blocking modal is open (e.g. an Ant confirm "Submit Badge?"), a button named
+# "Submit" also exists on the page behind it — the page copy is covered by the
+# modal mask, so clicking it hangs. This scopes the search to the dialog and
+# splits off an "... on <title> dialog" scope tail so the button label matches.
+_FIND_DIALOG_CLICKABLE_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const want = norm(args && args.text);
+  const exact = !!(args && args.exact);
+  if (!want) return null;
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+
+  // Topmost open dialog: role=dialog / native <dialog> / common modal classes,
+  // visible only, ranked by effective z-index then DOM order (last wins).
+  const DIALOG = "[role='dialog'],[role='alertdialog'],dialog[open],"
+               + ".ant-modal,.ant-modal-confirm,.MuiDialog-container,"
+               + "[class*='modal'][class*='show'],[class*='Modal'][class*='open']";
+  let dialogs = Array.from(document.querySelectorAll(DIALOG)).filter(visible);
+  if (!dialogs.length) return null;
+  const zOf = (e) => { let n = e, m = 0; while (n) { const v = parseInt(window.getComputedStyle(n).zIndex); if (!isNaN(v)) m = Math.max(m, v); n = n.parentElement; } return m; };
+  dialogs.sort((a, b) => (zOf(a) - zOf(b)) || ((a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1));
+  const dialog = dialogs[dialogs.length - 1];
+
+  // The button label is the part before a scope preposition ("Submit button on
+  // Submit Badge? dialog" -> "Submit button"); strip a trailing widget noun.
+  let main = want.split(/\s+(?:on|in|within|from|of)\s+/i)[0]
+                 .replace(/\s+(button|link|tab|option|item|menu\s*item|menuitem)$/i, '').trim();
+  const wants = [main, want].filter((v, i, a) => v && a.indexOf(v) === i);
+
+  const SEL = 'button, [role="button"], a, [role="link"], [role="menuitem"], [role="tab"],'
+            + ' input[type="submit"], input[type="button"], summary, [onclick]';
+  const nameOf = (e) => {
+    const al = e.getAttribute && e.getAttribute('aria-label');
+    if (al) return norm(al);
+    if (e.tagName === 'INPUT') return norm(e.value);
+    const t = norm(e.textContent);
+    if (t) return t;
+    return norm(e.getAttribute && e.getAttribute('title'));
+  };
+  const els = Array.from(dialog.querySelectorAll(SEL)).filter(visible);
+  if (!els.length) return null;
+
+  let matches = [];
+  for (const w of wants) {
+    const wl = w.toLowerCase();
+    matches = els.filter((e) => nameOf(e) === w);
+    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase() === wl);
+    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wl));
+    if (matches.length) break;
+  }
+  if (!matches.length) return null;
+  matches = matches.filter((e) => !matches.some((o) => o !== e && o.contains(e)));
+  const best = matches[0];
+  document.querySelectorAll('[data-bg-dialogclick]').forEach((n) => n.removeAttribute('data-bg-dialogclick'));
+  best.setAttribute('data-bg-dialogclick', '1');
+  return { selector: '[data-bg-dialogclick="1"]', name: nameOf(best), count: matches.length };
+}
+"""
+
+
 # JS: click a link by its (possibly dynamic) text. Exact → case-insensitive →
 # substring. Marks the match with a temporary attribute and returns its selector.
 _FIND_LINK_JS = r"""
@@ -1325,6 +1391,23 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_clickable %r -> %s", text, result)
+        return result.get("selector")
+
+    async def find_dialog_clickable(self, text: str, *, exact: bool = False) -> str | None:
+        """Return a selector for a clickable named ``text`` inside the open dialog.
+
+        When a blocking modal is open, the same button name often also exists on
+        the page behind it (covered by the modal mask). Scopes the search to the
+        topmost visible dialog and splits off an ``... on <title> dialog`` scope
+        tail. Returns ``None`` when no dialog is open (so non-modal flows fall
+        through to normal grounding).
+        """
+        result = await self._page.evaluate(
+            _FIND_DIALOG_CLICKABLE_JS, {"text": text or "", "exact": bool(exact)}
+        )
+        if not result:
+            return None
+        logger.debug("find_dialog_clickable %r -> %s", text, result)
         return result.get("selector")
 
     async def find_link(self, text: str, *, exact: bool = False) -> str | None:

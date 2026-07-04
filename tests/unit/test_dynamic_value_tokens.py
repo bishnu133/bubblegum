@@ -176,3 +176,47 @@ def test_absolute_time_bad_value_is_left_verbatim():
 def test_absolute_time_inside_a_phrase():
     out = substitute_dynamic_tokens("Start {{today+2d@07:00|%d/%m/%Y %H:%M}}", now=NOW)
     assert out == "Start 18/06/2026 07:00"
+
+
+# --- Named capture & recall: {{... as name}} / {{$name}} --------------------
+
+
+def test_capture_and_recall_roundtrip():
+    store: dict[str, str] = {}
+    v = substitute_dynamic_tokens("Badge_{{timestamp|%Y%m%d%H%M%S as badgeName}}",
+                                  now=NOW, store=store)
+    assert v == "Badge_20260616020000"
+    assert store == {"badgeName": "20260616020000"}
+    # Recall the SAME value in a later call sharing the store.
+    assert substitute_dynamic_tokens("{{$badgeName}}", now=NOW, store=store) == "20260616020000"
+    # Reconstruct the full field value with the literal prefix.
+    assert substitute_dynamic_tokens("Badge_{{$badgeName}}", now=NOW, store=store) == "Badge_20260616020000"
+
+
+def test_recall_unknown_is_left_verbatim():
+    store: dict[str, str] = {}
+    assert substitute_dynamic_tokens("{{$missing}}", now=NOW, store=store) == "{{$missing}}"
+
+
+def test_capture_uuid_and_random():
+    store: dict[str, str] = {}
+    u = substitute_dynamic_tokens("{{uuid:8 as rid}}", now=NOW, store=store)
+    assert len(u) == 8 and store["rid"] == u
+    assert substitute_dynamic_tokens("{{$rid}}", now=NOW, store=store) == u
+
+
+def test_capture_does_not_leak_between_explicit_stores():
+    a: dict[str, str] = {}
+    b: dict[str, str] = {}
+    substitute_dynamic_tokens("{{timestamp as x}}", now=NOW, store=a)
+    assert "x" in a and "x" not in b
+
+
+def test_variables_helpers():
+    from bubblegum.core.parser import clear_variables, recall, remember, variables
+    clear_variables()
+    remember("k", "v")
+    assert recall("k") == "v"
+    assert variables() == {"k": "v"}
+    clear_variables()
+    assert variables() == {}

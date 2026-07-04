@@ -306,11 +306,23 @@ Default formats are `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.
 | `{{uuid}}` | random uuid4 hex, 32 chars | `{{uuid:8}}` keeps the first 8 chars — unique regardless of the clock |
 | `{{random}}` | 6 random digits | `{{random:N}}` for `N` digits |
 
-> **Reading the value back.** The generated value is used inside the step but is
-> not returned on `StepResult`. If a later step needs the exact value (e.g. to
-> search for the record you just created), compute it in your own code and pass
-> it in both places — e.g. `name = f"Badge_{int(time.time())}"` then
-> `await act(f'Enter "{name}" into Display Name', page=page)`.
+**Remember a value and reuse it later (`as name` / `{{$name}}`).** Append
+`as <name>` to a token to store its value, then recall the *same* value later in
+the session with `{{$name}}` — e.g. generate a unique Display Name, then search
+for the record you just created:
+
+```python
+await act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S as badgeName}}" into Display Name', page=page)
+# ...later step / another page...
+await act('Enter "Badge_{{$badgeName}}" into Search', page=page)
+await verify('{{$badgeName}} is visible', page=page)
+```
+
+`as name` captures the **token's** value (here `20260704153012`); rebuild the full
+string with the same literal prefix (`Badge_{{$badgeName}}`). The store lives for
+the engine session, so recall works across steps (and through the Node client).
+Read it from code with `bubblegum.variables()` / `recall("badgeName")`; reset
+between runs with `clear_variables()`. An unknown `{{$name}}` is left verbatim.
 
 Token‑free values (and any `{{...}}` that isn't a recognised expression) are
 passed through unchanged, so existing literal steps are never altered.
@@ -514,7 +526,19 @@ await s.act("Click the lazy-loaded Continue", resolve_retries=4)
 
 ### Dialogs and scopes
 
-When a modal is open, scope steps to it and close it cleanly:
+When a **confirmation modal** is open, a click automatically prefers the button
+*inside* the dialog — so the same-named button on the page behind the mask
+(a common cause of "click times out / intercepts pointer events") is avoided:
+
+```python
+await s.act("Click Submit")                    # opens a "Submit Badge?" confirm
+await s.act("Click Submit on Submit Badge? dialog")  # clicks the modal's Submit
+# or just: await s.act("Click Submit")   # with the modal open, the modal wins
+await s.act("Click No, cancel")                # the modal's cancel button
+```
+
+This works for Ant `Modal.confirm`, `[role=dialog]`, native `<dialog>`, and
+common modal classes. You can still scope explicitly and close cleanly:
 
 ```python
 s.push_scope("dialog", label="Confirm delete")
