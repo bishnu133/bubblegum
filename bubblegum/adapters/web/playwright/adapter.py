@@ -848,8 +848,46 @@ class PlaywrightAdapter(BaseAdapter):
         except Exception:
             pass  # Document settle is best-effort; the URL already changed.
 
+    # An input that belongs to a date/time picker widget commits typed text only
+    # on a keystroke (Enter), and keeps "active editing" on one field until then.
+    # Detected generically across libraries (Ant `.ant-picker`, MUI pickers, and
+    # the `date-range` attribute) so a range picker's start/end don't collide.
+    _PICKER_PROBE_JS = r"""
+    (el) => {
+      if (!el) return false;
+      if (el.hasAttribute('date-range')) return true;
+      return !!el.closest(
+        '.ant-picker, .ant-picker-range,'
+        + '[class*="DatePicker"],[class*="datepicker"],[class*="date-picker"],'
+        + '[class*="TimePicker"],[class*="timepicker"],[class*="time-picker"],'
+        + '[class*="MuiPickers"],[class*="Pickers"]'
+      );
+    }
+    """
+
+    async def _is_picker_input(self, locator) -> bool:
+        try:
+            return bool(await locator.evaluate(self._PICKER_PROBE_JS))
+        except Exception:  # noqa: BLE001 — probe is best-effort
+            return False
+
     async def _do_type(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
+        # Date/time picker inputs (e.g. Ant RangePicker) need an explicit
+        # activate + commit: click to make this field the active editor, fill it,
+        # then press Enter to commit — otherwise the widget keeps routing text to
+        # the previously-active field (both range values land in "start").
+        if await self._is_picker_input(locator):
+            try:
+                await locator.click(timeout=timeout)
+            except Exception:  # noqa: BLE001 — focus via fill() is the fallback
+                pass
+            await locator.fill(value, timeout=timeout)
+            try:
+                await locator.press("Enter", timeout=timeout)
+            except Exception:  # noqa: BLE001 — value is already set; commit is best-effort
+                pass
+            return
         await locator.fill(value, timeout=timeout)
 
     async def _do_select(self, plan: ActionPlan, locator, timeout: int) -> None:

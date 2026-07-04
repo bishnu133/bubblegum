@@ -289,6 +289,11 @@ If a page has more than one range picker, add the field's label to disambiguate
 (`"into the Visibility Period Start date"`). As a last resort you can always pin
 the input explicitly with `selector='input[date-range="start"]'`.
 
+Bubblegum also **commits** the value the way pickers expect — for a date/time
+picker input it clicks to activate the field, types, then presses Enter — so a
+range picker's start and end values land in their own fields instead of both
+piling into "Start date". Ordinary text fields are typed normally (no Enter).
+
 Units: `d` days, `w` weeks, `mo` months, `y` years, `h` hours, `min` minutes,
 `s` seconds (`mo`/`min` are spelled out so a bare `m` is never ambiguous).
 Default formats are `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.

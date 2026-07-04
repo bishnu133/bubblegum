@@ -1,5 +1,21 @@
 # Unreleased
 
+## 0.0.6a22 — fix(web): commit typed value into date/time picker inputs (Enter)
+
+- Typing into a date/time picker input now **activates and commits** the field
+  (click → fill → Enter) instead of a bare `fill()`. Ant `RangePicker` keeps
+  "active editing" on one field until Enter, so a plain fill sent the *end* value
+  into the *start* input (both range values landed in "Start date", e.g.
+  `06/07/2026 07:0016/07/2026 23:59`). With the commit keystroke, start and end
+  each land in their own field.
+- Detected generically (no per-app selectors): the input is inside `.ant-picker`
+  / a `*[class*="DatePicker"|"datepicker"|"TimePicker"|"MuiPickers"]` widget, or
+  carries a `date-range` attribute. Ordinary text inputs keep the plain `fill()`
+  path — no stray Enter, so form submits aren't triggered.
+- Verified end-to-end against a **real Ant v5 `RangePicker`** (React + antd UMD),
+  not just static markup. Coverage: `tests/unit/test_picker_type_commit.py`.
+  Engine `0.0.6a21` → `0.0.6a22`; npm client unchanged.
+
 ## 0.0.6a21 — fix(web): deterministic resolver for date-range picker start/end inputs
 
 - `type "…" into Start date` / `End date` now pins the exact input of an Ant
