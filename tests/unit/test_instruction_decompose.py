@@ -24,6 +24,12 @@ from bubblegum.core.parser import decompose
         # the target phrase matches the element's accessible name.
         ("Tap the Submit button", "tap", "Submit", None),
         ("Verify Dashboard is visible", "verify", "Dashboard is visible", None),
+        # Regression: a field whose LABEL contains a verify cue word
+        # ("shown"/"displayed"/"visible") must not flip an explicit "Enter" into
+        # a verify — the leading action verb owns the intent.
+        ('Enter "hi" into Description shown when viewing an Earned Badge',
+         "type", "Description shown when viewing an Earned Badge", "hi"),
+        ('Fill "note" into Message shown', "type", "Message shown", "note"),
     ],
 )
 def test_decompose_grammar(instruction, action, target, value):

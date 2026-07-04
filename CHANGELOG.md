@@ -1,5 +1,23 @@
 # Unreleased
 
+## 0.0.6a24 — fix(parser): a verify cue word in a field label no longer hijacks the action
+
+- `Enter "…" into Description shown when viewing an Earned Badge` was
+  misclassified as **verify** (then failed at execute with "Unsupported
+  action_type … verify") because the field label contains "shown" — one of the
+  verify cue words (`visible`/`present`/`displayed`/`shown`). The cue scan ran
+  over the whole instruction, including the target name.
+- The **leading action verb now wins**: when an instruction starts with an
+  explicit verb (`Enter`/`Type`/`Fill`/`Select`/`Click`/…), that owns the intent,
+  and verify cues appearing later in the target are ignored. The verify-cue scan
+  still catches verb-less phrasing ("login is visible"), and `Check that/if/whether …`
+  still resolves to verify. This unblocks typing into `textarea`s (and any field)
+  whose label happens to contain a state word — resolved via the existing
+  `input_dom` fallback once the action is correctly `type`.
+- Coverage: regression cases in `tests/unit/test_instruction_decompose.py`;
+  browser-verified against the H365 "Description shown when viewing an Earned
+  Badge" / "… when the Badge is awarded" textareas. Engine `0.0.6a23` → `0.0.6a24`.
+
 ## 0.0.6a23 — feat(web): resolve hidden file inputs for `upload` steps (multi-section)
 
 - `Upload "<path>" into <target>` now resolves the real `<input type=file>` even
