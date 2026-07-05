@@ -486,6 +486,19 @@ async def verify(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
+    # Expand dynamic-value tokens in the assertion so {{$name}} recalls (and
+    # {{today}}, {{timestamp}}, …) work in verify — e.g. asserting a row that
+    # contains a value generated earlier in the run. Substituted once here so all
+    # verify branches (text, table, radio-state) see the expanded phrase.
+    instruction = substitute_dynamic_tokens(instruction) or instruction
+    for _k in ("expected_value",):
+        if isinstance(kwargs.get(_k), str):
+            kwargs[_k] = substitute_dynamic_tokens(kwargs[_k])
+    for _k in ("row_match", "row", "cell"):
+        if isinstance(kwargs.get(_k), dict):
+            kwargs[_k] = {kk: (substitute_dynamic_tokens(vv) if isinstance(vv, str) else vv)
+                          for kk, vv in kwargs[_k].items()}
+
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
 
     # Accessibility assertions are page-scoped — there is no element to ground,

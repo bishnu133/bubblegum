@@ -103,6 +103,33 @@ def _strip_quotes(s: str) -> str:
     return s.strip("\"'`").strip()
 
 
+# Split "col1 is "v1", col2 is "v2", ..." into (col, value) pairs. Commas inside
+# quotes are ignored, so a value like "No, cancel" stays intact.
+_PAIR_SPLIT_RE = re.compile(r'\s*[,;]\s*(?=(?:[^"]*"[^"]*")*[^"]*$)')
+_PAIR_RE = re.compile(
+    r'^\s*(?:the\s+)?(.+?)\s+(?:is|=|equals?|shows?|should\s+be|displays?|contains?)\s+(.+?)\s*$',
+    re.IGNORECASE,
+)
+
+
+def _split_col_value_pairs(text: str) -> list[tuple[str, str]]:
+    """Parse a comma-separated list of "<column> is <value>" into pairs.
+
+    Quote-aware so a value containing a comma is preserved. The column has any
+    trailing "column" word stripped; the value is unquoted.
+    """
+    pairs: list[tuple[str, str]] = []
+    for part in _PAIR_SPLIT_RE.split(text):
+        m = _PAIR_RE.match(part)
+        if not m:
+            continue
+        col = re.sub(r"\s+column$", "", m.group(1), flags=re.IGNORECASE).strip()
+        val = _strip_quotes(m.group(2))
+        if col:
+            pairs.append((col, val))
+    return pairs
+
+
 def build_table_matcher(instruction: str, kwargs: dict[str, Any]) -> dict | None:
     """Build a matcher from structured kwargs / expected_value, else parse NL."""
     columns = kwargs.get("columns")
@@ -146,17 +173,20 @@ def parse_table_spec(instruction: str) -> dict | None:
     if not any(w in low for w in ("column", "row", "table", "grid")):
         return None
 
-    # 1) Row-keyed cell: "row where Name is "X", Account Status is "Active""
-    m = re.search(
-        r"\brow\s+(?:where|with|for)\s+(.+?)\s+(?:is|=|equals?)\s+(.+?)\s*[,;]\s*"
-        r"(?:the\s+)?(.+?)\s+(?:is|=|equals?|shows?|should\s+be|displays?)\s+(.+?)\s*$",
-        text, re.IGNORECASE,
-    )
+    # 1) Row-keyed cells: "row where <key> is "X", <col> is "A", <col2> is "B"".
+    # The first "<col> is <val>" pair is the row key; the rest are asserted cells,
+    # so any number of columns can be checked in one assertion.
+    m = re.search(r"\brow\s+(?:where|with|for)\s+(.+)$", text, re.IGNORECASE)
     if m:
-        kc, kv, col, val = (_strip_quotes(g) for g in m.groups())
-        col = re.sub(r"\s+column$", "", col, flags=re.IGNORECASE).strip()
-        if kc and col:
-            return {"row_match": {kc: kv}, "cell": {col: val}}
+        rest = m.group(1)
+        # Tolerate a trailing "... is visible" the tester may add for readability.
+        rest = re.sub(r"\s+(?:is|are)\s+(?:visible|present|shown|displayed)\s*$", "", rest, flags=re.IGNORECASE)
+        pairs = _split_col_value_pairs(rest)
+        if len(pairs) >= 2:
+            (kc, kv), cells = pairs[0], pairs[1:]
+            cell = {c: v for c, v in cells}
+            if kc and cell:
+                return {"row_match": {kc: kv}, "cell": cell}
 
     # 2) "<col> column shows|has|contains|is <val>"
     m = re.search(

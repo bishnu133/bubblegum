@@ -1,5 +1,24 @@
 # Unreleased
 
+## 0.0.6a27 — fix(verify): page-appearance asserts, dynamic tokens in verify, multi-column rows
+
+- **"the X page appear" now asserts the heading.** `verify("the Create Badge page
+  appear")` reduced to searching the page for that whole sentence (not found).
+  `extract_expected` now strips a leading article and trailing appearance verbs
+  (`appear`/`appears`/`loaded`/`opens`/…) and a dangling `page`, so it checks for
+  "Create Badge" — the visible heading. Existing `... is visible` behaviour kept.
+- **Dynamic tokens now expand in `verify`.** `{{$name}}` recalls (and `{{today}}`,
+  `{{timestamp}}`, …) are substituted in the assertion — so you can validate a row
+  that contains a value generated earlier in the run
+  (`verify('in the row where Badge Internal Name is "{{$badgeInternalName}}", …')`).
+  Applied to the phrase and to `expected_value` / `row_match` / `cell` kwargs.
+- **Multi-column row assertions.** `in the row where <key> is "X", <colA> is "A",
+  <colB> is "B"` now checks *every* listed column (previously only the first cell
+  parsed; the rest were swallowed into one value). Quote-aware splitting keeps a
+  value that contains a comma intact, and a trailing "… is visible" is tolerated.
+- Coverage: `tests/unit/test_verify_page_and_rows.py`; browser-verified against a
+  Badges-style table with token recall. Engine `0.0.6a26` → `0.0.6a27`.
+
 ## 0.0.6a26 — feat(web): radio selection + checked-state verification
 
 - **Select a radio by label.** `Select/Choose/Click "<label>" radio [button]` now

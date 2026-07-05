@@ -350,13 +350,22 @@ def extract_expected(instruction: str) -> str:
         instruction,
         flags=re.IGNORECASE,
     ).strip()
-    # Strip common trailing state words that describe the assertion, not the content.
+    # Drop a leading article ("the Create Badge page" -> "Create Badge page").
+    text = re.sub(r"^(the|a|an)\s+", "", text, flags=re.IGNORECASE).strip()
+    # Strip trailing words that describe the assertion, not the content — both
+    # state words (visible/present/…) and page-appearance verbs (appears/loaded/
+    # opens), with an optional "should"/"to"/"is"/"has" lead-in.
     text = re.sub(
-        r"\s+(is\s+)?(visible|present|shown|displayed|enabled|checked|selected|active)\s*$",
+        r"\s+(should\s+|to\s+)?(be\s+|is\s+|are\s+|has\s+|have\s+)?"
+        r"(visible|present|shown|displayed|enabled|checked|selected|active|"
+        r"appear|appears|appeared|appearing|load|loads|loaded|loading|"
+        r"open|opens|opened|render|renders|rendered|exist|exists)\s*$",
         "",
         text,
         flags=re.IGNORECASE,
     ).strip()
+    # A trailing "page" left over from "Create Badge page appear" -> "Create Badge".
+    text = re.sub(r"\s+page\s*$", "", text, flags=re.IGNORECASE).strip()
     return text
 
 

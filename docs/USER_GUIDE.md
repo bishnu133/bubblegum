@@ -417,7 +417,19 @@ await s.verify("Save button", assertion_type="element_state", expected_value="#s
 await s.verify("Create cumulative milestone(s) radio is selected")
 await s.verify("None radio is not selected")
 await s.verify("Newsletter checkbox is checked")
+# A "page appeared" assertion checks the visible heading text:
+await s.verify("the Create Badge page appear")     # -> looks for "Create Badge"
+# Validate specific columns of the row matched by a key column (quote the values):
+await s.verify('in the row where Badge Internal Name is "{{$badgeName}}", '
+               'Status is "Submitted", Badge Type is "Proficiency"')
 ```
+
+> **Row validation tips.** Quote each value; the first `<col> is <val>` pair is the
+> row key and the rest are the cells checked in that row. `{{$name}}` recalls a
+> value you captured earlier (e.g. the unique name you generated on the create
+> page). If you captured only a token (`... as badgeName` stored the timestamp),
+> rebuild the full key with its literal prefix:
+> `Badge Internal Name is "BadgeInternalName-{{$badgeName}}"`.
 
 `assertion_type` options (web): `text_visible` (default), `element_state`
 (a CSS selector is visible), `page_transition` (URL contains a fragment),
