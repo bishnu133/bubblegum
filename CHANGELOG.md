@@ -1,5 +1,26 @@
 # Unreleased
 
+## feat(convert): manual-scenario → automation scaffold converter
+
+- New `bubblegum convert scenarios.xlsx -o generated/` command (and
+  `bubblegum.convert` package) that reads a spreadsheet of manually authored
+  test scenarios (Gherkin steps in a designated column plus metadata columns)
+  and generates reviewable automation scaffolds: normalized `.feature` files,
+  pytest-bdd step definitions (Python), and playwright-bdd step definitions
+  (TypeScript) that call Bubblegum's `act` / `verify` / `extract`.
+- Deterministic-first: steps are parsed with the existing
+  `core.parser.decompose` grammar; an optional AI fallback (off by default,
+  reusing the provider factory — anthropic/openai/gemini/local) handles only the
+  steps the grammar can't split. Each step is classified AUTO / NEEDS_DATA /
+  BACKEND / MANUAL, and non-AUTO steps emit explicit TODO / skip markers instead
+  of silently-wrong code.
+- Team conventions (column names, output languages/dirs, waits, domain glossary,
+  data bindings, AI provider) come from an optional `bubblegum.convert.yaml`
+  profile, so the engine stays team-agnostic. New optional extra:
+  `pip install "bubblegum-ai[convert]"` (adds openpyxl). Docs:
+  `docs/manual-to-automation-converter.md` and
+  `docs/authoring-scenarios-style-guide.md`.
+
 ## 0.0.6a19 — fix(web): clickable fallback strips trailing widget nouns
 
 - `Click the <X> menu` (and `button`/`link`/`tab`/`option`/`item`/`field`) now

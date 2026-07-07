@@ -34,6 +34,9 @@ web = ["playwright"]
 mobile = ["Appium-Python-Client"]
 anthropic = ["anthropic>=0.20"]
 bdd = ["pytest-bdd>=7"]
+# Manual-scenario → automation converter (bubblegum convert). openpyxl reads the
+# .xlsx scenario workbook; everything else is stdlib + existing deps.
+convert = ["openpyxl>=3.1"]
 # Bubblegum writes Allure result files with the standard library alone; this
 # extra only pulls allure-pytest for teams who also want its native fixtures.
 # Viewing results needs the `allure` command-line tool (installed separately).
@@ -45,8 +48,8 @@ a11y = ["playwright"]
 # Visual regression assertions decode/encode PNGs with Pillow; the pure pixel
 # math is stdlib. Needs the web stack to capture screenshots.
 visual = ["playwright", "Pillow>=9"]
-dev = ["pytest-asyncio", "anthropic>=0.20", "Pillow>=9"]
-all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio", "pytest-bdd>=7", "Pillow>=9"]
+dev = ["pytest-asyncio", "anthropic>=0.20", "Pillow>=9", "openpyxl>=3.1"]
+all = ["playwright", "Appium-Python-Client", "anthropic>=0.20", "pytest-asyncio", "pytest-bdd>=7", "Pillow>=9", "openpyxl>=3.1"]
 
 [project.entry-points.pytest11]
 bubblegum = "bubblegum.pytest_plugin"

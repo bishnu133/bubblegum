@@ -72,6 +72,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start in resolve-only mode (preview targets without acting).",
     )
 
+    convert = sub.add_parser(
+        "convert",
+        help="Convert a spreadsheet of manual scenarios into automation scaffolds.",
+        description=(
+            "Read manual test scenarios (Gherkin-style steps in a designated "
+            "column) from an .xlsx workbook and generate reviewable scaffolds: "
+            "normalized .feature files plus pytest-bdd (Python) and "
+            "playwright-bdd (TypeScript) step definitions that call Bubblegum. "
+            "Conventions come from bubblegum.convert.yaml."
+        ),
+    )
+    convert.add_argument("workbook", help="Path to the .xlsx scenarios workbook.")
+    convert.add_argument("-o", "--out", help="Output directory (default: from profile, else 'generated').")
+    convert.add_argument(
+        "--config",
+        help="Path to bubblegum.convert.yaml (default: ./bubblegum.convert.yaml if present).",
+    )
+    convert.add_argument(
+        "--languages",
+        help="Comma-separated output languages to emit: feature,python,typescript.",
+    )
+    convert.add_argument(
+        "--ai",
+        action="store_true",
+        help="Enable the optional AI fallback for steps the grammar can't split.",
+    )
+
     sub.add_parser(
         "bridge",
         help="Run the JSON-RPC bridge over stdio (for non-Python clients).",
@@ -113,6 +140,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             caps=args.caps,
             headless=args.headless,
             dry_run=args.dry_run,
+        )
+
+    if args.command == "convert":
+        from bubblegum.cli.convert import run_convert
+
+        return run_convert(
+            workbook=args.workbook,
+            out=args.out,
+            config=args.config,
+            languages=args.languages,
+            ai=args.ai,
         )
 
     if args.command == "bridge":

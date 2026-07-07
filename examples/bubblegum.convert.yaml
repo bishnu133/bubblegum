@@ -1,0 +1,57 @@
+# Example profile for `bubblegum convert`.
+# Copy to your project root as `bubblegum.convert.yaml` and adjust to your team's
+# conventions. Every key is optional — omit a section to accept the defaults.
+# Docs: docs/manual-to-automation-converter.md
+
+convert:
+  # ---- How to read the spreadsheet ------------------------------------------
+  input:
+    sheet: null                 # null = the active/first sheet; or a sheet name
+    header_row: 1               # 1-based row that holds the column headers
+    columns:                    # logical name -> your spreadsheet's header text
+      feature: "Feature/Epic"
+      title:   "Test Scenario"
+      persona: "User Persona"
+      jira:    "Functional Jira Story"
+      steps:   "Verify"         # REQUIRED: the column holding the Gherkin steps
+    # Rows whose Feature/Epic or Test Scenario contain any of these substrings
+    # are classified BACKEND (non-UI) and emitted as skipped stubs.
+    backend_markers: ["[Backend]"]
+
+  # ---- What to generate ------------------------------------------------------
+  output:
+    languages: ["feature", "python", "typescript"]   # any subset
+    dir: "generated"
+    python:
+      # Import line placed at the top of every pytest-bdd step module.
+      bubblegum_import: "from bubblegum import act, verify, extract"
+    typescript:
+      # Node client the playwright-bdd steps import act/verify/extract from.
+      client_import: "@bubblegum-ai/node"
+
+  # ---- Waits -----------------------------------------------------------------
+  # auto     = rely on Bubblegum's built-in waiting (recommended)
+  # explicit = (reserved) emit explicit waits from your helper
+  # none     = no waits
+  waits:
+    strategy: "auto"
+
+  # ---- Domain rules (the human-authored "skill" layer) -----------------------
+  # Rewrite a recurring phrase to a canonical, automatable step. Matched on the
+  # whole step text, case-insensitively.
+  glossary:
+    # "the standard login": "I open the Login page"
+
+  # Token -> data-binding expression. Reserved for the data-binding phase; today
+  # it is parsed and carried but not yet substituted into emitted calls.
+  data:
+    # "<admin user>": "data.users.admin"
+
+  # ---- Optional AI fallback --------------------------------------------------
+  # Off by default. When enabled, only steps the deterministic grammar can't
+  # split confidently are sent (short text only — never DOM/screenshots) to the
+  # provider configured here, falling back to the `ai:` block in bubblegum.yaml.
+  ai:
+    enabled: false
+    provider: null              # anthropic | openai | gemini | local (or null)
+    model: null                 # e.g. a strong authoring model; null = inherit
