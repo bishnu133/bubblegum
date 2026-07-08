@@ -1,5 +1,19 @@
 # Unreleased
 
+## feat(convert): one test file per workbook, with a test method per scenario
+
+- New default grouping `group_by: workbook`: each Excel file now produces a
+  single `<workbook>.test.mts` (named from the workbook, override with `--name`)
+  containing **one test method per scenario row**, run as isolated labeled tests
+  (a failure in one is reported without aborting the rest) with one aggregated
+  Bubblegum report. Pass two workbooks → get two test files. `--group-by feature`
+  restores one-file-per-Feature/Epic.
+- Overwrite handling: the shared harness (`helpers/`, `flows/login.flow.ts`) is
+  written once and never overwritten, so processing workbooks one by one reuses
+  the same helpers; generated flow/test files regenerate by default, and
+  `--no-overwrite` preserves hand-edits (skips are reported). New CLI flags:
+  `--name`, `--group-by`, `--no-overwrite`; new profile key `output.group_by`.
+
 ## feat(convert): emit smart-tests TypeScript by default (flow + test + harness)
 
 - The converter's default output is now **smart-tests-style TypeScript** that

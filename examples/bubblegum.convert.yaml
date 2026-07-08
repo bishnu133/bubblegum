@@ -26,6 +26,10 @@ convert:
     # "python"     = pytest-bdd step definitions (optional).
     languages: ["typescript"]
     dir: "smart-tests"
+    # "workbook" (default): one <workbook>.test.mts per Excel file with one test
+    #   method per scenario row (shared helpers reused across workbooks).
+    # "feature": one file per Feature/Epic value instead.
+    group_by: "workbook"
     typescript:
       # Import paths from a generated flow/test to the shared harness that
       # `bubblegum convert --init` scaffolds.

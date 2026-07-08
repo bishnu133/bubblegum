@@ -124,7 +124,14 @@ def emit_flow_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
 
 
 def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfile | None = None) -> str:
-    """Return the ``<feature>.test.mts`` text that composes the feature's flows."""
+    """Return the ``.test.mts`` text: one runnable file with one test per scenario.
+
+    Each scenario flow function is invoked as an isolated, labeled "test" — a
+    failure in one is caught and reported without aborting the rest — and all
+    steps land in a single aggregated Bubblegum report. ``feature`` may be a real
+    Feature/Epic group or a whole-workbook bundle; ``feature.name``/``slug`` name
+    the file and report.
+    """
     profile = profile or ConvertProfile()
     helpers = profile.output.ts_helpers_dir.rstrip("/")
     flows = profile.output.ts_flows_dir.rstrip("/")
@@ -158,9 +165,16 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
             "};",
         ]
 
+    # Registry of test methods: [label, flow function]. One entry per scenario.
+    registry = ["// One test method per scenario in this workbook.", "const tests: Array<[string, (engine: any, page: any) => Promise<void>]> = ["]
+    for scenario, fn in zip(feature.scenarios, fn_names):
+        registry.append(f"  ['{ts_escape(scenario.title)}', {fn}],")
+    registry.append("];")
+
     body = [
         "async function main() {",
         "  let ctx: EngineContext | null = null;",
+        "  let failures = 0;",
         "  try {",
         "    ctx = await initEngine();",
         "    const { page, engine } = ctx;",
@@ -173,27 +187,35 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
         body.append(f"    // persona: {persona or 'user'}")
         body.append("    await loginFlow(engine, page, credentials);")
         body.append("")
-    for fn in fn_names:
-        body.append(f"    await {fn}(engine, page);")
     body += [
-        "",
-        f"    console.log('{ts_escape(feature.name)} — all scenarios completed');",
+        "    for (const [name, testFn] of tests) {",
+        "      console.log(`\\n=== TEST: ${name} ===`);",
+        "      try {",
+        "        await testFn(engine, page);",
+        "        console.log(`PASS: ${name}`);",
+        "      } catch (err) {",
+        "        failures++;",
+        "        console.error(`FAIL: ${name} —`, err);",
+        "      }",
+        "    }",
         "  } catch (error) {",
-        "    console.error('Test failed:', error);",
-        "    process.exitCode = 1;",
+        "    console.error('Test run setup failed:', error);",
+        "    failures++;",
         "  } finally {",
         "    if (ctx) {",
         "      try {",
         f"        await generateReports(ctx.engine, {{ title: '{ts_escape(feature.name)}', suiteName: '{feature.slug}' }});",
         "      } catch {",
-        "        // report failure should not mask test failure",
+        "        // report failure should not mask test failures",
         "      }",
         "      await teardownEngine(ctx);",
         "    }",
+        f"    console.log(`\\n{ts_escape(feature.name)}: ${{tests.length - failures}}/${{tests.length}} passed`);",
+        "    process.exitCode = failures > 0 ? 1 : 0;",
         "  }",
         "}",
         "",
         "main();",
     ]
 
-    return "\n".join([_BANNER, *imports, "", *setup, "", *body]).rstrip() + "\n"
+    return "\n".join([_BANNER, *imports, "", *setup, "", *registry, "", *body]).rstrip() + "\n"

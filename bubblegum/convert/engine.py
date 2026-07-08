@@ -36,17 +36,23 @@ def convert_workbook(
     profile: ConvertProfile | None = None,
     write: bool = True,
     init: bool = False,
+    name: str | None = None,
+    overwrite: bool = True,
 ) -> ConvertResult:
     """Convert a spreadsheet of manual scenarios into automation scaffolds.
 
     Args:
-        path:    the .xlsx workbook.
-        out_dir: output directory (defaults to the profile's output.dir).
-        profile: a ConvertProfile; loaded from bubblegum.convert.yaml if None.
-        write:   when False, build the IR + files-in-memory but write nothing
-                 (used by tests / dry-run).
-        init:    when True, also scaffold the shared TypeScript harness
-                 (helpers/ + flows/login.flow.ts + .env example) if absent.
+        path:      the .xlsx workbook.
+        out_dir:   output directory (defaults to the profile's output.dir).
+        profile:   a ConvertProfile; loaded from bubblegum.convert.yaml if None.
+        write:     when False, build the IR + files-in-memory but write nothing.
+        init:      when True, also scaffold the shared TypeScript harness
+                   (helpers/ + flows/login.flow.ts + .env example) if absent.
+        name:      base name for the generated test/flow (workbook grouping);
+                   defaults to a slug of the workbook filename.
+        overwrite: when False, existing generated flow/test files are left in
+                   place (hand-edits preserved) and recorded in result.warnings.
+                   The shared harness is never overwritten regardless.
     """
     profile = profile or ConvertProfile.load()
     out_root = Path(out_dir) if out_dir is not None else Path(profile.output.dir)
@@ -69,10 +75,17 @@ def convert_workbook(
 
         result.files_written.extend(scaffold_harness(out_root))
 
-    for feature in features:
-        if "typescript" in langs:
-            _emit_typescript(feature, out_root, profile, result, write)
+    if "typescript" in langs:
+        if profile.output.group_by == "workbook":
+            # One flow + one test for the whole workbook; each scenario becomes
+            # a test method inside it.
+            bundle = _workbook_bundle(path, name, features)
+            _emit_typescript(bundle, out_root, profile, result, write, overwrite)
+        else:
+            for feature in features:
+                _emit_typescript(feature, out_root, profile, result, write, overwrite)
 
+    for feature in features:
         if "feature" in langs:
             content = emit_feature_file(feature)
             result.files_written.append(str(out_root / "features" / f"{feature.slug}.feature"))
@@ -93,8 +106,25 @@ def convert_workbook(
     return result
 
 
-def _emit_typescript(feature, out_root: Path, profile, result: ConvertResult, write: bool) -> None:
-    """Emit the smart-tests <feature>.flow.ts + <feature>.test.mts pair."""
+def _workbook_bundle(path, name: str | None, features):
+    """Collapse all features/scenarios of a workbook into one synthetic Feature.
+
+    The file is named from ``name`` or the workbook's filename stem; every
+    scenario across every Feature/Epic becomes a test method in the one file.
+    """
+    from bubblegum.convert.models import Feature
+    from bubblegum.convert.normalize import _slugify
+
+    stem = Path(path).stem
+    slug = _slugify(name) if name else _slugify(stem)
+    display = name or stem
+    scenarios = [s for f in features for s in f.scenarios]
+    tags = sorted({t for f in features for t in f.tags})
+    return Feature(name=display, slug=slug or "workbook", scenarios=scenarios, tags=tags)
+
+
+def _emit_typescript(feature, out_root: Path, profile, result: ConvertResult, write: bool, overwrite: bool = True) -> None:
+    """Emit the smart-tests <name>.flow.ts + <name>.test.mts pair for a group."""
     from bubblegum.convert.emitters.ts_smart import (
         _fn_name,
         emit_flow_file,
@@ -108,9 +138,16 @@ def _emit_typescript(feature, out_root: Path, profile, result: ConvertResult, wr
     test_path = out_root / "tests" / f"{feature.slug}.test.mts"
     result.files_written.append(str(flow_path))
     result.files_written.append(str(test_path))
-    if write:
-        _write(flow_path, emit_flow_file(feature, fn_names, profile))
-        _write(test_path, emit_test_file(feature, fn_names, profile))
+    if not write:
+        return
+    for target, content in (
+        (flow_path, emit_flow_file(feature, fn_names, profile)),
+        (test_path, emit_test_file(feature, fn_names, profile)),
+    ):
+        if target.exists() and not overwrite:
+            result.warnings.append(f"skipped existing (no-overwrite): {target}")
+            continue
+        _write(target, content)
 
 
 def _write(path: Path, content: str) -> None:

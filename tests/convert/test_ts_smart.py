@@ -80,9 +80,28 @@ def test_test_file_composes_flows_and_login():
     assert "import { loginFlow } from '../flows/login.flow';" in text
     assert f"import {{ {fns[0]} }} from '../flows/checkout.flow';" in text
     assert "await loginFlow(engine, page, credentials);" in text
-    assert f"await {fns[0]}(engine, page);" in text
+    # each scenario is registered as a labeled test method and run in a loop
+    assert f"['Verify a valid coupon applies a discount', {fns[0]}]," in text
+    assert "for (const [name, testFn] of tests)" in text
+    assert "await testFn(engine, page);" in text
     assert "await generateReports(ctx.engine" in text
     assert "main();" in text
+
+
+def test_test_file_has_one_method_per_scenario():
+    # A two-scenario "workbook" bundle → one test file with two test methods.
+    raws = [
+        RawScenario(row=1, steps_text="Given I open A\nThen I see B",
+                    fields={"feature": "[F][Web] Wb", "title": "First case"}),
+        RawScenario(row=2, steps_text="Given I open C\nThen I see D",
+                    fields={"feature": "[F][Web] Wb", "title": "Second case"}),
+    ]
+    feat = build_features(raws)[0]
+    fns = _fns(feat)
+    text = emit_test_file(feat, fns)
+    assert "'First case'," in text
+    assert "'Second case'," in text
+    assert text.count("], ") + text.count("],\n") >= 2
 
 
 def test_test_file_omits_login_when_no_precondition():

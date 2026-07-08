@@ -83,6 +83,10 @@ class OutputProfile:
     # Import paths from a generated flow/test file to the shared harness.
     ts_helpers_dir: str = "../helpers"
     ts_flows_dir: str = "../flows"
+    # "workbook" → one flow + one test per Excel file, with one test method per
+    # scenario row (the team's requested default). "feature" → one pair per
+    # Feature/Epic value within the workbook.
+    group_by: str = "workbook"
 
 
 @dataclass
@@ -158,6 +162,11 @@ class ConvertProfile:
             ts_client_import=str(ts.get("client_import", "@bubblegum-ai/node")),
             ts_helpers_dir=str(ts.get("helpers_dir", "../helpers")),
             ts_flows_dir=str(ts.get("flows_dir", "../flows")),
+            group_by=(
+                "feature"
+                if str(out.get("group_by", "workbook")).strip().lower() == "feature"
+                else "workbook"
+            ),
         )
 
         ai = conv.get("ai", {}) or {}

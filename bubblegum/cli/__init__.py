@@ -103,6 +103,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also scaffold the shared TypeScript harness (helpers/ + flows/login.flow.ts + .env example) if absent.",
     )
+    convert.add_argument(
+        "--name",
+        help="Base name for the generated test/flow file (workbook grouping). Defaults to the workbook filename.",
+    )
+    convert.add_argument(
+        "--no-overwrite",
+        action="store_true",
+        help="Leave existing generated flow/test files in place instead of regenerating them.",
+    )
+    convert.add_argument(
+        "--group-by",
+        choices=["workbook", "feature"],
+        help="workbook (default): one test file per Excel with a test method per scenario. feature: one file per Feature/Epic.",
+    )
 
     sub.add_parser(
         "bridge",
@@ -157,6 +171,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             languages=args.languages,
             ai=args.ai,
             init=args.init,
+            name=args.name,
+            no_overwrite=args.no_overwrite,
+            group_by=args.group_by,
         )
 
     if args.command == "bridge":
