@@ -1,5 +1,25 @@
 # Unreleased
 
+## feat(convert): emit smart-tests TypeScript by default (flow + test + harness)
+
+- The converter's default output is now **smart-tests-style TypeScript** that
+  drives the `@bubblegum-ai/node` client directly, matching the hand-written
+  `smart-tests/` architecture: per Feature/Epic it emits `<feature>.flow.ts`
+  (one exported async function per scenario, calling `act`/`verify`/`observe`
+  wrappers, with `waitForLoadState`+`waitForTimeout` after navigation) and a
+  thin `<feature>.test.mts` that composes them with `initEngine`, `loginFlow`
+  for persona preconditions, `generateReports`, and teardown.
+- `bubblegum convert --init` scaffolds the shared harness once
+  (`helpers/{engine,actions,reporter}.ts`, `flows/login.flow.ts`, a
+  `.env.bubblegum.local.example`); existing files are never overwritten.
+- The previous playwright-bdd TypeScript emitter is removed; `.feature`
+  (Gherkin) and `python` (pytest-bdd) remain as opt-in `output.languages`.
+  Default `output.dir` is now `smart-tests`. New profile keys:
+  `output.typescript.{helpers_dir,flows_dir}`.
+- Reserved the `login` slug so a Feature literally named "Login" can't overwrite
+  the scaffolded `flows/login.flow.ts`. Generated TypeScript type-checks clean
+  under `tsc --strict`.
+
 ## feat(convert): manual-scenario → automation scaffold converter
 
 - New `bubblegum convert scenarios.xlsx -o generated/` command (and

@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable the optional AI fallback for steps the grammar can't split.",
     )
+    convert.add_argument(
+        "--init",
+        action="store_true",
+        help="Also scaffold the shared TypeScript harness (helpers/ + flows/login.flow.ts + .env example) if absent.",
+    )
 
     sub.add_parser(
         "bridge",
@@ -151,6 +156,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             config=args.config,
             languages=args.languages,
             ai=args.ai,
+            init=args.init,
         )
 
     if args.command == "bridge":

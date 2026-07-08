@@ -20,19 +20,26 @@ convert:
 
   # ---- What to generate ------------------------------------------------------
   output:
-    languages: ["feature", "python", "typescript"]   # any subset
-    dir: "generated"
+    # "typescript" = smart-tests style: <feature>.flow.ts + <feature>.test.mts
+    #                driving the @bubblegum-ai/node client (the default).
+    # "feature"    = normalized Gherkin .feature files (optional).
+    # "python"     = pytest-bdd step definitions (optional).
+    languages: ["typescript"]
+    dir: "smart-tests"
+    typescript:
+      # Import paths from a generated flow/test to the shared harness that
+      # `bubblegum convert --init` scaffolds.
+      helpers_dir: "../helpers"
+      flows_dir: "../flows"
+      # Node client the generated tests import act/verify from.
+      client_import: "@bubblegum-ai/node"
     python:
       # Import line placed at the top of every pytest-bdd step module.
       bubblegum_import: "from bubblegum import act, verify, extract"
-    typescript:
-      # Node client the playwright-bdd steps import act/verify/extract from.
-      client_import: "@bubblegum-ai/node"
 
   # ---- Waits -----------------------------------------------------------------
-  # auto     = rely on Bubblegum's built-in waiting (recommended)
-  # explicit = (reserved) emit explicit waits from your helper
-  # none     = no waits
+  # auto = insert page.waitForLoadState + waitForTimeout after navigation steps
+  #        (matches the smart-tests convention). none = no waits.
   waits:
     strategy: "auto"
 

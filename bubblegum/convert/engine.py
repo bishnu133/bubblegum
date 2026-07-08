@@ -17,11 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bubblegum.convert.emitters import (
-    emit_feature_file,
-    emit_python_steps,
-    emit_typescript_steps,
-)
+from bubblegum.convert.emitters import emit_feature_file, emit_python_steps
 from bubblegum.convert.ingest import read_workbook
 from bubblegum.convert.models import ConvertResult
 from bubblegum.convert.normalize import build_features
@@ -33,6 +29,7 @@ def convert_workbook(
     out_dir: str | Path | None = None,
     profile: ConvertProfile | None = None,
     write: bool = True,
+    init: bool = False,
 ) -> ConvertResult:
     """Convert a spreadsheet of manual scenarios into automation scaffolds.
 
@@ -42,6 +39,8 @@ def convert_workbook(
         profile: a ConvertProfile; loaded from bubblegum.convert.yaml if None.
         write:   when False, build the IR + files-in-memory but write nothing
                  (used by tests / dry-run).
+        init:    when True, also scaffold the shared TypeScript harness
+                 (helpers/ + flows/login.flow.ts + .env example) if absent.
     """
     profile = profile or ConvertProfile.load()
     out_root = Path(out_dir) if out_dir is not None else Path(profile.output.dir)
@@ -59,34 +58,53 @@ def convert_workbook(
     result = ConvertResult(features=features)
     langs = profile.output.languages
 
+    if init and write and "typescript" in langs:
+        from bubblegum.convert.scaffold import scaffold_harness
+
+        result.files_written.extend(scaffold_harness(out_root))
+
     for feature in features:
-        feature_filename = f"{feature.slug}.feature"
+        if "typescript" in langs:
+            _emit_typescript(feature, out_root, profile, result, write)
 
         if "feature" in langs:
             content = emit_feature_file(feature)
-            result.files_written.append(str(out_root / "features" / feature_filename))
+            result.files_written.append(str(out_root / "features" / f"{feature.slug}.feature"))
             if write:
-                _write(out_root / "features" / feature_filename, content)
+                _write(out_root / "features" / f"{feature.slug}.feature", content)
 
         if "python" in langs:
-            # The step module references the .feature by relative path.
-            rel = f"../features/{feature_filename}" if "feature" in langs else feature_filename
+            rel = f"../features/{feature.slug}.feature" if "feature" in langs else f"{feature.slug}.feature"
             content = emit_python_steps(feature, rel, profile)
             result.files_written.append(str(out_root / "python" / f"test_{feature.slug}.py"))
             if write:
                 _write(out_root / "python" / f"test_{feature.slug}.py", content)
-
-        if "typescript" in langs:
-            content = emit_typescript_steps(feature, profile)
-            result.files_written.append(str(out_root / "typescript" / f"{feature.slug}.steps.ts"))
-            if write:
-                _write(out_root / "typescript" / f"{feature.slug}.steps.ts", content)
 
     if write:
         _write(out_root / "CONVERT_REPORT.md", _report(result))
         result.files_written.append(str(out_root / "CONVERT_REPORT.md"))
 
     return result
+
+
+def _emit_typescript(feature, out_root: Path, profile, result: ConvertResult, write: bool) -> None:
+    """Emit the smart-tests <feature>.flow.ts + <feature>.test.mts pair."""
+    from bubblegum.convert.emitters.ts_smart import (
+        _fn_name,
+        emit_flow_file,
+        emit_test_file,
+    )
+
+    used: set[str] = set()
+    fn_names = [_fn_name(s.title, used) for s in feature.scenarios]
+
+    flow_path = out_root / "flows" / f"{feature.slug}.flow.ts"
+    test_path = out_root / "tests" / f"{feature.slug}.test.mts"
+    result.files_written.append(str(flow_path))
+    result.files_written.append(str(test_path))
+    if write:
+        _write(flow_path, emit_flow_file(feature, fn_names, profile))
+        _write(test_path, emit_test_file(feature, fn_names, profile))
 
 
 def _write(path: Path, content: str) -> None:

@@ -1,12 +1,8 @@
-"""Unit tests for the .feature / python / typescript emitters."""
+"""Unit tests for the optional .feature / pytest-bdd emitters."""
 
 from __future__ import annotations
 
-from bubblegum.convert.emitters import (
-    emit_feature_file,
-    emit_python_steps,
-    emit_typescript_steps,
-)
+from bubblegum.convert.emitters import emit_feature_file, emit_python_steps
 from bubblegum.convert.emitters.stepcall import primitive_for
 from bubblegum.convert.models import CanonicalStep, StepKind
 from bubblegum.convert.normalize import build_features
@@ -77,11 +73,3 @@ def test_python_dedupes_repeated_steps():
     assert text.count('@given("I open X")') == 1
 
 
-def test_typescript_emitter():
-    text = emit_typescript_steps(_feature())
-    assert "import { createBdd } from 'playwright-bdd';" in text
-    assert "from '@bubblegum-ai/node'" in text
-    assert "When('I enter \"SAVE10\" into the Coupon code field'" in text
-    assert "await act('enter \"SAVE10\" into the Coupon code field', { page });" in text
-    # pending step keeps the intended call commented out
-    assert "// TODO (NEEDS_DATA):" in text

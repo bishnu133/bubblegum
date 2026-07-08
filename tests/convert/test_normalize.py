@@ -103,6 +103,13 @@ def test_feature_slugs_are_unique_across_tag_variants():
     assert any(s.startswith("streaks_") for s in slugs)
 
 
+def test_login_feature_slug_does_not_clobber_scaffold():
+    # A Feature literally named "Login" must not slugify to "login" (which would
+    # overwrite the scaffolded flows/login.flow.ts that exports loginFlow).
+    feats = build_features([_raw("Given I open X\nThen I see Y", feature="[F][Web] Login")])
+    assert feats[0].slug != "login"
+
+
 def test_glossary_rewrites_step():
     sc = normalize_scenario(
         _raw("Given the standard login"),

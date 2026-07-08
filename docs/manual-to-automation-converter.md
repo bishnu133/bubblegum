@@ -1,9 +1,13 @@
 # Manual → Automation Converter (`bubblegum convert`)
 
 Turn a spreadsheet of manually authored test scenarios into reviewable
-automation **scaffolds**: normalized Gherkin `.feature` files plus step
-definitions for Python (pytest-bdd) and TypeScript (playwright-bdd) that call
-Bubblegum's `act` / `verify` / `extract`.
+automation **scaffolds**. The default output is **"smart-tests"-style
+TypeScript** — a reusable `<feature>.flow.ts` (one exported async function per
+scenario) plus a thin `<feature>.test.mts` that composes them — driving the
+`@bubblegum-ai/node` client (`Bubblegum.attach` + `act`/`verify`/`observe`),
+with shared `helpers/` and `flows/login.flow.ts` scaffolded by `--init`.
+Normalized Gherkin `.feature` files and Python pytest-bdd step definitions
+remain available as optional output languages.
 
 > **Scaffolds, not magic.** Bubblegum already turns a plain-English step into a
 > grounded UI action at runtime. The converter's job is *authoring*: read your
@@ -19,26 +23,34 @@ Bubblegum's `act` / `verify` / `extract`.
 ```bash
 pip install "bubblegum-ai[convert]"    # adds openpyxl for .xlsx reading
 
-bubblegum convert scenarios.xlsx -o generated/
+# First run: --init also scaffolds the shared harness (helpers/, login flow).
+bubblegum convert scenarios.xlsx -o smart-tests/ --init
 ```
 
-Output:
+Output (smart-tests layout):
 
 ```
-generated/
-├── features/      one .feature per Feature/Epic
-├── python/        test_<feature>.py   (pytest-bdd + bubblegum)
-├── typescript/    <feature>.steps.ts  (playwright-bdd + @bubblegum-ai/node)
-└── CONVERT_REPORT.md   step counts by classification
+smart-tests/
+├── helpers/        engine.ts, actions.ts, reporter.ts   (scaffolded by --init)
+├── flows/
+│   ├── login.flow.ts          reusable loginFlow (scaffolded by --init)
+│   └── <feature>.flow.ts      one exported async fn per scenario (generated)
+├── tests/
+│   └── <feature>.test.mts     composes the feature's flows (generated)
+├── .env.bubblegum.local.example
+└── CONVERT_REPORT.md          step counts by classification
 ```
+
+Run a generated test:  `npx tsx smart-tests/tests/<feature>.test.mts`
 
 CLI options:
 
 | Flag | Meaning |
 |---|---|
-| `-o, --out DIR` | Output directory (default: profile `output.dir`, else `generated`). |
+| `-o, --out DIR` | Output directory (default: profile `output.dir`, else `smart-tests`). |
+| `--init` | Also scaffold the shared harness (`helpers/`, `flows/login.flow.ts`, `.env` example) if absent. |
 | `--config PATH` | Path to `bubblegum.convert.yaml` (default: `./bubblegum.convert.yaml`). |
-| `--languages a,b` | Subset of `feature,python,typescript` to emit. |
+| `--languages a,b` | Subset of `typescript,feature,python` to emit (default: `typescript`). |
 | `--ai` | Enable the optional AI fallback for steps the grammar can't split. |
 
 ---
@@ -55,7 +67,8 @@ RawScenario[]
 CanonicalStep[]       classified AUTO / NEEDS_DATA / BACKEND / MANUAL
    │  group by Feature/Epic
    ▼
-Feature[]  ──emit──▶  .feature   +   pytest-bdd steps   +   playwright-bdd steps
+Feature[]  ──emit──▶  <feature>.flow.ts  +  <feature>.test.mts   (default)
+                      (optional: .feature, pytest-bdd steps)
 ```
 
 **Deterministic-first, AI-optional.** Every step is first parsed with the same
@@ -68,37 +81,36 @@ posture. AI never sees your DOM or screenshots, only the short step text.
 
 | Kind | Meaning | Emitted as |
 |---|---|---|
-| ✅ **AUTO** | Clean action or assertion with a concrete target. | A real `act` / `verify` / `extract` call. |
-| ⚠️ **NEEDS_DATA** | Precondition / login / test data a human must wire. | `pytest.skip` (Py) / pending no-op (TS) + TODO. |
-| 🔧 **BACKEND** | Non-UI backend behaviour (`[Backend]` feature tag). | Skipped stub + TODO. |
-| ✋ **MANUAL** | Abstract assertion or unparseable step. | Skip + TODO for a human. |
+| ✅ **AUTO** | Clean action or assertion with a concrete target. | A real `act` / `verify` call. |
+| ⚠️ **NEEDS_DATA** | Precondition / login / test data a human must wire. | `// TODO` + commented best-guess call (login → `loginFlow` in setup). |
+| 🔧 **BACKEND** | Non-UI backend behaviour (`[Backend]` feature tag). | `// TODO` pending stub. |
+| ✋ **MANUAL** | Abstract assertion or unparseable step. | `// TODO` for a human. |
 
-The generated `.feature` files annotate every non-AUTO step inline:
+A generated `<feature>.flow.ts` scenario function:
 
-```gherkin
-  Scenario: Verify a valid coupon applies a discount
-    Given I am logged in as a "Shopper"
-    # ^ NEEDS_DATA: Login/persona precondition — map to an auth fixture.
-    And I open the Checkout page
-    When I enter "SAVE10" into the Coupon code field
-    And I click the Apply button
-    Then I see the Discount applied message
+```typescript
+/** Verify a valid coupon applies a discount */
+export async function aValidCouponAppliesADiscount(engine: Bubblegum, page: Page): Promise<void> {
+  // Login precondition — handled by loginFlow() in the test setup.
+  await act(engine, 'Open the Checkout page');
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForTimeout(3000);
+  await act(engine, 'Enter "SAVE10" into the Coupon code field');
+  await act(engine, 'Click the Apply button');
+  await verify(engine, 'The Discount applied message');
+  console.log('Verify a valid coupon applies a discount — done');
+}
 ```
 
 ### Why the generated calls are robust
 
 An AUTO step passes its **subject-stripped natural-language text** straight to a
-Bubblegum primitive:
-
-```python
-@when("I enter \"SAVE10\" into the Coupon code field")
-async def step_when(page):
-    await act("enter \"SAVE10\" into the Coupon code field", page=page)
-```
-
-Bubblegum re-parses that text at runtime with the same grammar, so there is no
-brittle call reconstruction — and the Python and TypeScript emitters stay in
-lockstep because they share one call-mapping helper.
+Bubblegum primitive (`act(engine, 'Enter "SAVE10" into the Coupon code field')`).
+Bubblegum re-parses that text at runtime with the same grammar the converter
+used, so there is no brittle call reconstruction — the login precondition is
+handled once by `loginFlow`, navigation steps get the team's
+`waitForLoadState` + `waitForTimeout` pattern, and the whole tree type-checks
+under `tsc --strict`.
 
 ---
 
@@ -183,11 +195,11 @@ result = convert_workbook("scenarios.xlsx", write=False)
 
 ## Roadmap
 
-- **Now:** Excel ingest, Gherkin normalization + classification, `.feature` +
-  pytest-bdd + playwright-bdd emitters, deterministic-first parsing, optional
-  AI fallback, per-team profile.
-- **Next:** data-binding layer (`data:` tokens → fixtures), reusable-flow macros
-  (persona → login `Background`), the Gemini provider, a Claude skill mirroring
-  the glossary, and dry-run validation of generated tests against the resolver
-  chain.
-```
+- **Now:** Excel ingest, Gherkin normalization + classification,
+  smart-tests TypeScript emitter (`<feature>.flow.ts` + `<feature>.test.mts`)
+  with `--init` harness scaffold, optional `.feature` / pytest-bdd emitters,
+  deterministic-first parsing, optional AI fallback, per-team profile.
+- **Next:** data-binding layer (`data:` tokens → a `<feature>.data.ts` +
+  dynamic-value templating like `{{timestamp|… as var}}`), richer reusable-flow
+  macros, the Gemini provider, a Claude skill mirroring the glossary, and
+  running the generated tests against a demo app in CI.

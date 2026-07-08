@@ -58,9 +58,11 @@ _DEFAULT_COLUMNS: dict[str, str] = {
     "steps": "Verify",
 }
 
-_DEFAULT_LANGUAGES = ("feature", "python", "typescript")
+# "typescript" is the smart-tests emitter (flow + test). "feature" (Gherkin) and
+# "python" (pytest-bdd) remain available for teams that want them.
+_DEFAULT_LANGUAGES = ("typescript",)
 _DEFAULT_BACKEND_MARKERS = ("[Backend]", "[backend]", "backend")
-_VALID_LANGUAGES = {"feature", "python", "typescript"}
+_VALID_LANGUAGES = {"typescript", "feature", "python"}
 _VALID_WAIT_STRATEGIES = {"auto", "explicit", "none"}
 
 
@@ -75,9 +77,12 @@ class InputProfile:
 @dataclass
 class OutputProfile:
     languages: tuple[str, ...] = _DEFAULT_LANGUAGES
-    dir: str = "generated"
+    dir: str = "smart-tests"
     bubblegum_import: str = "from bubblegum import act, verify, extract"
     ts_client_import: str = "@bubblegum-ai/node"
+    # Import paths from a generated flow/test file to the shared harness.
+    ts_helpers_dir: str = "../helpers"
+    ts_flows_dir: str = "../flows"
 
 
 @dataclass
@@ -146,11 +151,13 @@ class ConvertProfile:
         ts = out.get("typescript", {}) or {}
         output_profile = OutputProfile(
             languages=tuple(langs) if langs else _DEFAULT_LANGUAGES,
-            dir=str(out.get("dir", "generated")),
+            dir=str(out.get("dir", "smart-tests")),
             bubblegum_import=str(
                 py.get("bubblegum_import", "from bubblegum import act, verify, extract")
             ),
             ts_client_import=str(ts.get("client_import", "@bubblegum-ai/node")),
+            ts_helpers_dir=str(ts.get("helpers_dir", "../helpers")),
+            ts_flows_dir=str(ts.get("flows_dir", "../flows")),
         )
 
         ai = conv.get("ai", {}) or {}

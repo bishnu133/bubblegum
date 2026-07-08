@@ -204,6 +204,11 @@ def _feature_tags(name: str) -> list[str]:
 # Generic bracket tags that don't distinguish one feature from another.
 _GENERIC_TAGS = {"f", "e", "feature", "epic"}
 
+# Slugs reserved for scaffolded shared flows so a generated feature flow never
+# overwrites them (e.g. a Feature literally named "Login" must not clobber the
+# scaffolded flows/login.flow.ts that exports loginFlow).
+_RESERVED_SLUGS = {"login"}
+
 
 def _unique_slug(name: str, used: set[str]) -> str:
     """A filesystem-safe slug guaranteed unique within ``used``.
@@ -306,7 +311,7 @@ def build_features(
     profile = profile or ConvertProfile()
     grouped: dict[str, Feature] = {}
     order: list[str] = []
-    used_slugs: set[str] = set()
+    used_slugs: set[str] = set(_RESERVED_SLUGS)
 
     for raw in scenarios:
         name = raw.feature or "Ungrouped"

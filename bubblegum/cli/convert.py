@@ -16,6 +16,7 @@ def run_convert(
     config: str | None,
     languages: str | None,
     ai: bool,
+    init: bool = False,
 ) -> int:
     """Execute a conversion run and print a summary. Returns an exit code."""
     from bubblegum.convert.engine import convert_workbook
@@ -35,7 +36,7 @@ def run_convert(
         profile.ai.enabled = True
 
     try:
-        result = convert_workbook(workbook, out_dir=out, profile=profile)
+        result = convert_workbook(workbook, out_dir=out, profile=profile, init=init)
     except ImportError as exc:
         print(f"error: {exc}")
         return 3
