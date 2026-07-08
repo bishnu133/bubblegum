@@ -59,13 +59,35 @@ _LOGIN_HINT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Vague assertion phrasing that has no concrete, checkable target.
+# Vague assertion phrasing that has no concrete, checkable target. Checked
+# against the *original* step text (before subject/modal stripping) so signals
+# like "will be able to" survive.
 _VAGUE_RE = re.compile(
-    r"\b(will\s+be\s+able\s+to|as\s+expected|correctly|appropriately|"
-    r"existing\s+behaviou?r|follow\s+existing|depend(?:s|ing)?\s+on|"
-    r"where\s+applicable|if\s+applicable|etc\.?|and\s+so\s+on)\b",
+    r"\b(will\s+be\s+able\s+to|able\s+to|as\s+expected|correctly|appropriately|"
+    r"existing\s+behaviou?r|follow\s+existing|depend(?:s|ing)?\s+on|regardless|"
+    r"based\s+on|where\s+applicable|if\s+applicable|etc\.?|and\s+so\s+on|"
+    r"e\.g\.)\b",
     re.IGNORECASE,
 )
+
+# A single assertion, not a compound one. Real "Then" lines that pack several
+# checks (with "if", inline "e.g.", or many clauses) can't map to one verify.
+_COMPOUND_RE = re.compile(r"\bif\b|,\s*(?:and|followed by)\b|\band\b.*\band\b", re.IGNORECASE)
+
+# Verbs that mark a step as a genuine UI action (used to gate When → AUTO so a
+# state precondition like "there is 1 badge group" isn't mistaken for a click).
+_ACTION_VERBS = {
+    "click", "tap", "press", "type", "enter", "fill", "input", "select",
+    "choose", "pick", "open", "navigate", "go", "follow", "upload", "attach",
+    "check", "uncheck", "tick", "untick", "toggle", "set", "hover", "scroll",
+    "expand", "collapse", "drag", "swipe", "double", "long", "zoom", "pinch",
+    "submit", "search", "clear", "close", "switch",
+}
+
+
+def _starts_with_action_verb(instruction: str) -> bool:
+    m = re.match(r"^\s*([a-zA-Z]+)", instruction or "")
+    return bool(m) and m.group(1).lower() in _ACTION_VERBS
 
 _SECTION = {"given": "given", "when": "when", "then": "then"}
 
@@ -119,21 +141,31 @@ def _apply_glossary(text: str, glossary: dict[str, str]) -> str:
     return text
 
 
-def _classify(section: str, text: str, parsed, is_backend: bool) -> tuple[StepKind, str | None]:
-    """Decide the StepKind + a TODO reason for one step."""
+def _classify(
+    section: str,
+    display_text: str,
+    instruction: str,
+    parsed,
+    is_backend: bool,
+) -> tuple[StepKind, str | None]:
+    """Decide the StepKind + a TODO reason for one step.
+
+    ``display_text`` is the original step text (used for vagueness/compound
+    signals); ``instruction`` is the subject-stripped form used for the action.
+    """
     if is_backend:
         return StepKind.BACKEND, "Backend/data behaviour — not a UI interaction."
 
-    vague = bool(_VAGUE_RE.search(text))
+    vague = bool(_VAGUE_RE.search(display_text))
 
     if section == "given":
         # Login / persona precondition → map to an auth fixture (not a UI act).
-        if _LOGIN_HINT_RE.search(text):
+        if _LOGIN_HINT_RE.search(display_text):
             return StepKind.NEEDS_DATA, "Login/persona precondition — map to an auth fixture."
         # Plain navigation → drivable. Pure state/data → needs seeding.
-        if _NAV_HINT_RE.search(text) and not _DATA_HINT_RE.search(text):
+        if _NAV_HINT_RE.search(display_text) and not _DATA_HINT_RE.search(display_text):
             return StepKind.AUTO, None
-        if _DATA_HINT_RE.search(text):
+        if _DATA_HINT_RE.search(display_text):
             return StepKind.NEEDS_DATA, "Precondition / test data must be set up."
         # Persona-style "Given a <role> user" → precondition.
         return StepKind.NEEDS_DATA, "Precondition — map persona/setup to a fixture."
@@ -141,11 +173,16 @@ def _classify(section: str, text: str, parsed, is_backend: bool) -> tuple[StepKi
     if section == "then":
         if vague or parsed.target_phrase is None:
             return StepKind.MANUAL, "Abstract assertion — supply a concrete element/expectation."
+        if _COMPOUND_RE.search(display_text):
+            return StepKind.MANUAL, "Compound assertion — split into one check per Then."
         return StepKind.AUTO, None
 
-    # when / imperative action
-    if parsed.confident and parsed.action_type in _ACTIONABLE and parsed.target_phrase:
-        return StepKind.AUTO, None
+    # when / imperative action: require a genuine action verb so a state
+    # precondition ("there is 1 badge group") isn't mistaken for a UI action.
+    if not _starts_with_action_verb(instruction):
+        if _DATA_HINT_RE.search(display_text):
+            return StepKind.NEEDS_DATA, "Reads like a precondition/state — set up test data."
+        return StepKind.MANUAL, "No clear UI action — rephrase to a concrete action."
     if parsed.action_type in _ACTIONABLE and parsed.target_phrase:
         return StepKind.AUTO, None
     return StepKind.MANUAL, "Could not resolve a concrete action/target."
@@ -162,6 +199,41 @@ def _feature_tags(name: str) -> list[str]:
     """Extract bracket tags like [F][H365] → @f @h365."""
     tags = re.findall(r"\[([^\]]+)\]", name)
     return ["@" + re.sub(r"[^a-zA-Z0-9]+", "_", t).strip("_").lower() for t in tags if t.strip()]
+
+
+# Generic bracket tags that don't distinguish one feature from another.
+_GENERIC_TAGS = {"f", "e", "feature", "epic"}
+
+
+def _unique_slug(name: str, used: set[str]) -> str:
+    """A filesystem-safe slug guaranteed unique within ``used``.
+
+    Two features whose names differ only by a bracket tag — e.g.
+    ``[F][BAP] Streaks`` vs ``[F][Backend] Streaks`` — would otherwise slugify
+    identically and overwrite each other. On collision we append the
+    distinguishing (non-generic) bracket tag, then a numeric suffix as a last
+    resort. ``used`` is mutated with the chosen slug.
+    """
+    base = _slugify(name)
+    if base not in used:
+        used.add(base)
+        return base
+
+    # Prefer a meaningful disambiguator from the feature's own bracket tags.
+    for raw_tag in re.findall(r"\[([^\]]+)\]", name):
+        tag = re.sub(r"[^a-zA-Z0-9]+", "_", raw_tag).strip("_").lower()
+        if tag and tag not in _GENERIC_TAGS:
+            candidate = f"{base}_{tag}"
+            if candidate not in used:
+                used.add(candidate)
+                return candidate
+
+    n = 2
+    while f"{base}_{n}" in used:
+        n += 1
+    slug = f"{base}_{n}"
+    used.add(slug)
+    return slug
 
 
 def normalize_scenario(
@@ -188,7 +260,7 @@ def normalize_scenario(
             if improved is not None:
                 parsed = improved
 
-        kind, todo = _classify(section, instruction, parsed, is_backend)
+        kind, todo = _classify(section, text, instruction, parsed, is_backend)
         steps.append(
             CanonicalStep(
                 keyword=section,
@@ -234,13 +306,14 @@ def build_features(
     profile = profile or ConvertProfile()
     grouped: dict[str, Feature] = {}
     order: list[str] = []
+    used_slugs: set[str] = set()
 
     for raw in scenarios:
         name = raw.feature or "Ungrouped"
         if name not in grouped:
             grouped[name] = Feature(
                 name=name,
-                slug=_slugify(name),
+                slug=_unique_slug(name, used_slugs),
                 tags=_feature_tags(name),
                 is_backend=_is_backend(raw, profile),
             )

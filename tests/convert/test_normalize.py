@@ -89,6 +89,20 @@ def test_build_features_groups_by_feature():
     assert len(feats[0].scenarios) == 2
 
 
+def test_feature_slugs_are_unique_across_tag_variants():
+    # Two features differing only by a bracket tag must not collide (they would
+    # otherwise overwrite each other's generated files).
+    raws = [
+        _raw("Given I open X\nThen I see Y", feature="[F][BAP] Streaks"),
+        _raw("Given a user\nThen points accrue", feature="[F][Backend] Streaks"),
+    ]
+    feats = build_features(raws)
+    slugs = [f.slug for f in feats]
+    assert len(set(slugs)) == 2, slugs
+    assert "streaks" in slugs
+    assert any(s.startswith("streaks_") for s in slugs)
+
+
 def test_glossary_rewrites_step():
     sc = normalize_scenario(
         _raw("Given the standard login"),
