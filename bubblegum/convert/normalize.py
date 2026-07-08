@@ -75,7 +75,7 @@ _VAGUE_RE = re.compile(
 _COMPOUND_RE = re.compile(r"\bif\b|,\s*(?:and|followed by)\b|\band\b.*\band\b", re.IGNORECASE)
 
 # Verbs that mark a step as a genuine UI action (used to gate When → AUTO so a
-# state precondition like "there is 1 badge group" isn't mistaken for a click).
+# state precondition like "there is 1 row" isn't mistaken for a click).
 _ACTION_VERBS = {
     "click", "tap", "press", "type", "enter", "fill", "input", "select",
     "choose", "pick", "open", "navigate", "go", "follow", "upload", "attach",
@@ -178,7 +178,7 @@ def _classify(
         return StepKind.AUTO, None
 
     # when / imperative action: require a genuine action verb so a state
-    # precondition ("there is 1 badge group") isn't mistaken for a UI action.
+    # precondition ("there is 1 row") isn't mistaken for a UI action.
     if not _starts_with_action_verb(instruction):
         if _DATA_HINT_RE.search(display_text):
             return StepKind.NEEDS_DATA, "Reads like a precondition/state — set up test data."

@@ -3,14 +3,20 @@ bubblegum/convert/engine.py
 ===========================
 Orchestrator: workbook → RawScenarios → Feature IR → emitted files.
 
-    convert_workbook("scenarios.xlsx", out_dir="generated")
+    convert_workbook("scenarios.xlsx", out_dir="smart-tests")
 
-Directory layout produced (languages configurable via the profile)::
+Everything is derived from the workbook — file names come from each row's
+Feature/Epic value, nothing is project-specific. Default (smart-tests) layout::
 
-    generated/
-      features/     badge_album_grouping.feature
-      python/       test_badge_album_grouping.py
-      typescript/   badge_album_grouping.steps.ts
+    smart-tests/
+      helpers/    engine.ts, actions.ts, reporter.ts   (only with init=True)
+      flows/      <feature-slug>.flow.ts               (one fn per scenario)
+      tests/      <feature-slug>.test.mts              (composes the flows)
+
+Optional languages ("feature", "python") add::
+
+    smart-tests/features/<feature-slug>.feature
+    smart-tests/python/test_<feature-slug>.py
 """
 
 from __future__ import annotations

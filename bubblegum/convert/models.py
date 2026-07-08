@@ -34,7 +34,7 @@ class StepKind(str, Enum):
 
     AUTO       The step maps cleanly to a Bubblegum ``act``/``verify`` call.
     NEEDS_DATA The step depends on test data / preconditions a human must wire
-               (e.g. "the group has 8 eligible badges"). Emitted with a TODO.
+               (e.g. "the cart has 3 items"). Emitted with a TODO.
     BACKEND    A backend / data-state behaviour, not a UI interaction (e.g. the
                Feature/Epic is tagged ``[Backend]``). Emitted as a skipped stub.
     MANUAL     Could not be interpreted as an action or assertion — left for a
