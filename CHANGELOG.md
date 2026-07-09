@@ -1,5 +1,12 @@
 # Unreleased
 
+## 0.0.6a20 — feat(convert): manual test scenario → automation converter
+
+Ships the new `bubblegum convert` command and `bubblegum.convert` package (see
+the entries below) that turn a spreadsheet of manual test scenarios into
+smart-tests TypeScript. Engine `0.0.6a19` → `0.0.6a20`; npm client unchanged.
+New optional extra: `pip install "bubblegum-ai[convert]"`.
+
 ## feat(convert): data extraction, multi-sheet, filtering, validation
 
 - **Data-file extraction** (default on): static quoted literals in Enter/Select
