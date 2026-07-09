@@ -1,5 +1,118 @@
 # Unreleased
 
+## 0.0.6a20 — feat(convert): manual test scenario → automation converter
+
+Ships the new `bubblegum convert` command and `bubblegum.convert` package (see
+the entries below) that turn a spreadsheet of manual test scenarios into
+smart-tests TypeScript. Engine `0.0.6a19` → `0.0.6a20`; npm client unchanged.
+New optional extra: `pip install "bubblegum-ai[convert]"`.
+
+## feat(convert): data extraction, multi-sheet, filtering, validation
+
+- **Data-file extraction** (default on): static quoted literals in Enter/Select
+  steps are lifted into a per-scenario object in `<name>.data.ts` (keys are the
+  camelCase field name); flows reference them via backtick interpolation and
+  auto-import the object. Template expressions and button labels stay inline.
+  Toggle with `output.extract_data` / `--no-data-file`.
+- **Multi-sheet workbooks**: all sheets with the steps column are read by
+  default; a multi-sheet workbook emits one test file per sheet. Restrict with
+  `input.sheets` / `--sheet`.
+- **`--feature`**: generate only features whose Feature/Epic matches one of the
+  (comma-separated, case-insensitive) terms.
+- **`--validate-only`**: report unmapped personas, unconfigured navigation,
+  TODO steps, and malformed `{{ }}` templates without writing files.
+- **Failure screenshots** (opt-in `on_failure.screenshot`): each failing test
+  captures a full-page screenshot into `REPORT_DIR`.
+- **Dependency notes**: a scenario that consumes `{{$var}}` set by an earlier
+  scenario is annotated `// Depends on: scenario N …` in the test registry.
+- **npm scripts**: suggested `test:smart:<name>` lines are printed after a run;
+  `--update-package-json` merges them into `./package.json`.
+- **Sub-flow dedup** (opt-in `output.dedup_subflows` / `--dedup-subflows`):
+  identical runs of 3+ steps shared by 3+ scenarios are hoisted into
+  `sharedFlowN` functions. Matching on rendered lines means data-bearing steps
+  (which differ per scenario) are never wrongly merged.
+- **Cleanup wiring** (opt-in `convert.cleanup`): when a scenario creates data
+  (`{{… as var}}`), the generated test declares `cleanupData`, calls the
+  configured cleanup function in `finally`, and leaves TODO capture lines for the
+  created session variables. `--init` scaffolds a safe generic `cleanup.flow.ts`
+  that skips gracefully until wired to a real teardown.
+
+## feat(convert): project wiring — real imports, navigation, template expressions
+
+Following the code-generator specification, the smart-tests emitter now produces
+project-wired, runnable code instead of env placeholders:
+
+- `convert.imports` / `convert.personas` → generated tests import the team's real
+  base-URL constant and per-persona credential functions
+  (`const credentials = getRetailCustomerCredentials();`).
+- `convert.navigation` → "open the X page" becomes a configured menu click
+  (`observe` + `act` + waits) or a `page.goto('/path')`.
+- Template expressions (`{{timestamp|… as var}}`, `{{$var}}`, `{{today+Nd|…}}`)
+  are emitted through `engine.act()` / `engine.verify()` directly (bypassing the
+  wrappers, which don't process them) — any step containing `{{` is auto-routed.
+- `convert.custom_patterns` → exact NL phrase injects literal TS (escape hatch).
+- Flows now carry JSDoc with the scenario title + Jira, and log
+  `Scenario passed: <title>`; report titles honor `convert.reports.title_prefix`.
+- `bubblegum convert --init` also scaffolds a `SKILL.md` of conventions for AI
+  assistants/humans. `primitive_for` now keys off the instruction's leading verb,
+  so table/row assertions under `Then` correctly emit `verify`. Generated code
+  type-checks under `tsc --strict`.
+
+## feat(convert): one test file per workbook, with a test method per scenario
+
+- New default grouping `group_by: workbook`: each Excel file now produces a
+  single `<workbook>.test.mts` (named from the workbook, override with `--name`)
+  containing **one test method per scenario row**, run as isolated labeled tests
+  (a failure in one is reported without aborting the rest) with one aggregated
+  Bubblegum report. Pass two workbooks → get two test files. `--group-by feature`
+  restores one-file-per-Feature/Epic.
+- Overwrite handling: the shared harness (`helpers/`, `flows/login.flow.ts`) is
+  written once and never overwritten, so processing workbooks one by one reuses
+  the same helpers; generated flow/test files regenerate by default, and
+  `--no-overwrite` preserves hand-edits (skips are reported). New CLI flags:
+  `--name`, `--group-by`, `--no-overwrite`; new profile key `output.group_by`.
+
+## feat(convert): emit smart-tests TypeScript by default (flow + test + harness)
+
+- The converter's default output is now **smart-tests-style TypeScript** that
+  drives the `@bubblegum-ai/node` client directly, matching the hand-written
+  `smart-tests/` architecture: per Feature/Epic it emits `<feature>.flow.ts`
+  (one exported async function per scenario, calling `act`/`verify`/`observe`
+  wrappers, with `waitForLoadState`+`waitForTimeout` after navigation) and a
+  thin `<feature>.test.mts` that composes them with `initEngine`, `loginFlow`
+  for persona preconditions, `generateReports`, and teardown.
+- `bubblegum convert --init` scaffolds the shared harness once
+  (`helpers/{engine,actions,reporter}.ts`, `flows/login.flow.ts`, a
+  `.env.bubblegum.local.example`); existing files are never overwritten.
+- The previous playwright-bdd TypeScript emitter is removed; `.feature`
+  (Gherkin) and `python` (pytest-bdd) remain as opt-in `output.languages`.
+  Default `output.dir` is now `smart-tests`. New profile keys:
+  `output.typescript.{helpers_dir,flows_dir}`.
+- Reserved the `login` slug so a Feature literally named "Login" can't overwrite
+  the scaffolded `flows/login.flow.ts`. Generated TypeScript type-checks clean
+  under `tsc --strict`.
+
+## feat(convert): manual-scenario → automation scaffold converter
+
+- New `bubblegum convert scenarios.xlsx -o generated/` command (and
+  `bubblegum.convert` package) that reads a spreadsheet of manually authored
+  test scenarios (Gherkin steps in a designated column plus metadata columns)
+  and generates reviewable automation scaffolds: normalized `.feature` files,
+  pytest-bdd step definitions (Python), and playwright-bdd step definitions
+  (TypeScript) that call Bubblegum's `act` / `verify` / `extract`.
+- Deterministic-first: steps are parsed with the existing
+  `core.parser.decompose` grammar; an optional AI fallback (off by default,
+  reusing the provider factory — anthropic/openai/gemini/local) handles only the
+  steps the grammar can't split. Each step is classified AUTO / NEEDS_DATA /
+  BACKEND / MANUAL, and non-AUTO steps emit explicit TODO / skip markers instead
+  of silently-wrong code.
+- Team conventions (column names, output languages/dirs, waits, domain glossary,
+  data bindings, AI provider) come from an optional `bubblegum.convert.yaml`
+  profile, so the engine stays team-agnostic. New optional extra:
+  `pip install "bubblegum-ai[convert]"` (adds openpyxl). Docs:
+  `docs/manual-to-automation-converter.md` and
+  `docs/authoring-scenarios-style-guide.md`.
+
 ## 0.0.6a19 — fix(web): clickable fallback strips trailing widget nouns
 
 - `Click the <X> menu` (and `button`/`link`/`tab`/`option`/`item`/`field`) now

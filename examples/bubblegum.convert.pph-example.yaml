@@ -1,0 +1,34 @@
+# PPH project wiring for `bubblegum convert`
+convert:
+  output:
+    languages: ["typescript"]
+    group_by: "workbook"
+    extract_data: true
+  imports:
+    base_url:
+      module: "packages/utilities/constants/url"
+      export: "initialApplicationUri"
+    credentials:                       # default when a persona isn't mapped
+      module: "packages/data/BAP"
+      function: "getBAPBadgeSupportCredentials"
+  environment:
+    base_url_env: "BASE_URL"
+  personas:
+    "Retail customer":
+      module: "packages/data/BAP"
+      credential_function: "getRetailCustomerCredentials"
+    "BAP Badge Support":
+      module: "packages/data/BAP"
+      credential_function: "getBAPBadgeSupportCredentials"
+  navigation:
+    "Accounts":  { type: "menu", action: "Click the Accounts menu" }
+    "Transfer":  { type: "menu", action: "Click the Transfer menu" }
+    "Bill payment": { type: "url", path: "/bill-payment" }
+    "Badges":    { type: "menu", action: "Click the Badges menu" }
+    "Reward Configuration": { type: "menu", action: "Click the Reward Configuration menu" }
+  cleanup:
+    enabled: true
+  reports:
+    title_prefix: "H365"
+  on_failure:
+    screenshot: true
