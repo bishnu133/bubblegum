@@ -20,6 +20,10 @@
   scenario is annotated `// Depends on: scenario N …` in the test registry.
 - **npm scripts**: suggested `test:smart:<name>` lines are printed after a run;
   `--update-package-json` merges them into `./package.json`.
+- **Sub-flow dedup** (opt-in `output.dedup_subflows` / `--dedup-subflows`):
+  identical runs of 3+ steps shared by 3+ scenarios are hoisted into
+  `sharedFlowN` functions. Matching on rendered lines means data-bearing steps
+  (which differ per scenario) are never wrongly merged.
 
 ## feat(convert): project wiring — real imports, navigation, template expressions
 

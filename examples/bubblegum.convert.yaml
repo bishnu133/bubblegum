@@ -36,6 +36,9 @@ convert:
     # Extract static quoted literals from Enter/Select steps into <name>.data.ts
     # (templates stay inline). Set false to inline all values.
     extract_data: true
+    # Extract identical runs of 3+ steps shared by 3+ scenarios into shared flow
+    # functions. Off by default (nav/login are already factored out).
+    dedup_subflows: false
     typescript:
       # Import paths from a generated flow/test to the shared harness that
       # `bubblegum convert --init` scaffolds.

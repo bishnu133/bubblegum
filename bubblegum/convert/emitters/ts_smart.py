@@ -213,20 +213,31 @@ def _render_step(step, profile: ConvertProfile, data: ScenarioData | None = None
     ]
 
 
-def _scenario_fn(scenario: Scenario, fn: str, profile: ConvertProfile, data: ScenarioData | None = None) -> str:
+def _scenario_blocks(scenario: Scenario, profile: ConvertProfile, data: ScenarioData | None):
+    """Per-step rendered blocks (each a tuple of indented source lines)."""
+    return [tuple(_render_step(step, profile, data)) for step in scenario.steps]
+
+
+def _scenario_fn_from_blocks(scenario: Scenario, fn: str, blocks) -> str:
     doc = ["/**", f" * {scenario.title}"]
     if scenario.jira:
         doc.append(f" * Jira: {scenario.jira}")
     doc.append(" */")
-    lines = [
-        *doc,
-        f"export async function {fn}(engine: Bubblegum, page: Page): Promise<void> {{",
-    ]
-    for step in scenario.steps:
-        lines.extend(_render_step(step, profile, data))
+    lines = [*doc, f"export async function {fn}(engine: Bubblegum, page: Page): Promise<void> {{"]
+    for block in blocks:
+        lines.extend(block)
     lines.append(f"  console.log('Scenario passed: {ts_escape(scenario.title)}');")
     lines.append("}")
     return "\n".join(lines)
+
+
+def _shared_fn_src(name: str, body_lines: list[str]) -> str:
+    return "\n".join([
+        "/** Shared steps extracted from multiple scenarios. */",
+        f"export async function {name}(engine: Bubblegum, page: Page): Promise<void> {{",
+        *body_lines,
+        "}",
+    ])
 
 
 def emit_flow_file(feature: Feature, fn_names: list[str], profile: ConvertProfile | None = None) -> str:
@@ -247,15 +258,25 @@ def emit_flow_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
             f"import {{ {', '.join(used_objs)} }} from '{data_dir}/{feature.slug}.data';"
         )
 
-    parts = [
-        _BANNER,
-        *imports,
-        "",
-        "\n\n".join(
-            _scenario_fn(s, fn, profile, d)
-            for s, fn, d in zip(feature.scenarios, fn_names, data_list)
-        ),
+    per_scenario = [
+        _scenario_blocks(s, profile, d)
+        for s, d in zip(feature.scenarios, data_list)
     ]
+
+    shared_srcs: list[str] = []
+    if profile.output.dedup_subflows:
+        from bubblegum.convert.emitters.dedup import dedup_scenarios
+
+        shared, per_scenario = dedup_scenarios(per_scenario)
+        shared_srcs = [_shared_fn_src(name, body) for name, body in shared]
+
+    scenario_srcs = [
+        _scenario_fn_from_blocks(s, fn, blocks)
+        for s, fn, blocks in zip(feature.scenarios, fn_names, per_scenario)
+    ]
+
+    parts = [_BANNER, *imports, ""]
+    parts.append("\n\n".join([*shared_srcs, *scenario_srcs]))
     return "\n".join(parts).rstrip() + "\n"
 
 

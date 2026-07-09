@@ -87,6 +87,8 @@ class OutputProfile:
     ts_data_dir: str = "../data"
     # Extract static quoted literals from Enter/Select steps into a data file.
     extract_data: bool = True
+    # Extract identical 3+ step runs shared by 3+ scenarios into shared fns.
+    dedup_subflows: bool = False
     # "workbook" → one flow + one test per Excel file, with one test method per
     # scenario row (the team's requested default). "feature" → one pair per
     # Feature/Epic value within the workbook.
@@ -202,6 +204,7 @@ class ConvertProfile:
             ts_flows_dir=str(ts.get("flows_dir", "../flows")),
             ts_data_dir=str(ts.get("data_dir", "../data")),
             extract_data=bool(out.get("extract_data", True)),
+            dedup_subflows=bool(out.get("dedup_subflows", False)),
             group_by=(
                 "feature"
                 if str(out.get("group_by", "workbook")).strip().lower() == "feature"

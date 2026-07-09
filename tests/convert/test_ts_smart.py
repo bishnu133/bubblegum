@@ -253,6 +253,38 @@ def test_failure_screenshot_opt_in():
     assert "page.screenshot(" in emit_test_file(feat, fns, profile)
 
 
+def test_dedup_extracts_shared_tail():
+    from dataclasses import replace
+    from bubblegum.convert.profile import ConvertProfile
+
+    tail = "And I click the Save button\nAnd I click the Confirm button\nThen I see the Saved message"
+    raws = [
+        RawScenario(row=i, steps_text=f"Given I open the {c} page\n{tail}",
+                    fields={"feature": "[F][Web] P", "title": t})
+        for i, (c, t) in enumerate([("A", "Alpha"), ("B", "Beta"), ("C", "Gamma")], 1)
+    ]
+    feat = build_features(raws)[0]
+    profile = ConvertProfile()
+    profile.output = replace(profile.output, dedup_subflows=True)
+    text = emit_flow_file(feat, _fns(feat), profile)
+    assert "export async function sharedFlow1(" in text
+    assert text.count("await sharedFlow1(engine, page);") == 3
+    # the shared body appears once (inside the shared fn), not inlined per scenario
+    assert text.count("await verify(engine, 'The Saved message');") == 1
+
+
+def test_dedup_off_by_default():
+    tail = "And I click the Save button\nAnd I click the Confirm button\nThen I see the Saved message"
+    raws = [
+        RawScenario(row=i, steps_text=f"Given I open the {c} page\n{tail}",
+                    fields={"feature": "[F][Web] P", "title": t})
+        for i, (c, t) in enumerate([("A", "Alpha"), ("B", "Beta"), ("C", "Gamma")], 1)
+    ]
+    feat = build_features(raws)[0]
+    text = emit_flow_file(feat, _fns(feat))
+    assert "sharedFlow" not in text
+
+
 def test_scaffold_writes_harness_once(tmp_path):
     written = scaffold_harness(tmp_path)
     assert (tmp_path / "helpers" / "engine.ts").exists()

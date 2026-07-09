@@ -25,6 +25,7 @@ def run_convert(
     feature: str | None = None,
     sheet: str | None = None,
     no_data_file: bool = False,
+    dedup_subflows: bool = False,
     validate_only: bool = False,
     update_package_json: bool = False,
 ) -> int:
@@ -46,6 +47,8 @@ def run_convert(
         out_overrides["group_by"] = group_by
     if no_data_file:
         out_overrides["extract_data"] = False
+    if dedup_subflows:
+        out_overrides["dedup_subflows"] = True
     if out_overrides:
         profile.output = replace(profile.output, **out_overrides)
     if sheet:

@@ -131,6 +131,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not extract static literals into a <name>.data.ts file.",
     )
     convert.add_argument(
+        "--dedup-subflows",
+        action="store_true",
+        help="Extract identical 3+ step runs shared by 3+ scenarios into shared flow functions.",
+    )
+    convert.add_argument(
         "--validate-only",
         action="store_true",
         help="Report issues (unmapped personas, missing navigation, TODOs, bad templates) without generating files.",
@@ -200,6 +205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             feature=args.feature,
             sheet=args.sheet,
             no_data_file=args.no_data_file,
+            dedup_subflows=args.dedup_subflows,
             validate_only=args.validate_only,
             update_package_json=args.update_package_json,
         )

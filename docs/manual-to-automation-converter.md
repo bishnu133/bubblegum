@@ -80,6 +80,7 @@ CLI options:
 | `--feature "A,B"` | Only generate features whose Feature/Epic matches these (case-insensitive) terms. |
 | `--sheet "A,B"` | Only read these worksheet(s). Default: all sheets with the steps column. |
 | `--no-data-file` | Inline literals instead of extracting them into `<name>.data.ts`. |
+| `--dedup-subflows` | Extract identical 3+ step runs shared by 3+ scenarios into shared flow functions. |
 | `--validate-only` | Report issues (unmapped personas, missing nav, TODOs, bad templates) without writing. |
 | `--update-package-json` | Merge suggested `test:smart:<name>` scripts into `./package.json`. |
 | `--config PATH` | Path to `bubblegum.convert.yaml` (default: `./bubblegum.convert.yaml`). |
