@@ -285,6 +285,26 @@ def test_dedup_off_by_default():
     assert "sharedFlow" not in text
 
 
+def test_cleanup_wired_when_scenario_creates_data():
+    feat = _feature(
+        steps='When I enter "N-{{timestamp|%Y as orderId}}" into Ref\nThen I see Done',
+        title="Create order",
+    )
+    profile = _profile(cleanup={"enabled": True})
+    text = emit_test_file(feat, _fns(feat), profile)
+    assert "import { cleanup, type CleanupData } from '../flows/cleanup.flow';" in text
+    assert "const cleanupData: CleanupData = {};" in text
+    assert "// cleanupData.orderId = /* value of {{$orderId}} */;" in text
+    assert "await cleanup(cleanupData);" in text
+
+
+def test_cleanup_absent_without_creation_vars():
+    feat = _feature(steps="When I click Save\nThen I see Done", title="No data")
+    profile = _profile(cleanup={"enabled": True})
+    # no {{... as var}} → no cleanup wiring even though cleanup is enabled
+    assert "cleanup(" not in emit_test_file(feat, _fns(feat), profile)
+
+
 def test_scaffold_writes_harness_once(tmp_path):
     written = scaffold_harness(tmp_path)
     assert (tmp_path / "helpers" / "engine.ts").exists()
@@ -293,6 +313,7 @@ def test_scaffold_writes_harness_once(tmp_path):
     assert (tmp_path / "flows" / "login.flow.ts").exists()
     assert (tmp_path / ".env.bubblegum.local.example").exists()
     assert (tmp_path / "SKILL.md").exists()
+    assert (tmp_path / "flows" / "cleanup.flow.ts").exists()
     # idempotent: a second call writes nothing (no overwrite)
     assert scaffold_harness(tmp_path) == []
-    assert len(written) == 6
+    assert len(written) == 7

@@ -266,12 +266,46 @@ AI assistants and humans: follow these when editing generated smart-tests.
 - Recall with `{{$myName}}` in later steps of the same test file.
 """
 
+CLEANUP_FLOW_TS = """\
+/**
+ * Cleanup flow — runs after a test to remove data it created.
+ *
+ * This is a safe generic stub: it skips gracefully when there is nothing to
+ * clean. Wire your project's real teardown here (e.g. a DB repository delete),
+ * following the same pattern as your API tests. Generated tests populate
+ * `cleanupData` with the session variables a scenario created.
+ */
+export interface CleanupData {
+  [key: string]: string | undefined;
+}
+
+/** Returns true if cleanup should run (e.g. CI with DB access). */
+function isCleanupAvailable(): boolean {
+  return process.env.CI_PIPELINE_SOURCE !== undefined;
+}
+
+export async function cleanup(data: CleanupData): Promise<void> {
+  if (!data || Object.keys(data).length === 0) return;
+  if (!isCleanupAvailable()) {
+    console.log('[cleanup] skipped (not in CI / no DB access):', data);
+    return;
+  }
+  try {
+    // TODO: wire project-specific cleanup here (repository deletes, etc.).
+    console.log('[cleanup] TODO: implement cleanup for', data);
+  } catch (err) {
+    console.error('[cleanup] failed (non-fatal):', err);
+  }
+}
+"""
+
 # name (relative to out dir) -> content. Written only if absent.
 _HARNESS_FILES: dict[str, str] = {
     "helpers/engine.ts": ENGINE_TS,
     "helpers/actions.ts": ACTIONS_TS,
     "helpers/reporter.ts": REPORTER_TS,
     "flows/login.flow.ts": LOGIN_FLOW_TS,
+    "flows/cleanup.flow.ts": CLEANUP_FLOW_TS,
     ".env.bubblegum.local.example": ENV_EXAMPLE,
     "SKILL.md": SKILL_MD,
 }

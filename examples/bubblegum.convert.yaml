@@ -97,6 +97,13 @@ convert:
   on_failure:
     screenshot: false             # true → capture a screenshot when a test fails
 
+  # Cleanup: when a scenario creates data ({{... as var}}), the test calls this
+  # in its finally block with the captured session variables. Off unless enabled.
+  cleanup:
+    enabled: false
+    # module: "../flows/cleanup.flow"   # default; --init scaffolds a safe stub
+    # function: "cleanup"                # or point at your repo's teardown
+
   # ---- Domain rules (the human-authored "skill" layer) -----------------------
   # Rewrite a recurring phrase to a canonical, automatable step. Matched on the
   # whole step text, case-insensitively.

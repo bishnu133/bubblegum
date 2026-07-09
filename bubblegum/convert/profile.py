@@ -125,6 +125,9 @@ class ProjectProfile:
     report_title_prefix: str = ""
     # Capture a screenshot when a scenario fails (opt-in; great for CI).
     on_failure_screenshot: bool = False
+    # Cleanup wiring: {"module": "...", "function": "cleanup"} or None. When set
+    # and a scenario creates data ({{... as var}}), the test calls it in finally.
+    cleanup: dict[str, str] | None = None
 
     def persona_credentials(self, persona: str) -> dict[str, str] | None:
         """Credential import for a persona, falling back to the default."""
@@ -256,6 +259,7 @@ class ConvertProfile:
             ],
             report_title_prefix=str(reports.get("title_prefix", "")),
             on_failure_screenshot=bool((conv.get("on_failure", {}) or {}).get("screenshot", False)),
+            cleanup=_cleanup_ref(conv.get("cleanup")),
         )
 
         return cls(
@@ -267,6 +271,18 @@ class ConvertProfile:
             glossary={str(k): str(v) for k, v in (conv.get("glossary", {}) or {}).items()},
             data_bindings={str(k): str(v) for k, v in (conv.get("data", {}) or {}).items()},
         )
+
+
+def _cleanup_ref(spec) -> dict[str, str] | None:
+    """Normalize the cleanup config, or None when disabled."""
+    if not isinstance(spec, dict) or spec.get("enabled") is False:
+        return None
+    if not spec.get("enabled") and not spec.get("module") and not spec.get("function"):
+        return None
+    return {
+        "module": str(spec.get("module", "../flows/cleanup.flow")),
+        "function": str(spec.get("function", "cleanup")),
+    }
 
 
 def _import_ref(spec) -> dict[str, str] | None:

@@ -24,6 +24,11 @@
   identical runs of 3+ steps shared by 3+ scenarios are hoisted into
   `sharedFlowN` functions. Matching on rendered lines means data-bearing steps
   (which differ per scenario) are never wrongly merged.
+- **Cleanup wiring** (opt-in `convert.cleanup`): when a scenario creates data
+  (`{{… as var}}`), the generated test declares `cleanupData`, calls the
+  configured cleanup function in `finally`, and leaves TODO capture lines for the
+  created session variables. `--init` scaffolds a safe generic `cleanup.flow.ts`
+  that skips gracefully until wired to a real teardown.
 
 ## feat(convert): project wiring — real imports, navigation, template expressions
 

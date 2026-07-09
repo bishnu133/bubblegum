@@ -222,6 +222,9 @@ await page.waitForTimeout(3000);
 - **`imports` / `personas`** → real credential & URL imports (no env placeholders).
 - **`navigation`** → "open the X page" becomes a menu click (`observe`+`act`) or a `page.goto`.
 - **`custom_patterns`** → an escape hatch: an exact NL phrase injects literal TS.
+- **`cleanup`** → when a scenario creates data (`{{… as var}}`), the test calls
+  your configured cleanup function in `finally` with the captured variables
+  (`--init` scaffolds a safe `cleanup.flow.ts` stub).
 - `bubblegum convert --init` also scaffolds a **`SKILL.md`** capturing these
   conventions for AI assistants and humans editing the generated tests.
 

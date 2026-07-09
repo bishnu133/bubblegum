@@ -347,6 +347,24 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
     imported = ", ".join(fn_names)
     imports.append(f"import {{ {imported} }} from '{flows}/{feature.slug}.flow';")
 
+    # Cleanup: only when configured AND a scenario creates data ({{... as var}}).
+    creation_vars: list[str] = []
+    for s in feature.scenarios:
+        blob = " ".join(step.text for step in s.steps)
+        for var in _VAR_SET_RE.findall(blob):
+            if var not in creation_vars:
+                creation_vars.append(var)
+    cleanup_cfg = proj.cleanup if creation_vars else None
+    cleanup_type = "Record<string, string | undefined>"
+    if cleanup_cfg:
+        module = cleanup_cfg["module"]
+        fn = cleanup_cfg["function"]
+        if module.endswith("cleanup.flow"):
+            imports.append(f"import {{ {fn}, type CleanupData }} from '{module}';")
+            cleanup_type = "CleanupData"
+        else:
+            imports.append(f"import {{ {fn} }} from '{module}';")
+
     setup = ["dotenv.config({ path: '.env.bubblegum.local' });", ""]
     if proj.base_url_import:
         setup.append(f"const APP_URL = {proj.base_url_import['export']};")
@@ -381,6 +399,10 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
         "async function main() {",
         "  let ctx: EngineContext | null = null;",
         "  let failures = 0;",
+    ]
+    if cleanup_cfg:
+        body.append(f"  const cleanupData: {cleanup_type} = {{}};")
+    body += [
         "  try {",
         "    ctx = await initEngine();",
         "    const { page, engine } = ctx;",
@@ -412,6 +434,14 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
         "        console.error(`FAIL: ${name} —`, err);",
         "      }",
         "    }",
+    ]
+    if cleanup_cfg:
+        body.append("")
+        body.append("    // TODO: capture the session variable(s) this run created so")
+        body.append("    // cleanup can remove them (confirm your engine's variable API):")
+        for var in creation_vars:
+            body.append(f"    // cleanupData.{var} = /* value of {{{{${var}}}}} */;")
+    body += [
         "  } catch (error) {",
         "    console.error('Test run setup failed:', error);",
         "    failures++;",
@@ -426,6 +456,10 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
         "    }",
         f"    console.log(`\\n{ts_escape(feature.name)}: ${{tests.length - failures}}/${{tests.length}} passed`);",
         "    process.exitCode = failures > 0 ? 1 : 0;",
+    ]
+    if cleanup_cfg:
+        body.append(f"    await {cleanup_cfg['function']}(cleanupData);  // skips gracefully when empty")
+    body += [
         "  }",
         "}",
         "",
