@@ -1,0 +1,125 @@
+# Example profile for `bubblegum convert`.
+# Copy to your project root as `bubblegum.convert.yaml` and adjust to your team's
+# conventions. Every key is optional — omit a section to accept the defaults.
+# Docs: docs/manual-to-automation-converter.md
+
+convert:
+  # ---- How to read the spreadsheet ------------------------------------------
+  input:
+    sheet: null                 # a single sheet name, or null
+    sheets: []                  # explicit list; [] = process ALL sheets that
+                                # have the steps column. A multi-sheet workbook
+                                # emits one test file per sheet.
+    header_row: 1               # 1-based row that holds the column headers
+    columns:                    # logical name -> your spreadsheet's header text
+      feature: "Feature/Epic"
+      title:   "Test Scenario"
+      persona: "User Persona"
+      jira:    "Functional Jira Story"
+      steps:   "Verify"         # REQUIRED: the column holding the Gherkin steps
+    # Rows whose Feature/Epic or Test Scenario contain any of these substrings
+    # are classified BACKEND (non-UI) and emitted as skipped stubs.
+    backend_markers: ["[Backend]"]
+
+  # ---- What to generate ------------------------------------------------------
+  output:
+    # "typescript" = smart-tests style: <feature>.flow.ts + <feature>.test.mts
+    #                driving the @bubblegum-ai/node client (the default).
+    # "feature"    = normalized Gherkin .feature files (optional).
+    # "python"     = pytest-bdd step definitions (optional).
+    languages: ["typescript"]
+    dir: "smart-tests"
+    # "workbook" (default): one <workbook>.test.mts per Excel file with one test
+    #   method per scenario row (shared helpers reused across workbooks).
+    # "feature": one file per Feature/Epic value instead.
+    group_by: "workbook"
+    # Extract static quoted literals from Enter/Select steps into <name>.data.ts
+    # (templates stay inline). Set false to inline all values.
+    extract_data: true
+    # Extract identical runs of 3+ steps shared by 3+ scenarios into shared flow
+    # functions. Off by default (nav/login are already factored out).
+    dedup_subflows: false
+    typescript:
+      # Import paths from a generated flow/test to the shared harness that
+      # `bubblegum convert --init` scaffolds.
+      helpers_dir: "../helpers"
+      flows_dir: "../flows"
+      data_dir: "../data"
+      # Node client the generated tests import act/verify from.
+      client_import: "@bubblegum-ai/node"
+    python:
+      # Import line placed at the top of every pytest-bdd step module.
+      bubblegum_import: "from bubblegum import act, verify, extract"
+
+  # ---- Waits -----------------------------------------------------------------
+  # auto = insert page.waitForLoadState + waitForTimeout after navigation steps
+  #        (matches the smart-tests convention). none = no waits.
+  waits:
+    strategy: "auto"
+
+  # ---- Project wiring --------------------------------------------------------
+  # Make generated tests import your REAL modules instead of env placeholders.
+  # All optional — omit and the generator falls back to process.env + generic
+  # act() navigation.
+  imports:
+    # Base URL constant → generated: `import { <export> } from '<module>';`
+    base_url:
+      # module: "../../../../utilities/constants/url"
+      # export: "initialApplicationUri"
+    # Default credentials when a persona is not mapped below.
+    credentials:
+      # module: "../../../../data/BAP"
+      # function: "getBAPBadgeSupportCredentials"
+
+  environment:
+    base_url_env: "BASE_URL"      # env var used when imports.base_url is unset
+
+  # persona (from the User Persona column) → credential import. "Given I am
+  # logged in as a <persona>" then wires `const credentials = <function>();`.
+  personas:
+    # "Retail customer":
+    #   module: "../../../../data/Banking"
+    #   credential_function: "getRetailCustomerCredentials"
+
+  # "I open the <Page> page" → a menu click (observe + act + waits) or a goto.
+  navigation:
+    # "Accounts": { type: "menu", action: "Click the Accounts menu" }
+    # "Bill payment": { type: "url", path: "/bill-payment" }
+
+  # Exact NL step (substring, case-insensitive) → literal TS injected verbatim.
+  custom_patterns:
+    # - pattern: "I wait for the page to load"
+    #   code: "await page.waitForLoadState('domcontentloaded');\nawait page.waitForTimeout(3000);"
+
+  reports:
+    title_prefix: ""              # prepended to each generated report title
+
+  on_failure:
+    screenshot: false             # true → capture a screenshot when a test fails
+
+  # Cleanup: when a scenario creates data ({{... as var}}), the test calls this
+  # in its finally block with the captured session variables. Off unless enabled.
+  cleanup:
+    enabled: false
+    # module: "../flows/cleanup.flow"   # default; --init scaffolds a safe stub
+    # function: "cleanup"                # or point at your repo's teardown
+
+  # ---- Domain rules (the human-authored "skill" layer) -----------------------
+  # Rewrite a recurring phrase to a canonical, automatable step. Matched on the
+  # whole step text, case-insensitively.
+  glossary:
+    # "the standard login": "I open the Login page"
+
+  # Token -> data-binding expression. Reserved for the data-binding phase; today
+  # it is parsed and carried but not yet substituted into emitted calls.
+  data:
+    # "<admin user>": "data.users.admin"
+
+  # ---- Optional AI fallback --------------------------------------------------
+  # Off by default. When enabled, only steps the deterministic grammar can't
+  # split confidently are sent (short text only — never DOM/screenshots) to the
+  # provider configured here, falling back to the `ai:` block in bubblegum.yaml.
+  ai:
+    enabled: false
+    provider: null              # anthropic | openai | gemini | local (or null)
+    model: null                 # e.g. a strong authoring model; null = inherit

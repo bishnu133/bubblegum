@@ -1,5 +1,15 @@
 # Unreleased
 
+## 0.0.6a28 — feat(convert): manual test scenario → automation converter
+
+Adds the `bubblegum convert` command and `bubblegum.convert` package on top of
+the a27 runtime: Excel scenarios → smart-tests TypeScript (flows + tests + data
++ harness) with project wiring, data extraction, multi-sheet, cleanup, dedup,
+and validation. Purely additive over a27 (no core changes). New optional extra:
+`pip install "bubblegum-ai[convert]"`. Engine 0.0.6a27 → 0.0.6a28; npm client
+unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
+
+
 ## 0.0.6a27 — fix(verify): page-appearance asserts, dynamic tokens in verify, multi-column rows
 
 - **"the X page appear" now asserts the heading.** `verify("the Create Badge page

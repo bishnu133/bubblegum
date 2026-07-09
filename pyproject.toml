@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bubblegum-ai"
-version = "0.0.6a27"
+version = "0.0.6a28"
 description = "AI-powered recovery and natural-language execution layer for Playwright and Appium tests"
 readme = "README.md"
 license = "MIT"
@@ -34,6 +34,7 @@ web = ["playwright"]
 mobile = ["Appium-Python-Client"]
 anthropic = ["anthropic>=0.20"]
 bdd = ["pytest-bdd>=7"]
+convert = ["openpyxl>=3.1"]
 # Bubblegum writes Allure result files with the standard library alone; this
 # extra only pulls allure-pytest for teams who also want its native fixtures.
 # Viewing results needs the `allure` command-line tool (installed separately).

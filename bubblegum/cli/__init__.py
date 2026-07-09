@@ -72,6 +72,80 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start in resolve-only mode (preview targets without acting).",
     )
 
+    convert = sub.add_parser(
+        "convert",
+        help="Convert a spreadsheet of manual scenarios into automation scaffolds.",
+        description=(
+            "Read manual test scenarios (Gherkin-style steps in a designated "
+            "column) from an .xlsx workbook and generate reviewable scaffolds: "
+            "normalized .feature files plus pytest-bdd (Python) and "
+            "playwright-bdd (TypeScript) step definitions that call Bubblegum. "
+            "Conventions come from bubblegum.convert.yaml."
+        ),
+    )
+    convert.add_argument("workbook", help="Path to the .xlsx scenarios workbook.")
+    convert.add_argument("-o", "--out", help="Output directory (default: from profile, else 'generated').")
+    convert.add_argument(
+        "--config",
+        help="Path to bubblegum.convert.yaml (default: ./bubblegum.convert.yaml if present).",
+    )
+    convert.add_argument(
+        "--languages",
+        help="Comma-separated output languages to emit: feature,python,typescript.",
+    )
+    convert.add_argument(
+        "--ai",
+        action="store_true",
+        help="Enable the optional AI fallback for steps the grammar can't split.",
+    )
+    convert.add_argument(
+        "--init",
+        action="store_true",
+        help="Also scaffold the shared TypeScript harness (helpers/ + flows/login.flow.ts + .env example) if absent.",
+    )
+    convert.add_argument(
+        "--name",
+        help="Base name for the generated test/flow file (workbook grouping). Defaults to the workbook filename.",
+    )
+    convert.add_argument(
+        "--no-overwrite",
+        action="store_true",
+        help="Leave existing generated flow/test files in place instead of regenerating them.",
+    )
+    convert.add_argument(
+        "--group-by",
+        choices=["workbook", "feature"],
+        help="workbook (default): one test file per Excel with a test method per scenario. feature: one file per Feature/Epic.",
+    )
+    convert.add_argument(
+        "--feature",
+        help="Only generate features whose Feature/Epic contains one of these (comma-separated, case-insensitive) terms.",
+    )
+    convert.add_argument(
+        "--sheet",
+        help="Only read these worksheet(s) (comma-separated). Default: all sheets that have the steps column.",
+    )
+    convert.add_argument(
+        "--no-data-file",
+        action="store_true",
+        help="Do not extract static literals into a <name>.data.ts file.",
+    )
+    convert.add_argument(
+        "--dedup-subflows",
+        action="store_true",
+        help="Extract identical 3+ step runs shared by 3+ scenarios into shared flow functions.",
+    )
+    convert.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Report issues (unmapped personas, missing navigation, TODOs, bad templates) without generating files.",
+    )
+    convert.add_argument(
+        "--update-package-json",
+        action="store_true",
+        help="Merge suggested test:smart:<name> scripts into ./package.json (otherwise just printed).",
+    )
+
     sub.add_parser(
         "bridge",
         help="Run the JSON-RPC bridge over stdio (for non-Python clients).",
@@ -113,6 +187,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             caps=args.caps,
             headless=args.headless,
             dry_run=args.dry_run,
+        )
+
+    if args.command == "convert":
+        from bubblegum.cli.convert import run_convert
+
+        return run_convert(
+            workbook=args.workbook,
+            out=args.out,
+            config=args.config,
+            languages=args.languages,
+            ai=args.ai,
+            init=args.init,
+            name=args.name,
+            no_overwrite=args.no_overwrite,
+            group_by=args.group_by,
+            feature=args.feature,
+            sheet=args.sheet,
+            no_data_file=args.no_data_file,
+            dedup_subflows=args.dedup_subflows,
+            validate_only=args.validate_only,
+            update_package_json=args.update_package_json,
         )
 
     if args.command == "bridge":
