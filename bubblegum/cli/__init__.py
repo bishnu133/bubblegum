@@ -117,6 +117,29 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["workbook", "feature"],
         help="workbook (default): one test file per Excel with a test method per scenario. feature: one file per Feature/Epic.",
     )
+    convert.add_argument(
+        "--feature",
+        help="Only generate features whose Feature/Epic contains one of these (comma-separated, case-insensitive) terms.",
+    )
+    convert.add_argument(
+        "--sheet",
+        help="Only read these worksheet(s) (comma-separated). Default: all sheets that have the steps column.",
+    )
+    convert.add_argument(
+        "--no-data-file",
+        action="store_true",
+        help="Do not extract static literals into a <name>.data.ts file.",
+    )
+    convert.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Report issues (unmapped personas, missing navigation, TODOs, bad templates) without generating files.",
+    )
+    convert.add_argument(
+        "--update-package-json",
+        action="store_true",
+        help="Merge suggested test:smart:<name> scripts into ./package.json (otherwise just printed).",
+    )
 
     sub.add_parser(
         "bridge",
@@ -174,6 +197,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             name=args.name,
             no_overwrite=args.no_overwrite,
             group_by=args.group_by,
+            feature=args.feature,
+            sheet=args.sheet,
+            no_data_file=args.no_data_file,
+            validate_only=args.validate_only,
+            update_package_json=args.update_package_json,
         )
 
     if args.command == "bridge":

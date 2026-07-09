@@ -69,6 +69,7 @@ _VALID_WAIT_STRATEGIES = {"auto", "explicit", "none"}
 @dataclass
 class InputProfile:
     sheet: str | None = None
+    sheets: tuple[str, ...] = ()
     header_row: int = 1
     columns: dict[str, str] = field(default_factory=lambda: dict(_DEFAULT_COLUMNS))
     backend_markers: tuple[str, ...] = _DEFAULT_BACKEND_MARKERS
@@ -83,6 +84,9 @@ class OutputProfile:
     # Import paths from a generated flow/test file to the shared harness.
     ts_helpers_dir: str = "../helpers"
     ts_flows_dir: str = "../flows"
+    ts_data_dir: str = "../data"
+    # Extract static quoted literals from Enter/Select steps into a data file.
+    extract_data: bool = True
     # "workbook" → one flow + one test per Excel file, with one test method per
     # scenario row (the team's requested default). "feature" → one pair per
     # Feature/Epic value within the workbook.
@@ -117,6 +121,8 @@ class ProjectProfile:
     # [{"pattern": "...", "code": "..."}] — exact NL step → literal code injection.
     custom_patterns: list[dict[str, str]] = field(default_factory=list)
     report_title_prefix: str = ""
+    # Capture a screenshot when a scenario fails (opt-in; great for CI).
+    on_failure_screenshot: bool = False
 
     def persona_credentials(self, persona: str) -> dict[str, str] | None:
         """Credential import for a persona, falling back to the default."""
@@ -171,8 +177,10 @@ class ConvertProfile:
         columns = dict(_DEFAULT_COLUMNS)
         columns.update(inp.get("columns", {}) or {})
         markers = inp.get("backend_markers")
+        sheets = inp.get("sheets")
         input_profile = InputProfile(
             sheet=inp.get("sheet"),
+            sheets=tuple(str(s) for s in sheets) if sheets else (),
             header_row=int(inp.get("header_row", 1) or 1),
             columns=columns,
             backend_markers=tuple(markers) if markers else _DEFAULT_BACKEND_MARKERS,
@@ -192,6 +200,8 @@ class ConvertProfile:
             ts_client_import=str(ts.get("client_import", "@bubblegum-ai/node")),
             ts_helpers_dir=str(ts.get("helpers_dir", "../helpers")),
             ts_flows_dir=str(ts.get("flows_dir", "../flows")),
+            ts_data_dir=str(ts.get("data_dir", "../data")),
+            extract_data=bool(out.get("extract_data", True)),
             group_by=(
                 "feature"
                 if str(out.get("group_by", "workbook")).strip().lower() == "feature"
@@ -242,6 +252,7 @@ class ConvertProfile:
                 if isinstance(p, dict) and p.get("pattern")
             ],
             report_title_prefix=str(reports.get("title_prefix", "")),
+            on_failure_screenshot=bool((conv.get("on_failure", {}) or {}).get("screenshot", False)),
         )
 
         return cls(

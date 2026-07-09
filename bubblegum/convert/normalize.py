@@ -294,6 +294,7 @@ def normalize_scenario(
         feature=raw.feature,
         source_row=raw.row,
         tags=tags,
+        sheet=raw.sheet,
     )
 
 

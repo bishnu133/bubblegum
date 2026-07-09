@@ -120,3 +120,59 @@ def test_cli_missing_workbook_returns_error():
 
     code = main(["convert", "does_not_exist.xlsx", "-o", "x"])
     assert code == 2
+
+
+def _multi_sheet_wb(tmp_path):
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    h = ["#", "Feature/Epic", "Test Scenario", "User Persona",
+         "Functional Jira Story", "Verify", "Result", "Remarks"]
+    a = wb.active
+    a.title = "UAT Scenario"
+    a.append(h)
+    a.append([1, "[F][Web] Login", "Valid login", "User", "J-1",
+              "Given I open the Login page\nThen I see the Dashboard", "", ""])
+    b = wb.create_sheet("Regression")
+    b.append(h)
+    b.append([1, "[F][Web] Search", "Search works", "User", "J-9",
+              "Given I open the Search page\nThen I see the Results", "", ""])
+    p = tmp_path / "Book.xlsx"
+    wb.save(p)
+    return p
+
+
+def test_multi_sheet_emits_one_file_per_sheet(tmp_path):
+    wb = _multi_sheet_wb(tmp_path)
+    out = tmp_path / "gen"
+    convert_workbook(wb, out_dir=out)
+    tests = {p.name for p in (out / "tests").glob("*.test.mts")}
+    assert tests == {"uat_scenario.test.mts", "regression.test.mts"}
+
+
+def test_sheet_selection_restricts_to_one(tmp_path):
+    from dataclasses import replace
+
+    wb = _multi_sheet_wb(tmp_path)
+    out = tmp_path / "gen"
+    profile = ConvertProfile()
+    profile.input = replace(profile.input, sheets=("Regression",))
+    convert_workbook(wb, out_dir=out, profile=profile)
+    tests = {p.name for p in (out / "tests").glob("*.test.mts")}
+    # single sheet → named from the workbook stem, not the sheet
+    assert tests == {"book.test.mts"}
+
+
+def test_feature_filter_limits_output(tmp_path):
+    out = tmp_path / "gen"
+    result = convert_workbook(FIXTURE, out_dir=out, feature_filter=["Login"])
+    assert result.stats()["features"] == 1
+    assert (out / "tests").exists()
+
+
+def test_validate_workbook_reports_issues():
+    from bubblegum.convert.engine import validate_workbook
+
+    issues = validate_workbook(FIXTURE)
+    # the [Backend] feature + login preconditions produce TODO + persona notes
+    assert any(i.startswith("[todo]") for i in issues)

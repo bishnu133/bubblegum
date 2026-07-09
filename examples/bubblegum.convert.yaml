@@ -6,7 +6,10 @@
 convert:
   # ---- How to read the spreadsheet ------------------------------------------
   input:
-    sheet: null                 # null = the active/first sheet; or a sheet name
+    sheet: null                 # a single sheet name, or null
+    sheets: []                  # explicit list; [] = process ALL sheets that
+                                # have the steps column. A multi-sheet workbook
+                                # emits one test file per sheet.
     header_row: 1               # 1-based row that holds the column headers
     columns:                    # logical name -> your spreadsheet's header text
       feature: "Feature/Epic"
@@ -30,11 +33,15 @@ convert:
     #   method per scenario row (shared helpers reused across workbooks).
     # "feature": one file per Feature/Epic value instead.
     group_by: "workbook"
+    # Extract static quoted literals from Enter/Select steps into <name>.data.ts
+    # (templates stay inline). Set false to inline all values.
+    extract_data: true
     typescript:
       # Import paths from a generated flow/test to the shared harness that
       # `bubblegum convert --init` scaffolds.
       helpers_dir: "../helpers"
       flows_dir: "../flows"
+      data_dir: "../data"
       # Node client the generated tests import act/verify from.
       client_import: "@bubblegum-ai/node"
     python:
@@ -83,6 +90,9 @@ convert:
 
   reports:
     title_prefix: ""              # prepended to each generated report title
+
+  on_failure:
+    screenshot: false             # true → capture a screenshot when a test fails
 
   # ---- Domain rules (the human-authored "skill" layer) -----------------------
   # Rewrite a recurring phrase to a canonical, automatable step. Matched on the

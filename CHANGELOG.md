@@ -1,5 +1,26 @@
 # Unreleased
 
+## feat(convert): data extraction, multi-sheet, filtering, validation
+
+- **Data-file extraction** (default on): static quoted literals in Enter/Select
+  steps are lifted into a per-scenario object in `<name>.data.ts` (keys are the
+  camelCase field name); flows reference them via backtick interpolation and
+  auto-import the object. Template expressions and button labels stay inline.
+  Toggle with `output.extract_data` / `--no-data-file`.
+- **Multi-sheet workbooks**: all sheets with the steps column are read by
+  default; a multi-sheet workbook emits one test file per sheet. Restrict with
+  `input.sheets` / `--sheet`.
+- **`--feature`**: generate only features whose Feature/Epic matches one of the
+  (comma-separated, case-insensitive) terms.
+- **`--validate-only`**: report unmapped personas, unconfigured navigation,
+  TODO steps, and malformed `{{ }}` templates without writing files.
+- **Failure screenshots** (opt-in `on_failure.screenshot`): each failing test
+  captures a full-page screenshot into `REPORT_DIR`.
+- **Dependency notes**: a scenario that consumes `{{$var}}` set by an earlier
+  scenario is annotated `// Depends on: scenario N …` in the test registry.
+- **npm scripts**: suggested `test:smart:<name>` lines are printed after a run;
+  `--update-package-json` merges them into `./package.json`.
+
 ## feat(convert): project wiring — real imports, navigation, template expressions
 
 Following the code-generator specification, the smart-tests emitter now produces

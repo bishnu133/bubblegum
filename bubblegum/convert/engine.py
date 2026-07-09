@@ -38,21 +38,20 @@ def convert_workbook(
     init: bool = False,
     name: str | None = None,
     overwrite: bool = True,
+    feature_filter: list[str] | None = None,
 ) -> ConvertResult:
     """Convert a spreadsheet of manual scenarios into automation scaffolds.
 
     Args:
-        path:      the .xlsx workbook.
-        out_dir:   output directory (defaults to the profile's output.dir).
-        profile:   a ConvertProfile; loaded from bubblegum.convert.yaml if None.
-        write:     when False, build the IR + files-in-memory but write nothing.
-        init:      when True, also scaffold the shared TypeScript harness
-                   (helpers/ + flows/login.flow.ts + .env example) if absent.
-        name:      base name for the generated test/flow (workbook grouping);
-                   defaults to a slug of the workbook filename.
-        overwrite: when False, existing generated flow/test files are left in
-                   place (hand-edits preserved) and recorded in result.warnings.
-                   The shared harness is never overwritten regardless.
+        path:           the .xlsx workbook.
+        out_dir:        output directory (defaults to the profile's output.dir).
+        profile:        a ConvertProfile; loaded from bubblegum.convert.yaml if None.
+        write:          when False, build the IR + files but write nothing.
+        init:           also scaffold the shared TypeScript harness if absent.
+        name:           base name for the generated test/flow (workbook grouping).
+        overwrite:      when False, keep existing generated flow/test files.
+        feature_filter: keep only features whose name contains one of these
+                        (case-insensitive substring) terms.
     """
     profile = profile or ConvertProfile.load()
     out_root = Path(out_dir) if out_dir is not None else Path(profile.output.dir)
@@ -66,6 +65,7 @@ def convert_workbook(
 
     raw = read_workbook(path, profile)
     features = build_features(raw, profile, ai_hook=ai_hook)
+    features = _apply_feature_filter(features, feature_filter)
 
     result = ConvertResult(features=features)
     langs = profile.output.languages
@@ -77,10 +77,10 @@ def convert_workbook(
 
     if "typescript" in langs:
         if profile.output.group_by == "workbook":
-            # One flow + one test for the whole workbook; each scenario becomes
-            # a test method inside it.
-            bundle = _workbook_bundle(path, name, features)
-            _emit_typescript(bundle, out_root, profile, result, write, overwrite)
+            # One flow + one test per workbook — but split by sheet so a
+            # multi-sheet workbook yields one file per sheet.
+            for bundle in _workbook_bundles(path, name, features):
+                _emit_typescript(bundle, out_root, profile, result, write, overwrite)
         else:
             for feature in features:
                 _emit_typescript(feature, out_root, profile, result, write, overwrite)
@@ -106,27 +106,118 @@ def convert_workbook(
     return result
 
 
-def _workbook_bundle(path, name: str | None, features):
-    """Collapse all features/scenarios of a workbook into one synthetic Feature.
+def validate_workbook(
+    path: str | Path,
+    profile: ConvertProfile | None = None,
+    feature_filter: list[str] | None = None,
+) -> list[str]:
+    """Parse the workbook + config and report issues WITHOUT generating files.
 
-    The file is named from ``name`` or the workbook's filename stem; every
-    scenario across every Feature/Epic becomes a test method in the one file.
+    Flags: unmapped login personas, navigation pages not configured, steps that
+    will become TODOs, and malformed template expressions.
+    """
+    from bubblegum.convert.emitters.ts_smart import _is_login_step, _nav_page_name
+    from bubblegum.convert.models import StepKind
+
+    profile = profile or ConvertProfile.load()
+    raw = read_workbook(path, profile)
+    features = _apply_feature_filter(build_features(raw, profile), feature_filter)
+
+    issues: list[str] = []
+    personas_seen: set[str] = set()
+    nav_missing: set[str] = set()
+    todo = 0
+
+    for feature in features:
+        for scenario in feature.scenarios:
+            for step in scenario.steps:
+                if _is_login_step(step) and scenario.persona:
+                    personas_seen.add(scenario.persona)
+                if step.kind is StepKind.AUTO:
+                    page = _nav_page_name(step.instruction)
+                    if page and profile.project.navigation and not _nav_present(page, profile):
+                        nav_missing.add(page)
+                elif step.kind in (StepKind.NEEDS_DATA, StepKind.MANUAL, StepKind.BACKEND):
+                    todo += 1
+                if step.text.count("{{") != step.text.count("}}"):
+                    issues.append(f"[template] unbalanced {{{{ }}}} in step: {step.text!r}")
+
+    for persona in sorted(personas_seen):
+        if not profile.project.persona_credentials(persona):
+            issues.append(
+                f"[persona] '{persona}' has no credential mapping "
+                "(add it under convert.personas or set convert.imports.credentials)."
+            )
+    for page in sorted(nav_missing):
+        issues.append(
+            f"[navigation] page '{page}' is not in convert.navigation "
+            "(will emit a generic act call)."
+        )
+    if todo:
+        issues.append(f"[todo] {todo} step(s) will be emitted as TODO (needs_data/manual/backend).")
+    return issues
+
+
+def _nav_present(page: str, profile: ConvertProfile) -> bool:
+    key = page.casefold()
+    return any(name.casefold() == key for name in profile.project.navigation)
+
+
+def _apply_feature_filter(features, terms: list[str] | None):
+    """Keep only features whose name contains one of ``terms`` (case-insensitive)."""
+    if not terms:
+        return features
+    wanted = [t.strip().casefold() for t in terms if t.strip()]
+    return [f for f in features if any(t in f.name.casefold() for t in wanted)]
+
+
+def _workbook_bundles(path, name: str | None, features):
+    """One synthetic Feature per sheet (every scenario becomes a test method).
+
+    A single-sheet workbook yields one bundle named from ``name`` or the file
+    stem; a multi-sheet workbook yields one bundle per sheet, named from the
+    sheet so files don't collide.
     """
     from bubblegum.convert.models import Feature
     from bubblegum.convert.normalize import _slugify
 
-    stem = Path(path).stem
-    slug = _slugify(name) if name else _slugify(stem)
-    display = name or stem
     scenarios = [s for f in features for s in f.scenarios]
+    if not scenarios:
+        return []
     tags = sorted({t for f in features for t in f.tags})
-    return Feature(name=display, slug=slug or "workbook", scenarios=scenarios, tags=tags)
+
+    # Preserve first-seen sheet order.
+    sheets: list[str] = []
+    for s in scenarios:
+        if s.sheet not in sheets:
+            sheets.append(s.sheet)
+    multi = len([x for x in sheets if x]) > 1
+
+    stem = Path(path).stem
+    base_slug = _slugify(name) if name else _slugify(stem)
+    base_display = name or stem
+
+    bundles = []
+    if not multi:
+        bundles.append(
+            Feature(name=base_display, slug=base_slug or "workbook", scenarios=scenarios, tags=tags)
+        )
+        return bundles
+
+    for sheet in sheets:
+        sheet_scenarios = [s for s in scenarios if s.sheet == sheet]
+        slug = _slugify(sheet) or "sheet"
+        bundles.append(
+            Feature(name=sheet or base_display, slug=slug, scenarios=sheet_scenarios, tags=tags)
+        )
+    return bundles
 
 
 def _emit_typescript(feature, out_root: Path, profile, result: ConvertResult, write: bool, overwrite: bool = True) -> None:
-    """Emit the smart-tests <name>.flow.ts + <name>.test.mts pair for a group."""
+    """Emit the smart-tests <name>.flow.ts + <name>.test.mts (+ .data.ts) group."""
     from bubblegum.convert.emitters.ts_smart import (
         _fn_name,
+        emit_data_file,
         emit_flow_file,
         emit_test_file,
     )
@@ -134,16 +225,19 @@ def _emit_typescript(feature, out_root: Path, profile, result: ConvertResult, wr
     used: set[str] = set()
     fn_names = [_fn_name(s.title, used) for s in feature.scenarios]
 
-    flow_path = out_root / "flows" / f"{feature.slug}.flow.ts"
-    test_path = out_root / "tests" / f"{feature.slug}.test.mts"
-    result.files_written.append(str(flow_path))
-    result.files_written.append(str(test_path))
+    targets = [
+        (out_root / "flows" / f"{feature.slug}.flow.ts", emit_flow_file(feature, fn_names, profile)),
+        (out_root / "tests" / f"{feature.slug}.test.mts", emit_test_file(feature, fn_names, profile)),
+    ]
+    data_content = emit_data_file(feature, fn_names, profile)
+    if data_content is not None:
+        targets.append((out_root / "data" / f"{feature.slug}.data.ts", data_content))
+
+    for target, _ in targets:
+        result.files_written.append(str(target))
     if not write:
         return
-    for target, content in (
-        (flow_path, emit_flow_file(feature, fn_names, profile)),
-        (test_path, emit_test_file(feature, fn_names, profile)),
-    ):
+    for target, content in targets:
         if target.exists() and not overwrite:
             result.warnings.append(f"skipped existing (no-overwrite): {target}")
             continue

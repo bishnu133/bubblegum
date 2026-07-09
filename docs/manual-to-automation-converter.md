@@ -77,9 +77,39 @@ CLI options:
 | `--name NAME` | Base name for the generated test/flow file (default: the workbook filename). |
 | `--group-by workbook\|feature` | One file per workbook (default) or per Feature/Epic. |
 | `--no-overwrite` | Leave existing generated flow/test files in place (preserve hand-edits). |
+| `--feature "A,B"` | Only generate features whose Feature/Epic matches these (case-insensitive) terms. |
+| `--sheet "A,B"` | Only read these worksheet(s). Default: all sheets with the steps column. |
+| `--no-data-file` | Inline literals instead of extracting them into `<name>.data.ts`. |
+| `--validate-only` | Report issues (unmapped personas, missing nav, TODOs, bad templates) without writing. |
+| `--update-package-json` | Merge suggested `test:smart:<name>` scripts into `./package.json`. |
 | `--config PATH` | Path to `bubblegum.convert.yaml` (default: `./bubblegum.convert.yaml`). |
 | `--languages a,b` | Subset of `typescript,feature,python` to emit (default: `typescript`). |
 | `--ai` | Enable the optional AI fallback for steps the grammar can't split. |
+
+### Test data extraction
+
+Static quoted literals from `Enter "X"` / `Select "X"` steps are lifted into a
+per-scenario object in `<name>.data.ts` (keyed by the camelCase field name) and
+referenced from the flow via backtick interpolation — so testers edit values in
+one place. Template expressions (`{{…}}`) and button labels stay inline. Turn it
+off with `--no-data-file` or `output.extract_data: false`.
+
+```typescript
+// data/fund-transfer.data.ts
+export const transferMoneyData = { fromAccount: 'Savings', amount: '150.00' };
+// flows/fund-transfer.flow.ts
+await act(engine, `Select "${transferMoneyData.fromAccount}" from the From account dropdown`);
+```
+
+### Multi-sheet, filtering & validation
+
+- **Multi-sheet:** all sheets with the steps column are read; a multi-sheet
+  workbook emits one test file per sheet. `--sheet "UAT Scenario"` restricts it.
+- **`--feature "Fund transfer,Bill payment"`** generates a subset.
+- **`--validate-only`** pre-flights the Excel + config (unmapped personas,
+  unconfigured navigation, TODO steps, malformed templates) before you generate.
+- Scenarios that consume a `{{$var}}` an earlier scenario set are annotated
+  `// Depends on: scenario N …` and kept in order.
 
 ---
 

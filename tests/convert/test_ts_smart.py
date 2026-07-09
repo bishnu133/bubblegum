@@ -46,9 +46,18 @@ def test_fn_name_camelcase_drops_verify_and_unique():
     assert b == "aValidCouponAppliesADiscount2"  # disambiguated
 
 
+def _no_data_profile():
+    from dataclasses import replace
+    from bubblegum.convert.profile import ConvertProfile
+
+    p = ConvertProfile()
+    p.output = replace(p.output, extract_data=False)
+    return p
+
+
 def test_flow_file_shape():
     feat = _feature()
-    text = emit_flow_file(feat, _fns(feat))
+    text = emit_flow_file(feat, _fns(feat), _no_data_profile())
     assert "import { act, verify, observe } from '../helpers/actions';" in text
     assert "export async function aValidCouponAppliesADiscount(engine: Bubblegum, page: Page)" in text
     # AUTO action step
@@ -59,6 +68,45 @@ def test_flow_file_shape():
     assert "handled by loginFlow" in text
     # navigation step gets the wait pattern
     assert "await page.waitForLoadState('domcontentloaded');" in text
+
+
+def test_data_extraction_lifts_static_literals():
+    feat = _feature(
+        steps=(
+            "Given I open the Transfer page\n"
+            'When I select "Savings" from the From account dropdown\n'
+            'And I enter "150.00" into the Amount field\n'
+            "And I click the Continue button\n"
+            "Then I see Done"
+        ),
+        title="Transfer money",
+    )
+    from bubblegum.convert.emitters.ts_smart import emit_data_file
+
+    fns = _fns(feat)
+    flow = emit_flow_file(feat, fns)
+    data = emit_data_file(feat, fns)
+    # data file has one object with camelCase field keys
+    assert "export const transferMoneyData = {" in data
+    assert "fromAccount: 'Savings'," in data
+    assert "amount: '150.00'," in data
+    # flow interpolates via backticks and imports the object
+    assert "from '../data/" in flow
+    assert "await act(engine, `Select \"${transferMoneyData.fromAccount}\" from the From account dropdown`);" in flow
+    # a button label is NOT extracted
+    assert "await act(engine, 'Click the Continue button');" in flow
+
+
+def test_template_value_not_extracted():
+    feat = _feature(
+        steps='When I enter "N-{{timestamp|%Y%m%d as v}}" into the Name field\nThen I see Done',
+        title="Dyn",
+    )
+    from bubblegum.convert.emitters.ts_smart import emit_data_file
+
+    fns = _fns(feat)
+    assert emit_data_file(feat, fns) is None  # nothing static to extract
+    assert "await engine.act('Enter \"N-{{timestamp|%Y%m%d as v}}\" into the Name field');" in emit_flow_file(feat, fns)
 
 
 def test_flow_file_todo_for_needs_data():
@@ -182,6 +230,27 @@ def test_report_title_prefix_applied():
     profile = _profile(reports={"title_prefix": "H365"})
     text = emit_test_file(feat, _fns(feat), profile)
     assert "title: 'H365 [F][Web] Checkout'" in text
+
+
+def test_dependency_note_for_session_variable():
+    raws = [
+        RawScenario(row=1, steps_text='When I enter "O-{{timestamp|%Y as id}}" into Ref\nThen I see Done',
+                    fields={"feature": "[F][Web] Orders", "title": "Create order"}),
+        RawScenario(row=2, steps_text='Then in the row where Ref is "{{$id}}" Status is "New"',
+                    fields={"feature": "[F][Web] Orders", "title": "Verify order"}),
+    ]
+    feat = build_features(raws)[0]
+    text = emit_test_file(feat, _fns(feat))
+    assert "// Depends on: scenario 1 (Create order) — sets {{$id}}" in text
+
+
+def test_failure_screenshot_opt_in():
+    feat = _feature()
+    fns = _fns(feat)
+    assert "page.screenshot(" not in emit_test_file(feat, fns)  # off by default
+    profile = _profile()
+    profile.project.on_failure_screenshot = True
+    assert "page.screenshot(" in emit_test_file(feat, fns, profile)
 
 
 def test_scaffold_writes_harness_once(tmp_path):

@@ -78,6 +78,7 @@ class RawScenario:
     row: int
     steps_text: str
     fields: dict[str, str] = field(default_factory=dict)
+    sheet: str = ""
 
     # Convenience accessors for the well-known metadata columns. They fall back
     # to empty strings so emitters never crash on a missing column.
@@ -142,6 +143,7 @@ class Scenario:
     feature: str = ""
     source_row: int = 0
     tags: list[str] = field(default_factory=list)
+    sheet: str = ""
 
     @property
     def is_backend(self) -> bool:

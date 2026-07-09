@@ -24,8 +24,23 @@ from bubblegum.convert.emitters.stepcall import (
     ts_escape,
     verify_phrase,
 )
+from bubblegum.convert.emitters.tsdata import ScenarioData, extract_scenario_data
 from bubblegum.convert.models import Feature, Scenario, StepKind
 from bubblegum.convert.profile import ConvertProfile
+
+
+def _bt_escape(text: str) -> str:
+    """Escape a string for a TS backtick template, preserving ${...} interpolation."""
+    return text.replace("\\", "\\\\").replace("`", "\\`")
+
+
+def _scenario_data_list(feature: Feature, fn_names: list[str], profile: ConvertProfile) -> list:
+    """Per-scenario ScenarioData (or None), aligned with feature.scenarios."""
+    if not profile.output.extract_data:
+        return [None] * len(feature.scenarios)
+    return [
+        extract_scenario_data(s, f"{fn}Data") for s, fn in zip(feature.scenarios, fn_names)
+    ]
 
 _BANNER = (
     "/**\n"
@@ -42,6 +57,30 @@ def _is_login_step(step) -> bool:
 def _report_title(name: str, profile: ConvertProfile) -> str:
     prefix = profile.project.report_title_prefix
     return f"{prefix} {name}".strip() if prefix else name
+
+
+_VAR_SET_RE = re.compile(r"as\s+([A-Za-z_]\w*)\s*\}\}")
+_VAR_USE_RE = re.compile(r"\{\{\$([A-Za-z_]\w*)\}\}")
+
+
+def _dependency_notes(scenarios) -> dict[int, str]:
+    """Map scenario index → note when it uses a session var an earlier one sets.
+
+    Detects Bubblegum session variables: a scenario that references ``{{$var}}``
+    depends on the earliest scenario that defined it with ``as var``.
+    """
+    setters: dict[str, tuple[int, str]] = {}
+    notes: dict[int, str] = {}
+    for i, scenario in enumerate(scenarios):
+        blob = " ".join(step.text for step in scenario.steps)
+        used = {m for m in _VAR_USE_RE.findall(blob)}
+        for var in sorted(used):
+            if var in setters and setters[var][0] < i:
+                idx, title = setters[var]
+                notes[i] = f"scenario {idx + 1} ({title}) — sets {{{{${var}}}}}"
+        for var in _VAR_SET_RE.findall(blob):
+            setters.setdefault(var, (i, scenario.title))
+    return notes
 
 
 def _fn_name(title: str, used: set[str]) -> str:
@@ -124,7 +163,7 @@ def _render_nav(mapped: dict[str, str], page: str, ind: str, profile: ConvertPro
     ]
 
 
-def _render_step(step, profile: ConvertProfile) -> list[str]:
+def _render_step(step, profile: ConvertProfile, data: ScenarioData | None = None) -> list[str]:
     """Render one CanonicalStep into flow-body lines."""
     ind = "  "
 
@@ -145,6 +184,18 @@ def _render_step(step, profile: ConvertProfile) -> list[str]:
             if mapped:
                 return _render_nav(mapped, page, ind, profile)
 
+        # 4) A static literal extracted into the data file → interpolate it.
+        if data is not None and step.value and "{{" not in step.value:
+            key = data.lookup.get((step.target or "value", step.value))
+            if key:
+                tpl = act_phrase(step).replace(
+                    f'"{step.value}"', f'"${{{data.object_name}.{key}}}"', 1
+                )
+                lines = [f"{ind}await act(engine, `{_bt_escape(tpl)}`);"]
+                if is_nav_step(step):
+                    lines += _wait_block(ind, profile)
+                return lines
+
         prim = primitive_for(step)
         phrase = verify_phrase(step) if prim == "verify" else act_phrase(step)
         lines = [f"{ind}{_emit_call(prim, phrase)}"]
@@ -162,7 +213,7 @@ def _render_step(step, profile: ConvertProfile) -> list[str]:
     ]
 
 
-def _scenario_fn(scenario: Scenario, fn: str, profile: ConvertProfile) -> str:
+def _scenario_fn(scenario: Scenario, fn: str, profile: ConvertProfile, data: ScenarioData | None = None) -> str:
     doc = ["/**", f" * {scenario.title}"]
     if scenario.jira:
         doc.append(f" * Jira: {scenario.jira}")
@@ -172,7 +223,7 @@ def _scenario_fn(scenario: Scenario, fn: str, profile: ConvertProfile) -> str:
         f"export async function {fn}(engine: Bubblegum, page: Page): Promise<void> {{",
     ]
     for step in scenario.steps:
-        lines.extend(_render_step(step, profile))
+        lines.extend(_render_step(step, profile, data))
     lines.append(f"  console.log('Scenario passed: {ts_escape(scenario.title)}');")
     lines.append("}")
     return "\n".join(lines)
@@ -182,17 +233,55 @@ def emit_flow_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
     """Return the ``<feature>.flow.ts`` text. ``fn_names`` aligns 1:1 with scenarios."""
     profile = profile or ConvertProfile()
     helpers = profile.output.ts_helpers_dir.rstrip("/")
-    parts = [
-        _BANNER,
+    data_dir = profile.output.ts_data_dir.rstrip("/")
+    data_list = _scenario_data_list(feature, fn_names, profile)
+
+    imports = [
         "import type { Page } from '@playwright/test';",
         "import type { Bubblegum } from '@bubblegum-ai/node';",
         f"import {{ act, verify, observe }} from '{helpers}/actions';",
+    ]
+    used_objs = [d.object_name for d in data_list if d is not None]
+    if used_objs:
+        imports.append(
+            f"import {{ {', '.join(used_objs)} }} from '{data_dir}/{feature.slug}.data';"
+        )
+
+    parts = [
+        _BANNER,
+        *imports,
         "",
         "\n\n".join(
-            _scenario_fn(s, fn, profile) for s, fn in zip(feature.scenarios, fn_names)
+            _scenario_fn(s, fn, profile, d)
+            for s, fn, d in zip(feature.scenarios, fn_names, data_list)
         ),
     ]
     return "\n".join(parts).rstrip() + "\n"
+
+
+def emit_data_file(feature: Feature, fn_names: list[str], profile: ConvertProfile | None = None) -> str | None:
+    """Return the ``<feature>.data.ts`` text, or None when nothing to extract."""
+    profile = profile or ConvertProfile()
+    data_list = _scenario_data_list(feature, fn_names, profile)
+    objs = [d for d in data_list if d is not None]
+    if not objs:
+        return None
+
+    blocks = []
+    for d in objs:
+        lines = [f"export const {d.object_name} = {{"]
+        for key, value in d.entries:
+            lines.append(f"  {key}: '{ts_escape(value)}',")
+        lines.append("};")
+        blocks.append("\n".join(lines))
+
+    header = (
+        "/**\n"
+        f" * Test data for {feature.name} — generated by `bubblegum convert`.\n"
+        " * Edit values here; the flows reference these constants.\n"
+        " */\n"
+    )
+    return header + "\n" + "\n\n".join(blocks) + "\n"
 
 
 def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfile | None = None) -> str:
@@ -258,8 +347,12 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
             ]
 
     # Registry of test methods: [label, flow function]. One entry per scenario.
+    # Annotate scenarios that consume a session variable an earlier scenario set.
+    deps = _dependency_notes(feature.scenarios)
     registry = ["// One test method per scenario in this workbook.", "const tests: Array<[string, (engine: any, page: any) => Promise<void>]> = ["]
-    for scenario, fn in zip(feature.scenarios, fn_names):
+    for i, (scenario, fn) in enumerate(zip(feature.scenarios, fn_names)):
+        if deps.get(i):
+            registry.append(f"  // Depends on: {deps[i]}")
         registry.append(f"  ['{ts_escape(scenario.title)}', {fn}],")
     registry.append("];")
 
@@ -287,6 +380,14 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
         "        console.log(`PASS: ${name}`);",
         "      } catch (err) {",
         "        failures++;",
+    ]
+    if profile.project.on_failure_screenshot:
+        body += [
+            "        try {",
+            "          await page.screenshot({ path: `${process.env.REPORT_DIR ?? 'reports'}/failure-${name.replace(/[^a-z0-9]+/gi, '_')}-${Date.now()}.png`, fullPage: true });",
+            "        } catch { /* screenshot is best-effort */ }",
+        ]
+    body += [
         "        console.error(`FAIL: ${name} —`, err);",
         "      }",
         "    }",

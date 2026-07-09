@@ -56,45 +56,79 @@ def read_workbook(
 ) -> list[RawScenario]:
     """Read scenarios from an .xlsx workbook into RawScenario objects.
 
-    Rows with an empty steps cell are skipped (they are usually spacer rows).
+    Sheet selection: ``input.sheet`` (single) or ``input.sheets`` (list) restrict
+    which sheets are read; otherwise every sheet that has the steps column is
+    processed. Each RawScenario is tagged with its sheet. Rows with an empty
+    steps cell are skipped (usually spacer rows).
     """
     profile = profile or ConvertProfile()
     openpyxl = _require_openpyxl()
 
     wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
-    ws = wb[profile.input.sheet] if profile.input.sheet else wb.active
+
+    wanted = _wanted_sheets(profile)
+    if wanted is not None:
+        missing = [s for s in wanted if s not in wb.sheetnames]
+        if missing:
+            raise ValueError(
+                f"Sheet(s) {missing} not found. Available: {wb.sheetnames}"
+            )
+        worksheets = [wb[s] for s in wanted]
+    else:
+        worksheets = list(wb.worksheets)
 
     header_row = profile.input.header_row
-    rows = list(ws.iter_rows(values_only=True))
-    if len(rows) < header_row:
-        return []
-
-    header_cells = list(rows[header_row - 1])
-    index = _header_index(header_cells, profile.input.columns)
-
-    steps_col = index.get("steps")
-    if steps_col is None:
-        raise ValueError(
-            f"Steps column {profile.input.columns.get('steps')!r} not found in "
-            f"sheet headers: {[c for c in header_cells if c]}. "
-            "Set convert.input.columns.steps in bubblegum.convert.yaml."
-        )
-
     scenarios: list[RawScenario] = []
-    for offset, row in enumerate(rows[header_row:], start=header_row + 1):
-        steps_val = row[steps_col] if steps_col < len(row) else None
-        if steps_val is None or not str(steps_val).strip():
+    matched_any = False
+
+    for ws in worksheets:
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < header_row:
             continue
-        fields: dict[str, str] = {}
-        for logical, col in index.items():
-            if logical == "steps":
+        header_cells = list(rows[header_row - 1])
+        index = _header_index(header_cells, profile.input.columns)
+        steps_col = index.get("steps")
+        if steps_col is None:
+            # When a specific sheet was requested it must have the column;
+            # when scanning all sheets, silently skip non-scenario sheets.
+            if wanted is not None:
+                raise ValueError(
+                    f"Steps column {profile.input.columns.get('steps')!r} not found in "
+                    f"sheet {ws.title!r} headers: {[c for c in header_cells if c]}. "
+                    "Set convert.input.columns.steps in bubblegum.convert.yaml."
+                )
+            continue
+        matched_any = True
+
+        for offset, row in enumerate(rows[header_row:], start=header_row + 1):
+            steps_val = row[steps_col] if steps_col < len(row) else None
+            if steps_val is None or not str(steps_val).strip():
                 continue
-            val = row[col] if col < len(row) else None
-            if val is not None:
-                fields[logical] = str(val).strip()
-        scenarios.append(
-            RawScenario(row=offset, steps_text=str(steps_val), fields=fields)
-        )
+            fields: dict[str, str] = {}
+            for logical, col in index.items():
+                if logical == "steps":
+                    continue
+                val = row[col] if col < len(row) else None
+                if val is not None:
+                    fields[logical] = str(val).strip()
+            scenarios.append(
+                RawScenario(row=offset, steps_text=str(steps_val), fields=fields, sheet=ws.title)
+            )
 
     wb.close()
+
+    if not matched_any and wanted is None:
+        raise ValueError(
+            f"Steps column {profile.input.columns.get('steps')!r} not found in any sheet. "
+            "Set convert.input.columns.steps in bubblegum.convert.yaml."
+        )
     return scenarios
+
+
+def _wanted_sheets(profile: ConvertProfile) -> list[str] | None:
+    """Explicit sheet allow-list, or None to scan all sheets."""
+    if profile.input.sheets:
+        return list(profile.input.sheets)
+    if profile.input.sheet:
+        return [profile.input.sheet]
+    return None
