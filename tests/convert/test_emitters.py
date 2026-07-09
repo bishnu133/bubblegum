@@ -25,11 +25,21 @@ def _feature():
 
 
 def test_primitive_selection():
-    assert primitive_for(CanonicalStep("then", "x", action_type="verify")) == "verify"
     assert primitive_for(CanonicalStep("when", "x", action_type="extract")) == "extract"
-    # an action under a Then still emits act, not verify
-    assert primitive_for(CanonicalStep("then", "x", action_type="click")) == "act"
-    assert primitive_for(CanonicalStep("when", "x", action_type="type")) == "act"
+    # an action verb leading a Then still emits act, not verify
+    assert primitive_for(
+        CanonicalStep("then", "x", action_type="click", instruction="click the Save button")
+    ) == "act"
+    # an assertion under Then that starts with no action verb → verify
+    assert primitive_for(
+        CanonicalStep("then", "x", action_type="click", instruction="in the row where Name is X")
+    ) == "verify"
+    assert primitive_for(
+        CanonicalStep("then", "x", action_type="click", instruction="see the Dashboard")
+    ) == "verify"
+    assert primitive_for(
+        CanonicalStep("when", "x", action_type="type", instruction="enter a into b")
+    ) == "act"
 
 
 def test_feature_file_has_banner_tags_and_annotations():

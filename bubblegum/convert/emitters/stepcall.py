@@ -20,23 +20,32 @@ from bubblegum.convert.models import CanonicalStep
 
 
 _ACTION_VERBS = {
-    "click", "tap", "type", "select", "upload", "check", "uncheck",
-    "set", "hover", "scroll", "long_press", "double_tap", "pinch", "zoom", "drag",
+    "click", "tap", "press", "type", "enter", "fill", "input", "select",
+    "choose", "pick", "open", "navigate", "go", "follow", "upload", "attach",
+    "check", "uncheck", "tick", "untick", "toggle", "set", "hover", "scroll",
+    "expand", "collapse", "drag", "swipe", "double", "long", "zoom", "pinch",
+    "submit", "search", "clear", "close", "switch",
 }
+
+
+def _leading_verb(instruction: str) -> str:
+    m = re.match(r"^\s*([a-zA-Z]+)", instruction or "")
+    return m.group(1).lower() if m else ""
 
 
 def primitive_for(step: CanonicalStep) -> str:
     """Return 'verify' | 'extract' | 'act' for a step.
 
-    The parsed action type wins over Gherkin position: an action written under a
-    ``Then`` (e.g. "And they click the Save button") still emits ``act``, not
-    ``verify``. Section is only the tie-breaker when the action is unknown.
+    Keyed off the *instruction's leading verb*, not decompose's action_type
+    (which defaults unknown phrases to "click"). So "click the Save button" under
+    a Then still emits ``act``, while an assertion like "in the row where …" —
+    which starts with no action verb — correctly emits ``verify``.
     """
     if step.action_type == "extract":
         return "extract"
-    if step.action_type in _ACTION_VERBS:
+    if _leading_verb(step.instruction) in _ACTION_VERBS:
         return "act"
-    if step.action_type == "verify" or step.keyword == "then":
+    if step.keyword == "then":
         return "verify"
     return "act"
 

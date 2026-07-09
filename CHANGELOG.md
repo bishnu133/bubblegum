@@ -1,5 +1,26 @@
 # Unreleased
 
+## feat(convert): project wiring — real imports, navigation, template expressions
+
+Following the code-generator specification, the smart-tests emitter now produces
+project-wired, runnable code instead of env placeholders:
+
+- `convert.imports` / `convert.personas` → generated tests import the team's real
+  base-URL constant and per-persona credential functions
+  (`const credentials = getRetailCustomerCredentials();`).
+- `convert.navigation` → "open the X page" becomes a configured menu click
+  (`observe` + `act` + waits) or a `page.goto('/path')`.
+- Template expressions (`{{timestamp|… as var}}`, `{{$var}}`, `{{today+Nd|…}}`)
+  are emitted through `engine.act()` / `engine.verify()` directly (bypassing the
+  wrappers, which don't process them) — any step containing `{{` is auto-routed.
+- `convert.custom_patterns` → exact NL phrase injects literal TS (escape hatch).
+- Flows now carry JSDoc with the scenario title + Jira, and log
+  `Scenario passed: <title>`; report titles honor `convert.reports.title_prefix`.
+- `bubblegum convert --init` also scaffolds a `SKILL.md` of conventions for AI
+  assistants/humans. `primitive_for` now keys off the instruction's leading verb,
+  so table/row assertions under `Then` correctly emit `verify`. Generated code
+  type-checks under `tsc --strict`.
+
 ## feat(convert): one test file per workbook, with a test method per scenario
 
 - New default grouping `group_by: workbook`: each Excel file now produces a

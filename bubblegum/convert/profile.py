@@ -97,12 +97,42 @@ class AIProfile:
 
 
 @dataclass
+class ProjectProfile:
+    """Project-specific wiring so generated code imports the team's real
+    modules (URL, credentials), maps personas → credential functions, and turns
+    "open the X page" into the team's navigation. All optional — when empty the
+    generator falls back to env placeholders + generic ``act`` calls.
+    """
+
+    # {"module": "...", "export": "initialApplicationUri"} for the base URL, or
+    # None to read it from ``base_url_env``.
+    base_url_import: dict[str, str] | None = None
+    base_url_env: str = "BASE_URL"
+    # Default credentials {"module": "...", "function": "getCredentials"}.
+    credentials_default: dict[str, str] | None = None
+    # persona name → {"module": "...", "function": "..."}.
+    personas: dict[str, dict[str, str]] = field(default_factory=dict)
+    # page name → {"type": "menu"|"url", "action": "Click the X menu"} or {"type":"url","path":"/x"}.
+    navigation: dict[str, dict[str, str]] = field(default_factory=dict)
+    # [{"pattern": "...", "code": "..."}] — exact NL step → literal code injection.
+    custom_patterns: list[dict[str, str]] = field(default_factory=list)
+    report_title_prefix: str = ""
+
+    def persona_credentials(self, persona: str) -> dict[str, str] | None:
+        """Credential import for a persona, falling back to the default."""
+        if persona and persona in self.personas:
+            return self.personas[persona]
+        return self.credentials_default
+
+
+@dataclass
 class ConvertProfile:
     """Loaded conversion conventions. Construct with ``ConvertProfile.load()``."""
 
     input: InputProfile = field(default_factory=InputProfile)
     output: OutputProfile = field(default_factory=OutputProfile)
     ai: AIProfile = field(default_factory=AIProfile)
+    project: ProjectProfile = field(default_factory=ProjectProfile)
     wait_strategy: str = "auto"
     glossary: dict[str, str] = field(default_factory=dict)
     data_bindings: dict[str, str] = field(default_factory=dict)
@@ -181,11 +211,56 @@ class ConvertProfile:
         if strategy not in _VALID_WAIT_STRATEGIES:
             strategy = "auto"
 
+        imports = conv.get("imports", {}) or {}
+        environment = conv.get("environment", {}) or {}
+        reports = conv.get("reports", {}) or {}
+        creds = imports.get("credentials")
+        project_profile = ProjectProfile(
+            base_url_import=_import_ref(imports.get("base_url") or imports.get("urls")),
+            base_url_env=str(environment.get("base_url_env", "BASE_URL")),
+            credentials_default=(
+                {"module": str(creds.get("module", "")), "function": str(creds.get("function", ""))}
+                if isinstance(creds, dict) and creds.get("function")
+                else None
+            ),
+            personas={
+                str(name): {
+                    "module": str(v.get("module", "")),
+                    "function": str(v.get("credential_function") or v.get("function", "")),
+                }
+                for name, v in (conv.get("personas", {}) or {}).items()
+                if isinstance(v, dict) and (v.get("credential_function") or v.get("function"))
+            },
+            navigation={
+                str(page): {str(k): str(val) for k, val in (spec or {}).items()}
+                for page, spec in (conv.get("navigation", {}) or {}).items()
+                if isinstance(spec, dict)
+            },
+            custom_patterns=[
+                {"pattern": str(p.get("pattern", "")), "code": str(p.get("code", ""))}
+                for p in (conv.get("custom_patterns", []) or [])
+                if isinstance(p, dict) and p.get("pattern")
+            ],
+            report_title_prefix=str(reports.get("title_prefix", "")),
+        )
+
         return cls(
             input=input_profile,
             output=output_profile,
             ai=ai_profile,
+            project=project_profile,
             wait_strategy=strategy,
             glossary={str(k): str(v) for k, v in (conv.get("glossary", {}) or {}).items()},
             data_bindings={str(k): str(v) for k, v in (conv.get("data", {}) or {}).items()},
         )
+
+
+def _import_ref(spec) -> dict[str, str] | None:
+    """Normalize an import spec {module, export/function} → {module, export}."""
+    if not isinstance(spec, dict):
+        return None
+    module = str(spec.get("module", ""))
+    export = str(spec.get("export") or spec.get("function") or "")
+    if not module or not export:
+        return None
+    return {"module": module, "export": export}

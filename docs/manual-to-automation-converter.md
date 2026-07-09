@@ -140,6 +140,60 @@ handled once by `loginFlow`, navigation steps get the team's
 `waitForLoadState` + `waitForTimeout` pattern, and the whole tree type-checks
 under `tsc --strict`.
 
+**Template expressions** (`{{timestamp|… as var}}`, `{{$var}}`, `{{today+2d|…}}`)
+are emitted through `engine.act()` / `engine.verify()` **directly**, not the
+wrapper — because the wrappers don't process them. Any step whose text contains
+`{{` is routed automatically.
+
+---
+
+## Project wiring — generate code that imports your real modules
+
+By default the generated `.test.mts` reads the app URL and credentials from
+env vars (with `TODO`s). Point the converter at your project's modules and it
+emits the real imports instead — this is configured under `convert:` in
+`bubblegum.convert.yaml`:
+
+```yaml
+convert:
+  imports:
+    base_url: { module: "../../constants/url", export: "initialApplicationUri" }
+    credentials: { module: "../../data/BAP", function: "getBAPBadgeSupportCredentials" }
+  personas:
+    "Retail customer":
+      module: "../../data/Banking"
+      credential_function: "getRetailCustomerCredentials"
+  navigation:
+    "Accounts": { type: "menu", action: "Click the Accounts menu" }
+    "Bill payment": { type: "url", path: "/bill-payment" }
+  custom_patterns:
+    - pattern: "I wait for the page to load"
+      code: "await page.waitForLoadState('domcontentloaded');\nawait page.waitForTimeout(3000);"
+  reports: { title_prefix: "H365" }
+```
+
+With that config, `Given I am logged in as a "Retail customer"` +
+`And I open the Accounts page` generate:
+
+```typescript
+import { initialApplicationUri } from '../../constants/url';
+import { getRetailCustomerCredentials } from '../../data/Banking';
+// …
+const APP_URL = initialApplicationUri;
+const credentials = getRetailCustomerCredentials();
+// …in the flow:
+await observe(engine, 'the Accounts menu');
+await act(engine, 'Click the Accounts menu');
+await page.waitForLoadState('domcontentloaded');
+await page.waitForTimeout(3000);
+```
+
+- **`imports` / `personas`** → real credential & URL imports (no env placeholders).
+- **`navigation`** → "open the X page" becomes a menu click (`observe`+`act`) or a `page.goto`.
+- **`custom_patterns`** → an escape hatch: an exact NL phrase injects literal TS.
+- `bubblegum convert --init` also scaffolds a **`SKILL.md`** capturing these
+  conventions for AI assistants and humans editing the generated tests.
+
 ---
 
 ## Team conventions — `bubblegum.convert.yaml`

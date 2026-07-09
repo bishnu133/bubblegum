@@ -39,6 +39,11 @@ def _is_login_step(step) -> bool:
     return step.kind is StepKind.NEEDS_DATA and bool(step.todo) and step.todo.startswith("Login")
 
 
+def _report_title(name: str, profile: ConvertProfile) -> str:
+    prefix = profile.project.report_title_prefix
+    return f"{prefix} {name}".strip() if prefix else name
+
+
 def _fn_name(title: str, used: set[str]) -> str:
     """camelCase function name from a scenario title, unique within ``used``."""
     words = re.findall(r"[A-Za-z0-9]+", title)
@@ -67,19 +72,83 @@ def _wait_block(indent: str, profile: ConvertProfile) -> list[str]:
     ]
 
 
+# "open/navigate to the <X> page" → a navigation the project config can map.
+_NAV_PAGE_RE = re.compile(
+    r"^(?:open|navigate\s+to|go\s+to|view)\s+(?:the\s+)?(.+?)\s+(?:page|screen)\b",
+    re.IGNORECASE,
+)
+
+
+def _nav_page_name(instruction: str) -> str | None:
+    m = _NAV_PAGE_RE.match((instruction or "").strip())
+    return m.group(1).strip() if m else None
+
+
+def _nav_lookup(page: str, profile: ConvertProfile) -> dict[str, str] | None:
+    nav = profile.project.navigation
+    if page in nav:
+        return nav[page]
+    key = page.casefold()
+    for name, spec in nav.items():
+        if name.casefold() == key:
+            return spec
+    return None
+
+
+def _custom_code(step, profile: ConvertProfile) -> str | None:
+    text = step.text.casefold()
+    for p in profile.project.custom_patterns:
+        if p["pattern"] and p["pattern"].casefold() in text:
+            return p["code"]
+    return None
+
+
+def _emit_call(prim: str, phrase: str) -> str:
+    """Bubblegum call; template expressions ({{..}}) MUST bypass the wrapper and
+    hit engine.act/engine.verify directly (the wrapper doesn't process them)."""
+    esc = ts_escape(phrase)
+    if "{{" in phrase:
+        return f"await engine.{'verify' if prim == 'verify' else 'act'}('{esc}');"
+    fn = "verify" if prim == "verify" else "act"
+    return f"await {fn}(engine, '{esc}');"
+
+
+def _render_nav(mapped: dict[str, str], page: str, ind: str, profile: ConvertProfile) -> list[str]:
+    if mapped.get("type") == "url" and mapped.get("path"):
+        return [f"{ind}await page.goto('{ts_escape(mapped['path'])}');", *_wait_block(ind, profile)]
+    action = mapped.get("action") or f"Click the {page} menu"
+    return [
+        f"{ind}await observe(engine, 'the {ts_escape(page)} menu');",
+        f"{ind}await act(engine, '{ts_escape(action)}');",
+        *_wait_block(ind, profile),
+    ]
+
+
 def _render_step(step, profile: ConvertProfile) -> list[str]:
     """Render one CanonicalStep into flow-body lines."""
     ind = "  "
+
+    # 1) Project-defined custom pattern wins (escape hatch for literal code).
+    code = _custom_code(step, profile)
+    if code is not None:
+        return [f"{ind}{line}" if line else "" for line in code.split("\n")]
+
+    # 2) Login precondition is handled once in the test setup.
     if _is_login_step(step):
         return [f"{ind}// Login precondition — handled by loginFlow() in the test setup."]
 
     if step.kind is StepKind.AUTO:
-        if primitive_for(step) == "verify":
-            phrase = ts_escape(verify_phrase(step))
-            return [f"{ind}await verify(engine, '{phrase}');"]
-        phrase = ts_escape(act_phrase(step))
-        lines = [f"{ind}await act(engine, '{phrase}');"]
-        if is_nav_step(step):
+        # 3) Navigation the project config knows how to reach.
+        page = _nav_page_name(step.instruction)
+        if page:
+            mapped = _nav_lookup(page, profile)
+            if mapped:
+                return _render_nav(mapped, page, ind, profile)
+
+        prim = primitive_for(step)
+        phrase = verify_phrase(step) if prim == "verify" else act_phrase(step)
+        lines = [f"{ind}{_emit_call(prim, phrase)}"]
+        if prim != "verify" and is_nav_step(step):
             lines += _wait_block(ind, profile)
         return lines
 
@@ -94,14 +163,17 @@ def _render_step(step, profile: ConvertProfile) -> list[str]:
 
 
 def _scenario_fn(scenario: Scenario, fn: str, profile: ConvertProfile) -> str:
+    doc = ["/**", f" * {scenario.title}"]
+    if scenario.jira:
+        doc.append(f" * Jira: {scenario.jira}")
+    doc.append(" */")
     lines = [
-        f"/** {scenario.title} */",
+        *doc,
         f"export async function {fn}(engine: Bubblegum, page: Page): Promise<void> {{",
     ]
     for step in scenario.steps:
         lines.extend(_render_step(step, profile))
-    safe_title = ts_escape(scenario.title)
-    lines.append(f"  console.log('{safe_title} — done');")
+    lines.append(f"  console.log('Scenario passed: {ts_escape(scenario.title)}');")
     lines.append("}")
     return "\n".join(lines)
 
@@ -141,6 +213,8 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
     )
     persona = next((s.persona for s in feature.scenarios if s.persona), "")
 
+    proj = profile.project
+
     imports = [
         "import dotenv from 'dotenv';",
         f"import {{ initEngine, teardownEngine, type EngineContext }} from '{helpers}/engine';",
@@ -148,22 +222,40 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
     ]
     if needs_login:
         imports.append(f"import {{ loginFlow }} from '{flows}/login.flow';")
+
+    # Base URL: a project import if configured, else an env var.
+    if proj.base_url_import:
+        imports.append(
+            f"import {{ {proj.base_url_import['export']} }} from '{proj.base_url_import['module']}';"
+        )
+    # Credentials for the login persona: a project import if mapped, else a
+    # placeholder object populated from the environment.
+    creds = proj.persona_credentials(persona) if needs_login else None
+    if needs_login and creds and creds.get("function") and creds.get("module"):
+        imports.append(f"import {{ {creds['function']} }} from '{creds['module']}';")
+
     imported = ", ".join(fn_names)
     imports.append(f"import {{ {imported} }} from '{flows}/{feature.slug}.flow';")
 
-    setup = [
-        "dotenv.config({ path: '.env.bubblegum.local' });",
-        "",
-        "// TODO: point these at your project's constants/data modules.",
-        "const APP_URL = process.env.APP_URL ?? 'https://your-app.example.com';",
-    ]
+    setup = ["dotenv.config({ path: '.env.bubblegum.local' });", ""]
+    if proj.base_url_import:
+        setup.append(f"const APP_URL = {proj.base_url_import['export']};")
+    else:
+        setup.append(
+            f"const APP_URL = process.env.{proj.base_url_env} ?? 'https://your-app.example.com';"
+        )
     if needs_login:
-        setup += [
-            "const credentials = {",
-            "  username: process.env.APP_USER ?? '',",
-            "  password: process.env.APP_PASS ?? '',",
-            "};",
-        ]
+        if creds and creds.get("function"):
+            setup.append(f"const credentials = {creds['function']}();")
+        else:
+            setup += [
+                "// TODO: map this persona to your project's credentials module",
+                "// (see convert.personas in bubblegum.convert.yaml).",
+                "const credentials = {",
+                "  username: process.env.APP_USER ?? '',",
+                "  password: process.env.APP_PASS ?? '',",
+                "};",
+            ]
 
     # Registry of test methods: [label, flow function]. One entry per scenario.
     registry = ["// One test method per scenario in this workbook.", "const tests: Array<[string, (engine: any, page: any) => Promise<void>]> = ["]
@@ -204,7 +296,7 @@ def emit_test_file(feature: Feature, fn_names: list[str], profile: ConvertProfil
         "  } finally {",
         "    if (ctx) {",
         "      try {",
-        f"        await generateReports(ctx.engine, {{ title: '{ts_escape(feature.name)}', suiteName: '{feature.slug}' }});",
+        f"        await generateReports(ctx.engine, {{ title: '{ts_escape(_report_title(feature.name, profile))}', suiteName: '{feature.slug}' }});",
         "      } catch {",
         "        // report failure should not mask test failures",
         "      }",

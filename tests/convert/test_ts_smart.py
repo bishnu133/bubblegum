@@ -114,6 +114,76 @@ def test_test_file_omits_login_when_no_precondition():
     assert "credentials" not in text
 
 
+def _profile(**convert):
+    from bubblegum.convert.profile import ConvertProfile
+
+    return ConvertProfile.from_dict({"convert": convert})
+
+
+def test_navigation_mapping_menu_uses_observe_and_action():
+    feat = _feature(steps="Given I open the Accounts page\nThen I see the Balance", title="Nav")
+    profile = _profile(navigation={"Accounts": {"type": "menu", "action": "Click the Accounts menu"}})
+    text = emit_flow_file(feat, _fns(feat), profile)
+    assert "await observe(engine, 'the Accounts menu');" in text
+    assert "await act(engine, 'Click the Accounts menu');" in text
+    assert "await page.waitForLoadState('domcontentloaded');" in text
+
+
+def test_navigation_mapping_url_uses_goto():
+    feat = _feature(steps="Given I open the Bill payment page\nThen I see X", title="Nav url")
+    profile = _profile(navigation={"Bill payment": {"type": "url", "path": "/bill-payment"}})
+    text = emit_flow_file(feat, _fns(feat), profile)
+    assert "await page.goto('/bill-payment');" in text
+
+
+def test_template_expression_bypasses_wrapper():
+    feat = _feature(
+        steps='When I enter "N-{{timestamp|%Y%m%d as v}}" into the Name field\nThen in the row where Name is "{{$v}}" Status is "OK"',
+        title="Dynamic",
+    )
+    text = emit_flow_file(feat, _fns(feat))
+    # template act uses engine.act directly (wrapper can't process {{...}})
+    assert "await engine.act('Enter \"N-{{timestamp|%Y%m%d as v}}\" into the Name field');" in text
+    # template verify uses engine.verify directly
+    assert "await engine.verify('In the row where Name is \"{{$v}}\" Status is \"OK\"');" in text
+
+
+def test_plain_step_uses_wrapper_not_engine_direct():
+    feat = _feature(steps="When I click the Save button\nThen I see Done", title="Plain")
+    text = emit_flow_file(feat, _fns(feat))
+    assert "await act(engine, 'Click the Save button');" in text
+    assert "engine.act(" not in text
+
+
+def test_custom_pattern_injects_literal_code():
+    feat = _feature(steps="When I refresh the page\nThen I see X", title="Custom")
+    profile = _profile(custom_patterns=[
+        {"pattern": "I refresh the page", "code": "await page.reload({ waitUntil: 'networkidle' });"}
+    ])
+    text = emit_flow_file(feat, _fns(feat), profile)
+    assert "await page.reload({ waitUntil: 'networkidle' });" in text
+
+
+def test_test_file_wires_persona_credentials_and_base_url():
+    feat = _feature()  # login precondition + persona "Shopper"
+    profile = _profile(
+        imports={"base_url": {"module": "@app/url", "export": "appUrl"}},
+        personas={"Shopper": {"module": "@app/creds", "credential_function": "getShopperCreds"}},
+    )
+    text = emit_test_file(feat, _fns(feat), profile)
+    assert "import { appUrl } from '@app/url';" in text
+    assert "const APP_URL = appUrl;" in text
+    assert "import { getShopperCreds } from '@app/creds';" in text
+    assert "const credentials = getShopperCreds();" in text
+
+
+def test_report_title_prefix_applied():
+    feat = _feature()
+    profile = _profile(reports={"title_prefix": "H365"})
+    text = emit_test_file(feat, _fns(feat), profile)
+    assert "title: 'H365 [F][Web] Checkout'" in text
+
+
 def test_scaffold_writes_harness_once(tmp_path):
     written = scaffold_harness(tmp_path)
     assert (tmp_path / "helpers" / "engine.ts").exists()
@@ -121,6 +191,7 @@ def test_scaffold_writes_harness_once(tmp_path):
     assert (tmp_path / "helpers" / "reporter.ts").exists()
     assert (tmp_path / "flows" / "login.flow.ts").exists()
     assert (tmp_path / ".env.bubblegum.local.example").exists()
+    assert (tmp_path / "SKILL.md").exists()
     # idempotent: a second call writes nothing (no overwrite)
     assert scaffold_harness(tmp_path) == []
-    assert len(written) == 5
+    assert len(written) == 6

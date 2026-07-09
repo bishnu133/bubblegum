@@ -220,10 +220,50 @@ CDP_PORT=9222
 BUBBLEGUM_PYTHON=python3
 REPORT_DIR=reports
 
-# App under test + login (used by the generated .test.mts files).
-APP_URL=https://your-app.example.com
+# App under test + login (used by the generated .test.mts files when no
+# project imports are configured in bubblegum.convert.yaml).
+BASE_URL=https://your-app.example.com
 APP_USER=
 APP_PASS=
+"""
+
+SKILL_MD = """\
+# Bubblegum Smart Tests — Project Conventions (generated)
+
+AI assistants and humans: follow these when editing generated smart-tests.
+
+## File naming
+- Test files: `<name>.test.mts`   Flow files: `<name>.flow.ts`
+- Function names: camelCase from the scenario title (e.g. `createBadge`).
+
+## Imports
+- `import type { Page } from '@playwright/test';`
+- `import type { Bubblegum } from '@bubblegum-ai/node';`
+- Relative paths for smart-test internals; project-configured paths for
+  credentials / URLs (see `bubblegum.convert.yaml`).
+
+## Code style
+- JSDoc on every exported flow function: scenario title + Jira reference.
+- `console.log('Scenario passed: <title>')` at the end of each flow.
+- `await page.waitForLoadState('domcontentloaded')` after navigation; use
+  `waitForTimeout(3000)` sparingly, only after navigation.
+
+## Error handling
+- Test file wraps everything in try/catch/finally.
+- Reports are generated BEFORE engine teardown (in `finally`).
+- `process.exitCode = 1` on failure; do not throw from `main`.
+
+## Bubblegum rules
+- Use the `act()` / `verify()` wrappers (logging + throw) for normal steps.
+- Use `engine.act()` / `engine.verify()` DIRECTLY for template expressions
+  (`{{timestamp|... as var}}`, `{{$var}}`) — the wrappers do not process them.
+- Use `observe()` before clicking menus.
+- Never use CSS selectors — natural language only, and name the element type
+  ("Click the Submit **button**", "Select from the Type **dropdown**").
+
+## Session variables
+- Capture with `as varName`: `{{timestamp|%Y%m%d%H%M%S as myName}}`.
+- Recall with `{{$myName}}` in later steps of the same test file.
 """
 
 # name (relative to out dir) -> content. Written only if absent.
@@ -233,6 +273,7 @@ _HARNESS_FILES: dict[str, str] = {
     "helpers/reporter.ts": REPORTER_TS,
     "flows/login.flow.ts": LOGIN_FLOW_TS,
     ".env.bubblegum.local.example": ENV_EXAMPLE,
+    "SKILL.md": SKILL_MD,
 }
 
 

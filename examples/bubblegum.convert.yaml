@@ -47,6 +47,43 @@ convert:
   waits:
     strategy: "auto"
 
+  # ---- Project wiring --------------------------------------------------------
+  # Make generated tests import your REAL modules instead of env placeholders.
+  # All optional — omit and the generator falls back to process.env + generic
+  # act() navigation.
+  imports:
+    # Base URL constant → generated: `import { <export> } from '<module>';`
+    base_url:
+      # module: "../../../../utilities/constants/url"
+      # export: "initialApplicationUri"
+    # Default credentials when a persona is not mapped below.
+    credentials:
+      # module: "../../../../data/BAP"
+      # function: "getBAPBadgeSupportCredentials"
+
+  environment:
+    base_url_env: "BASE_URL"      # env var used when imports.base_url is unset
+
+  # persona (from the User Persona column) → credential import. "Given I am
+  # logged in as a <persona>" then wires `const credentials = <function>();`.
+  personas:
+    # "Retail customer":
+    #   module: "../../../../data/Banking"
+    #   credential_function: "getRetailCustomerCredentials"
+
+  # "I open the <Page> page" → a menu click (observe + act + waits) or a goto.
+  navigation:
+    # "Accounts": { type: "menu", action: "Click the Accounts menu" }
+    # "Bill payment": { type: "url", path: "/bill-payment" }
+
+  # Exact NL step (substring, case-insensitive) → literal TS injected verbatim.
+  custom_patterns:
+    # - pattern: "I wait for the page to load"
+    #   code: "await page.waitForLoadState('domcontentloaded');\nawait page.waitForTimeout(3000);"
+
+  reports:
+    title_prefix: ""              # prepended to each generated report title
+
   # ---- Domain rules (the human-authored "skill" layer) -----------------------
   # Rewrite a recurring phrase to a canonical, automatable step. Matched on the
   # whole step text, case-insensitively.
