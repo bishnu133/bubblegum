@@ -335,6 +335,11 @@ async def act(
     pre_target = pre_target or await _maybe_resolve_dialog_click(adapter, channel, intent)
     # Radio selection: pin the radio wrapper/label from the DOM and click it.
     pre_target = pre_target or await _maybe_resolve_radio(adapter, channel, intent)
+    # Rich-text editors: "type into <label>" targeting a contenteditable RTE
+    # (Quill/TinyMCE/…) which has no textbox role and is invisible to name-based
+    # grounding — pin it by label from the DOM. Only fires on a full label match,
+    # so plain <input> steps and non-RTE pages are untouched.
+    pre_target = pre_target or await _maybe_resolve_rich_text(adapter, channel, intent)
     if pre_target is not None:
         target, traces = pre_target, []
     else:
@@ -1686,6 +1691,38 @@ async def _maybe_resolve_input(adapter, channel: str, intent: StepIntent):
     return ResolvedTarget(
         ref=ref, confidence=0.7, resolver_name="input_dom",
         metadata={"role": "textbox", "input_dom": True},
+    )
+
+
+async def _maybe_resolve_rich_text(adapter, channel: str, intent: StepIntent):
+    """Pre-resolve a `type` step whose field is a rich-text (contenteditable) editor.
+
+    RTE widgets (Quill, TinyMCE, ProseMirror, …) have no `textbox` role and no
+    accessible name, so the a11y chain can't see them and may mis-match a nearby
+    valued input. The adapter resolves the editor by its form-item label and only
+    returns one on a *full* label match, so plain `<input>` steps and non-RTE
+    pages fall through untouched. Runs before grounding (like radio) so a spurious
+    name match never wins. Returns a ResolvedTarget or None.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("type", "fill"):
+        return None
+    finder = getattr(adapter, "find_rich_text", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        return None
+    try:
+        ref = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("rich-text DOM resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved type target via DOM rich-text resolver (%s)", ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.8, resolver_name="rich_text_dom",
+        metadata={"role": "textbox", "rich_text_dom": True},
     )
 
 

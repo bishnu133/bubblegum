@@ -95,3 +95,81 @@ def test_find_input_disambiguates_ant_nested_labels() -> None:
 
     assert resolved["Challenge Name"] == "name"
     assert resolved["Challenge Tagline"] == "tagline"
+
+
+# Two Quill rich-text editors, plus a tagline input pre-filled so its value leaks
+# into the a11y tree as `- textbox: EDSH Auto Challenge` — the exact state that
+# made "About this Challenge" mis-ground onto the tagline input.
+_ANT_RTE_FORM = """
+<form>
+  <div class="ant-form-item"><div class="ant-row ant-form-item-row">
+    <div class="ant-col ant-form-item-label">
+      <label for="tagline" title="Challenge Tagline">Challenge Tagline</label></div>
+    <div class="ant-col ant-form-item-control"><div class="ant-form-item-control-input">
+      <div class="ant-form-item-control-input-content"><span class="ant-input-affix-wrapper">
+        <input data-testid="tagline" class="ant-input" type="text" value="EDSH Auto Challenge">
+      </span></div></div></div>
+  </div></div>
+  <div class="ant-form-item"><div class="ant-row ant-form-item-row">
+    <div class="ant-col ant-form-item-label">
+      <label for="description" title="About this Challenge">About this Challenge</label></div>
+    <div class="ant-col ant-form-item-control"><div class="ant-form-item-control-input">
+      <div class="ant-form-item-control-input-content"><div id="txt-description" class="quill">
+        <pre class="ql-container"><div class="ql-editor" contenteditable="true"><p><br></p></div></pre>
+      </div></div></div></div>
+  </div></div>
+  <div class="ant-form-item"><div class="ant-row ant-form-item-row">
+    <div class="ant-col ant-form-item-label">
+      <label for="details" title="Key Details">Key Details</label></div>
+    <div class="ant-col ant-form-item-control"><div class="ant-form-item-control-input">
+      <div class="ant-form-item-control-input-content"><div id="txt-details" class="quill">
+        <pre class="ql-container"><div class="ql-editor" contenteditable="true"><p><br></p></div></pre>
+      </div></div></div></div>
+  </div></div>
+</form>
+"""
+
+
+@pytest.mark.playwright
+def test_find_rich_text_resolves_contenteditable_editors() -> None:
+    """RTE steps hit the right contenteditable; plain-input phrases fall through."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        pw = sync_api.sync_playwright().start()
+    except Exception as exc:  # pragma: no cover - environment guard
+        pytest.skip(f"Playwright unavailable: {exc}")
+    try:
+        try:
+            browser = pw.chromium.launch()
+        except Exception as exc:  # pragma: no cover - no matching browser binary
+            pytest.skip(f"No usable browser binary: {exc}")
+        try:
+            page = browser.new_page()
+            page.set_content(_ANT_RTE_FORM)
+
+            def container_id(res):
+                return page.locator(res["selector"]).evaluate(
+                    "e => (e.closest('[id]') || {}).id || ''"
+                )
+
+            hits = {}
+            for phrase in ("About this Challenge", "Key Details"):
+                res = page.evaluate(A._FIND_RICH_TEXT_JS, {"phrase": phrase})
+                assert res, f"RTE not resolved for {phrase!r}"
+                hits[phrase] = container_id(res)
+
+            # A full label match must not be hijacked from a plain input, and the
+            # value-leaking tagline must not steal the RTE step.
+            misses = {
+                phrase: page.evaluate(A._FIND_RICH_TEXT_JS, {"phrase": phrase})
+                for phrase in ("Challenge Tagline", "Challenge Name")
+            }
+        finally:
+            browser.close()
+    finally:
+        pw.stop()
+
+    assert hits["About this Challenge"] == "txt-description"
+    assert hits["Key Details"] == "txt-details"
+    assert misses["Challenge Tagline"] is None
+    assert misses["Challenge Name"] is None
