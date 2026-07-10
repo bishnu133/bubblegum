@@ -174,6 +174,20 @@ _EXTRACT_TABLES_JS = r"""
 # step resolve a nameless custom combobox by its surrounding context.
 _FIND_SELECT_TRIGGER_JS = r"""
 (args) => {
+  // __bgField: nearest form-item-ish ancestor that actually CONTAINS a label.
+  // Ant nests the control in `.ant-form-item-control-input-content`, which also
+  // matches [class*="form-item"], so a plain closest() stops there (no label
+  // inside) and label-based disambiguation silently fails — every field then
+  // ties on DOM order and the first one always wins. Climb until we reach a
+  // container that has a label; fall back to closest() when none does.
+  const __bgField = (e, sel) => {
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 8) {
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      p = p.parentElement; hops++;
+    }
+    return e.closest(sel);
+  };
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const phrase = norm(args && args.phrase);
   const valN = norm(args && args.value);
@@ -204,7 +218,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
     if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
     const lb = e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
-    const fi = e.closest('.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
+    const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
     if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]'); if (l) parts.push(l.textContent); }
     let p = e.previousElementSibling, hops = 0;
     while (p && hops < 3) { if (p.tagName === 'LABEL' || /label/i.test(p.className)) parts.push(p.textContent); p = p.previousElementSibling; hops++; }
@@ -247,6 +261,19 @@ _FIND_SELECT_TRIGGER_JS = r"""
 # has no accessible name. Skips ant-select search inputs and disabled fields.
 _FIND_INPUT_JS = r"""
 (args) => {
+  // Nearest form-item-ish ancestor that actually CONTAINS a label — see the
+  // note in _FIND_SELECT_TRIGGER_JS. Without this, Ant's nested
+  // `.ant-form-item-control-input-content` (which matches [class*="form-item"])
+  // swallows closest(), the label comes back empty, and every input ties on DOM
+  // order so the first field wins for every phrase.
+  const __bgField = (e, sel) => {
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 8) {
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      p = p.parentElement; hops++;
+    }
+    return e.closest(sel);
+  };
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const phrase = norm(args && args.phrase);
   const tokens = phrase.split(' ').filter((t) => t.length > 2);
@@ -273,7 +300,7 @@ _FIND_INPUT_JS = r"""
     if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
     const lb = e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
-    const fi = e.closest('.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
+    const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
     if (fi) { const l = fi.querySelector('label, [class*="label"]'); if (l) parts.push(l.textContent); }
     if (e.name) parts.push(e.name);
     if (e.id) parts.push(e.id);
@@ -369,6 +396,17 @@ _FIND_RADIO_JS = r"""
 # "type into Start date" step to the wrong element. Deterministic by construction.
 _FIND_DATE_RANGE_JS = r"""
 (args) => {
+  // Nearest form-item-ish ancestor that actually CONTAINS a label — see the
+  // note in _FIND_SELECT_TRIGGER_JS (Ant's nested control wrapper otherwise
+  // swallows closest() and the label disambiguation returns nothing).
+  const __bgField = (e, sel) => {
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 8) {
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      p = p.parentElement; hops++;
+    }
+    return e.closest(sel);
+  };
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const which = norm(args && args.which);          // "start" | "end"
   const phrase = norm(args && args.phrase);
@@ -411,7 +449,7 @@ _FIND_DATE_RANGE_JS = r"""
   // overlaps the phrase (e.g. "... into the Visibility Period start date").
   if (matches.length > 1 && tokens.length) {
     const labelText = (e) => {
-      const fi = e.closest('.ant-form-item, .ant-row, [class*="form-item"], [class*="field"]');
+      const fi = __bgField(e, '.ant-form-item, .ant-row, [class*="form-item"], [class*="field"]');
       const l = fi && fi.querySelector('label, [class*="label"]');
       return norm(l ? l.textContent : '');
     };
@@ -435,6 +473,17 @@ _FIND_DATE_RANGE_JS = r"""
 # distinguishable), and id/name/testid (camelCase + kebab split into words).
 _FIND_FILE_INPUT_JS = r"""
 (args) => {
+  // Nearest form-item-ish ancestor that actually CONTAINS a label — see the
+  // note in _FIND_SELECT_TRIGGER_JS (Ant's nested control wrapper otherwise
+  // swallows closest() and the label/testid context returns nothing).
+  const __bgField = (e, sel) => {
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 8) {
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      p = p.parentElement; hops++;
+    }
+    return e.closest(sel);
+  };
   const norm = (s) => (s || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2')
                                 .replace(/[-_]+/g, ' ')
                                 .replace(/\s+/g, ' ').trim().toLowerCase();
@@ -463,7 +512,7 @@ _FIND_FILE_INPUT_JS = r"""
       if (l) parts.push(l.textContent);
     }
     if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
-    const fi = e.closest('.ant-form-item, [class*="form-item"], [class*="field"], [class*="uploader"], [class*="upload"]');
+    const fi = __bgField(e, '.ant-form-item, [class*="form-item"], [class*="field"], [class*="uploader"], [class*="upload"]');
     if (fi) {
       const l = fi.querySelector('label, [class*="label"], [title]');
       if (l) parts.push(l.getAttribute('title') || l.textContent);
