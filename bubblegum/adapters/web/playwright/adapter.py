@@ -324,6 +324,69 @@ _FIND_INPUT_JS = r"""
 """
 
 
+# JS: resolve a rich-text editor (`contenteditable`) for a "type" step by its
+# form-item label. RTE widgets (Quill, TinyMCE, ProseMirror, CKEditor, Draft.js)
+# render as a bare `[contenteditable]` div with NO `textbox` role and NO
+# accessible name, so they are invisible to role-based grounding — the a11y chain
+# then mis-matches a nearby valued input instead. This resolves them
+# deterministically by label. To avoid ever hijacking a plain <input> step it
+# only returns a match when the editor's label contains EVERY phrase token (a
+# full label match), and reports whether that match was unambiguous.
+_FIND_RICH_TEXT_JS = r"""
+(args) => {
+  const __bgField = (e, sel) => {
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 8) {
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      p = p.parentElement; hops++;
+    }
+    return e.closest(sel);
+  };
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 2);
+  if (!tokens.length) return null;
+
+  let els = Array.from(document.querySelectorAll('[contenteditable=""], [contenteditable="true"]'))
+    .filter((e) => !e.classList.contains('ant-select-selection-search-input'));
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  els = els.filter(visible);
+  if (!els.length) return null;
+
+  const labelText = (e) => {
+    const parts = [];
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
+    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]'); if (l) parts.push(l.textContent); }
+    return norm(parts.join(' '));
+  };
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1, fulls = 0;
+  els.forEach((e, i) => {
+    const ov = overlap(labelText(e));
+    if (ov >= 1) fulls++;                     // count exact (all-token) label matches
+    const score = ov + (els.length - i) * 0.0001;   // earlier-in-DOM tie-break
+    if (score > bestScore) { bestScore = score; best = e; }
+  });
+  // Only claim the step when the winning editor is a full label match. A partial
+  // overlap (e.g. "Challenge Name" sharing "challenge" with an "About this
+  // Challenge" editor) must fall through to normal grounding, untouched.
+  if (!best || overlap(labelText(best)) < 1) return null;
+  document.querySelectorAll('[data-bg-input]').forEach((n) => n.removeAttribute('data-bg-input'));
+  best.setAttribute('data-bg-input', '1');
+  return { selector: '[data-bg-input="1"]', label: labelText(best), unique: fulls === 1 };
+}
+"""
+
+
 # JS: resolve a radio option by its label text and return a clickable target +
 # its checked state. Radios are commonly a hidden (`opacity:0`) `<input
 # type=radio>` inside a styled wrapper/label (Ant `.ant-radio-wrapper`, MUI
@@ -1454,6 +1517,23 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_input %r -> %s", target_phrase, result)
+        return result.get("selector")
+
+    async def find_rich_text(self, target_phrase: str) -> str | None:
+        """Resolve a rich-text editor (``contenteditable``) by its form-item label.
+
+        For ``type`` steps whose field is an RTE widget (Quill, TinyMCE,
+        ProseMirror, CKEditor, …). These render as a bare ``[contenteditable]``
+        div with no ``textbox`` role and no accessible name, so role-based
+        grounding can't see them and may mis-match a nearby valued input instead.
+        Returns a selector only when the editor's label is a *full* match for the
+        phrase (so plain ``<input>`` steps are never hijacked), else ``None`` —
+        which leaves non-RTE pages and partial matches to normal grounding.
+        """
+        result = await self._page.evaluate(_FIND_RICH_TEXT_JS, {"phrase": target_phrase or ""})
+        if not result:
+            return None
+        logger.debug("find_rich_text %r -> %s", target_phrase, result)
         return result.get("selector")
 
     async def find_date_range_input(self, which: str, target_phrase: str = "") -> str | None:
