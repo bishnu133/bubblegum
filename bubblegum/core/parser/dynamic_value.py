@@ -1,11 +1,20 @@
-"""Dynamic value tokens for step inputs (parameterised dates/times).
+"""Dynamic value tokens for step inputs (parameterised dates/times + uniqueness).
 
-Lets a tester express a *relative* value inside any step phrase instead of
-hard-coding a literal that goes stale the next day. The classic case is a date
-picker that needs "a future date":
+Lets a tester express a value that is *computed at run time* inside any step
+phrase instead of hard-coding a literal. Two families are supported:
+
+*Relative dates/times* — for a date picker that needs "a future date":
 
     act('Enter "{{today+7d|%d/%m/%Y}}" into Start date')
     act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment')
+
+*Uniqueness tokens* — for a field whose value must differ on every run (a badge
+name, an email, any create-form field with a unique constraint):
+
+    act('Enter "Badge_{{timestamp}}" into Display Name')   # Badge_1751558400
+    act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S}}" into Display Name')  # Badge_20260703153012
+    act('Enter "user_{{uuid:8}}@test.com" into Email')     # user_3f9a1c02@test.com
+    act('Enter "SKU-{{random:6}}" into Code')              # SKU-402913
 
 Substitution runs on the *resolved input value* (see ``_decompose_for`` in
 ``sdk.py``), so it works for every channel and for both the Python SDK and the
@@ -14,13 +23,47 @@ is returned untouched, so existing literal values are unaffected.
 
 Token grammar
 -------------
-    {{ <base> [<offset>...] [ | <strftime-format> ] }}
+    {{ <base> [<offset>...] [ @<time> ] [ | <strftime-format> ] }}   # relative date/time
+    {{ timestamp [:s|:ms] [ | <strftime-format> ] }}     # unique-ish clock value
+    {{ uuid [:N] }}                                       # random UUID (hex, optionally first N chars)
+    {{ random [:N] }}                                     # N random digits (default 6)
+
+Date/time bases and offsets:
 
 * ``base``    — ``today`` / ``now`` (also ``tomorrow`` / ``yesterday``).
 * ``offset``  — signed unit steps, chainable: ``+7d``, ``-3d``, ``+2w+1d``,
   ``+1mo``, ``-1y``, ``+2h``, ``+30min``, ``+45s``.
+* ``@time``   — pin an **absolute** time-of-day (applied after any offset):
+  ``@07:00``, ``@7am``, ``@9:30pm``, ``@23:59``, ``@07:00:00``. e.g.
+  ``{{today+2d@07:00|%d/%m/%Y %H:%M}}`` → two days out, at 07:00. When ``@`` is
+  present and no ``|`` format is given, the default format includes the time.
 * ``format``  — any ``strftime`` string after a ``|``. Defaults:
   ``today`` → ``%Y-%m-%d`` and ``now`` → ``%Y-%m-%d %H:%M``.
+
+Uniqueness tokens:
+
+* ``timestamp`` — Unix epoch **seconds** by default; ``:ms`` for milliseconds
+  (tighter uniqueness in fast loops), or a ``|`` strftime for a readable stamp
+  such as ``{{timestamp|%Y%m%d%H%M%S}}``.
+* ``uuid``      — a random ``uuid4`` hex string (32 chars); ``:N`` keeps the
+  first ``N`` chars (e.g. ``{{uuid:8}}``). Guaranteed unique regardless of clock.
+* ``random``    — a run of random digits, default 6, ``:N`` for ``N`` digits.
+
+Named capture & reuse
+---------------------
+Append ``as <name>`` to **remember** a rendered value under a name, then recall
+it later in the same session with ``{{$<name>}}``. Useful when you generate a
+unique value and need the *same* value in a later step (search for the record you
+just created, assert it on another page, look it up in a DB):
+
+    act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S as badgeName}}" into Display Name')
+    # ... later ...
+    act('Enter "{{$badgeName}}" into Search')
+    verify('{{$badgeName}} is visible')
+
+Recalled names that were never stored are left verbatim (like any unknown token).
+The store lives for the engine session; read it from code via ``variables()`` and
+seed/clear it with ``remember(name, value)`` / ``clear_variables()``.
 
 Units: ``d`` days, ``w`` weeks, ``mo`` months, ``y`` years, ``h`` hours,
 ``min`` minutes, ``s`` seconds. (``mo``/``min`` are spelled out so a bare ``m``
@@ -30,10 +73,50 @@ is never ambiguous between months and minutes.)
 from __future__ import annotations
 
 import calendar
+import random as _random
 import re
+import uuid as _uuid
 from datetime import datetime, timedelta
 
-__all__ = ["substitute_dynamic_tokens", "render_token"]
+__all__ = [
+    "substitute_dynamic_tokens",
+    "render_token",
+    "remember",
+    "recall",
+    "variables",
+    "clear_variables",
+]
+
+#: Bases that produce a value which must differ each run rather than a date.
+_UNIQUE_BASES = ("timestamp", "uuid", "random")
+
+#: Session-scoped store for `... as name` captures / `{{$name}}` recalls. One
+#: dict per engine process (i.e. per bridge session), so a value generated in one
+#: step can be reused in a later step.
+_VAR_STORE: dict[str, str] = {}
+
+# "<expr> as <name>" capture suffix — the trailing name to remember under.
+_CAPTURE_RE = re.compile(r"^(.*?)\s+as\s+([A-Za-z_][\w]*)\s*$")
+
+
+def remember(name: str, value: str) -> None:
+    """Store ``value`` under ``name`` for later ``{{$name}}`` recall."""
+    _VAR_STORE[str(name)] = str(value)
+
+
+def recall(name: str) -> str | None:
+    """Return the stored value for ``name`` (or ``None`` if unset)."""
+    return _VAR_STORE.get(str(name))
+
+
+def variables() -> dict[str, str]:
+    """Return a copy of all remembered variables in this session."""
+    return dict(_VAR_STORE)
+
+
+def clear_variables() -> None:
+    """Forget all remembered variables (e.g. between test runs)."""
+    _VAR_STORE.clear()
 
 # A {{ ... }} placeholder. Non-greedy so adjacent tokens don't merge.
 _TOKEN_RE = re.compile(r"\{\{\s*(.*?)\s*\}\}")
@@ -64,23 +147,120 @@ def _add_months(dt: datetime, months: int) -> datetime:
     return dt.replace(year=year, month=month, day=min(dt.day, last_day))
 
 
-def render_token(expr: str, *, now: datetime | None = None) -> str | None:
+def _render_unique(name: str, arg: str, fmt: str, now: datetime) -> str | None:
+    """Render a uniqueness token (``timestamp`` / ``uuid`` / ``random``).
+
+    ``arg`` is the text after a ``:`` (unit or length), ``fmt`` the strftime
+    string after a ``|``. Returns ``None`` for a malformed argument so the token
+    is left verbatim rather than silently mis-rendered.
+    """
+    if name == "timestamp":
+        if fmt:
+            return now.strftime(fmt)
+        unit = arg.lower() or "s"
+        if unit == "s":
+            return str(int(now.timestamp()))
+        if unit == "ms":
+            return str(int(now.timestamp() * 1000))
+        return None
+
+    if name == "uuid":
+        text = _uuid.uuid4().hex
+        if not arg:
+            return text
+        if not arg.isdigit() or int(arg) < 1:
+            return None
+        return text[: int(arg)]
+
+    if name == "random":
+        digits = 6
+        if arg:
+            if not arg.isdigit() or int(arg) < 1:
+                return None
+            digits = int(arg)
+        # randint over the full N-digit range keeps the length fixed (no leading
+        # zeros dropped) so every value is exactly ``digits`` characters wide.
+        return str(_random.randint(10 ** (digits - 1), 10 ** digits - 1))
+
+    return None
+
+
+# Absolute wall-clock after an "@": "07:00", "7am", "9:30pm", "23:59:30", "7".
+_CLOCK_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
+
+
+def _apply_clock(dt: datetime, timepart: str) -> datetime | None:
+    """Pin ``dt`` to an absolute time-of-day parsed from ``timepart``.
+
+    Accepts 24-hour ``HH[:MM[:SS]]`` or 12-hour with an ``am``/``pm`` suffix
+    (``7am``, ``9:30pm``). Returns ``None`` for an unparseable or out-of-range
+    time so the whole token is left verbatim rather than mis-rendered.
+    """
+    m = _CLOCK_RE.match(timepart.strip())
+    if not m:
+        return None
+    hour = int(m.group(1))
+    minute = int(m.group(2) or 0)
+    second = int(m.group(3) or 0)
+    meridiem = (m.group(4) or "").lower()
+    if meridiem:
+        if not 1 <= hour <= 12:
+            return None
+        hour = hour % 12 + (12 if meridiem == "pm" else 0)
+    if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
+        return None
+    return dt.replace(hour=hour, minute=minute, second=second, microsecond=0)
+
+
+def render_token(
+    expr: str, *, now: datetime | None = None, store: dict[str, str] | None = None
+) -> str | None:
     """Render a single token's inner ``expr`` (the text between ``{{`` ``}}``).
 
     Returns the formatted string, or ``None`` when ``expr`` is not a recognised
-    dynamic-value expression (so the caller can leave it verbatim).
+    dynamic-value expression (so the caller can leave it verbatim). ``store`` is
+    the named-variable map for ``as name`` captures / ``$name`` recalls (defaults
+    to the session-global store).
     """
+    if store is None:
+        store = _VAR_STORE
     base_now = now or datetime.now()
+    stripped = expr.strip()
+
+    # Recall a remembered variable: {{$badgeName}}. Unknown names return None so
+    # the token is left verbatim rather than blanked.
+    if stripped.startswith("$"):
+        return store.get(stripped[1:].strip())
+
+    # Capture: "<expr> as <name>" renders <expr> and remembers it under <name>.
+    capture = _CAPTURE_RE.match(stripped)
+    if capture:
+        core, name = capture.group(1), capture.group(2)
+        rendered = render_token(core, now=now, store=store)
+        if rendered is not None:
+            store[name] = rendered
+        return rendered
 
     body, sep, fmt = expr.partition("|")
     fmt = fmt.strip() if sep else ""
     body = body.strip()
 
-    base_match = re.match(r"^(today|tomorrow|yesterday|now)", body, re.IGNORECASE)
+    # Uniqueness tokens ({{timestamp}}, {{uuid:8}}, {{random:6}}) take an
+    # optional ":" argument rather than a date offset, so branch on them first.
+    unique_name, _, unique_arg = body.partition(":")
+    if unique_name.strip().lower() in _UNIQUE_BASES:
+        return _render_unique(unique_name.strip().lower(), unique_arg.strip(), fmt, base_now)
+
+    # Split off an optional absolute-time suffix ("@07:00", "@7am") so the date
+    # part is parsed on its own and the clock is applied after any date offset.
+    date_body, at_sep, time_body = body.partition("@")
+    date_body = date_body.strip()
+
+    base_match = re.match(r"^(today|tomorrow|yesterday|now)", date_body, re.IGNORECASE)
     if not base_match:
         return None
     base = base_match.group(1).lower()
-    remainder = body[base_match.end():]
+    remainder = date_body[base_match.end():]
 
     if base == "now":
         dt = base_now
@@ -114,21 +294,34 @@ def render_token(expr: str, *, now: datetime | None = None) -> str | None:
     if remainder[consumed:].strip():
         return None
 
-    return dt.strftime(fmt or _DEFAULT_FORMATS[base])
+    # Absolute time-of-day pin (after offsets): "@07:00" on a date base.
+    if at_sep:
+        dt = _apply_clock(dt, time_body)
+        if dt is None:
+            return None
+
+    # With an "@" time, default to a date+time format so the clock is visible.
+    default_fmt = "%Y-%m-%d %H:%M" if at_sep else _DEFAULT_FORMATS[base]
+    return dt.strftime(fmt or default_fmt)
 
 
-def substitute_dynamic_tokens(value: str | None, *, now: datetime | None = None) -> str | None:
+def substitute_dynamic_tokens(
+    value: str | None, *, now: datetime | None = None, store: dict[str, str] | None = None
+) -> str | None:
     """Replace every ``{{ ... }}`` dynamic-value token in ``value``.
 
     Unrecognised tokens are left exactly as written. ``None`` and token-free
     strings pass straight through (cheap fast-path), so literal values are never
-    altered. ``now`` is injectable for deterministic tests.
+    altered. ``now`` is injectable for deterministic tests; ``store`` is the
+    named-variable map (defaults to the session-global store).
     """
     if not value or "{{" not in value:
         return value
+    if store is None:
+        store = _VAR_STORE
 
     def _replace(match: re.Match[str]) -> str:
-        rendered = render_token(match.group(1), now=now)
+        rendered = render_token(match.group(1), now=now, store=store)
         return rendered if rendered is not None else match.group(0)
 
     return _TOKEN_RE.sub(_replace, value)

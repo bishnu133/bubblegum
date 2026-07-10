@@ -1,118 +1,179 @@
 # Unreleased
 
-## 0.0.6a20 — feat(convert): manual test scenario → automation converter
+## 0.0.6a28 — feat(convert): manual test scenario → automation converter
 
-Ships the new `bubblegum convert` command and `bubblegum.convert` package (see
-the entries below) that turn a spreadsheet of manual test scenarios into
-smart-tests TypeScript. Engine `0.0.6a19` → `0.0.6a20`; npm client unchanged.
-New optional extra: `pip install "bubblegum-ai[convert]"`.
+Adds the `bubblegum convert` command and `bubblegum.convert` package on top of
+the a27 runtime: Excel scenarios → smart-tests TypeScript (flows + tests + data
++ harness) with project wiring, data extraction, multi-sheet, cleanup, dedup,
+and validation. Purely additive over a27 (no core changes). New optional extra:
+`pip install "bubblegum-ai[convert]"`. Engine 0.0.6a27 → 0.0.6a28; npm client
+unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
 
-## feat(convert): data extraction, multi-sheet, filtering, validation
 
-- **Data-file extraction** (default on): static quoted literals in Enter/Select
-  steps are lifted into a per-scenario object in `<name>.data.ts` (keys are the
-  camelCase field name); flows reference them via backtick interpolation and
-  auto-import the object. Template expressions and button labels stay inline.
-  Toggle with `output.extract_data` / `--no-data-file`.
-- **Multi-sheet workbooks**: all sheets with the steps column are read by
-  default; a multi-sheet workbook emits one test file per sheet. Restrict with
-  `input.sheets` / `--sheet`.
-- **`--feature`**: generate only features whose Feature/Epic matches one of the
-  (comma-separated, case-insensitive) terms.
-- **`--validate-only`**: report unmapped personas, unconfigured navigation,
-  TODO steps, and malformed `{{ }}` templates without writing files.
-- **Failure screenshots** (opt-in `on_failure.screenshot`): each failing test
-  captures a full-page screenshot into `REPORT_DIR`.
-- **Dependency notes**: a scenario that consumes `{{$var}}` set by an earlier
-  scenario is annotated `// Depends on: scenario N …` in the test registry.
-- **npm scripts**: suggested `test:smart:<name>` lines are printed after a run;
-  `--update-package-json` merges them into `./package.json`.
-- **Sub-flow dedup** (opt-in `output.dedup_subflows` / `--dedup-subflows`):
-  identical runs of 3+ steps shared by 3+ scenarios are hoisted into
-  `sharedFlowN` functions. Matching on rendered lines means data-bearing steps
-  (which differ per scenario) are never wrongly merged.
-- **Cleanup wiring** (opt-in `convert.cleanup`): when a scenario creates data
-  (`{{… as var}}`), the generated test declares `cleanupData`, calls the
-  configured cleanup function in `finally`, and leaves TODO capture lines for the
-  created session variables. `--init` scaffolds a safe generic `cleanup.flow.ts`
-  that skips gracefully until wired to a real teardown.
+## 0.0.6a27 — fix(verify): page-appearance asserts, dynamic tokens in verify, multi-column rows
 
-## feat(convert): project wiring — real imports, navigation, template expressions
+- **"the X page appear" now asserts the heading.** `verify("the Create Badge page
+  appear")` reduced to searching the page for that whole sentence (not found).
+  `extract_expected` now strips a leading article and trailing appearance verbs
+  (`appear`/`appears`/`loaded`/`opens`/…) and a dangling `page`, so it checks for
+  "Create Badge" — the visible heading. Existing `... is visible` behaviour kept.
+- **Dynamic tokens now expand in `verify`.** `{{$name}}` recalls (and `{{today}}`,
+  `{{timestamp}}`, …) are substituted in the assertion — so you can validate a row
+  that contains a value generated earlier in the run
+  (`verify('in the row where Badge Internal Name is "{{$badgeInternalName}}", …')`).
+  Applied to the phrase and to `expected_value` / `row_match` / `cell` kwargs.
+- **Multi-column row assertions.** `in the row where <key> is "X", <colA> is "A",
+  <colB> is "B"` now checks *every* listed column (previously only the first cell
+  parsed; the rest were swallowed into one value). Quote-aware splitting keeps a
+  value that contains a comma intact, and a trailing "… is visible" is tolerated.
+- Coverage: `tests/unit/test_verify_page_and_rows.py`; browser-verified against a
+  Badges-style table with token recall. Engine `0.0.6a26` → `0.0.6a27`.
 
-Following the code-generator specification, the smart-tests emitter now produces
-project-wired, runnable code instead of env placeholders:
+## 0.0.6a26 — feat(web): radio selection + checked-state verification
 
-- `convert.imports` / `convert.personas` → generated tests import the team's real
-  base-URL constant and per-persona credential functions
-  (`const credentials = getRetailCustomerCredentials();`).
-- `convert.navigation` → "open the X page" becomes a configured menu click
-  (`observe` + `act` + waits) or a `page.goto('/path')`.
-- Template expressions (`{{timestamp|… as var}}`, `{{$var}}`, `{{today+Nd|…}}`)
-  are emitted through `engine.act()` / `engine.verify()` directly (bypassing the
-  wrappers, which don't process them) — any step containing `{{` is auto-routed.
-- `convert.custom_patterns` → exact NL phrase injects literal TS (escape hatch).
-- Flows now carry JSDoc with the scenario title + Jira, and log
-  `Scenario passed: <title>`; report titles honor `convert.reports.title_prefix`.
-- `bubblegum convert --init` also scaffolds a `SKILL.md` of conventions for AI
-  assistants/humans. `primitive_for` now keys off the instruction's leading verb,
-  so table/row assertions under `Then` correctly emit `verify`. Generated code
-  type-checks under `tsc --strict`.
+- **Select a radio by label.** `Select/Choose/Click "<label>" radio [button]` now
+  resolves the radio deterministically and clicks its wrapper/label — fixing Ant
+  (and MUI) radios where the real `<input type=radio>` is hidden (`opacity:0`)
+  behind a styled wrapper, so name grounding missed it and the step wrongly fell
+  to the dropdown resolver (`select_trigger_dom`) without actually selecting
+  anything. New resolver `radio_dom`; the `select` verb is coerced to a click
+  (selecting a radio == clicking it). No-op on pages without a radio.
+- **Verify a radio's state.** `verify("<label> radio is selected")` (and
+  `is not selected` / `checked` / `unchecked`) reads the control's real checked
+  state — the previous `element_state` assertion only checked visibility. Works
+  for native, Ant and MUI radios.
+- Verified end-to-end against a real Ant `Radio.Group` (selection sets the value;
+  positive/negative assertions pass/fail correctly). Coverage:
+  `tests/unit/test_radio_fallback.py`. Engine `0.0.6a25` → `0.0.6a26`.
 
-## feat(convert): one test file per workbook, with a test method per scenario
+## 0.0.6a25 — feat(web): dialog-scoped clicks + named capture/recall of dynamic values
 
-- New default grouping `group_by: workbook`: each Excel file now produces a
-  single `<workbook>.test.mts` (named from the workbook, override with `--name`)
-  containing **one test method per scenario row**, run as isolated labeled tests
-  (a failure in one is reported without aborting the rest) with one aggregated
-  Bubblegum report. Pass two workbooks → get two test files. `--group-by feature`
-  restores one-file-per-Feature/Epic.
-- Overwrite handling: the shared harness (`helpers/`, `flows/login.flow.ts`) is
-  written once and never overwritten, so processing workbooks one by one reuses
-  the same helpers; generated flow/test files regenerate by default, and
-  `--no-overwrite` preserves hand-edits (skips are reported). New CLI flags:
-  `--name`, `--group-by`, `--no-overwrite`; new profile key `output.group_by`.
+- **Confirmation dialogs.** A click/tap now prefers the button **inside the
+  topmost open modal** (Ant confirm, `[role=dialog]`, native `<dialog>`, common
+  modal classes). Previously `Click Submit` on a "Submit Badge?" confirm resolved
+  to the *page's* Submit behind the mask and hung ("…intercepts pointer events").
+  New pre-grounding resolver `dialog_click_dom` splits an `... on <title> dialog`
+  scope tail off the label and matches within the dialog. No-op when no dialog is
+  open. Verified end-to-end against a real Ant `Modal.confirm` (Submit / "No,
+  cancel" both route correctly).
+- **Remember a generated value and reuse it later.** Append `as <name>` to a
+  dynamic token to store its value, then recall it with `{{$name}}` in a later
+  step — so a unique value you generate can be reused to search/validate the same
+  record:
 
-## feat(convert): emit smart-tests TypeScript by default (flow + test + harness)
+      act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S as badgeName}}" into Display Name')
+      # ...later...
+      act('Enter "Badge_{{$badgeName}}" into Search')
+      verify('{{$badgeName}} is visible')
 
-- The converter's default output is now **smart-tests-style TypeScript** that
-  drives the `@bubblegum-ai/node` client directly, matching the hand-written
-  `smart-tests/` architecture: per Feature/Epic it emits `<feature>.flow.ts`
-  (one exported async function per scenario, calling `act`/`verify`/`observe`
-  wrappers, with `waitForLoadState`+`waitForTimeout` after navigation) and a
-  thin `<feature>.test.mts` that composes them with `initEngine`, `loginFlow`
-  for persona preconditions, `generateReports`, and teardown.
-- `bubblegum convert --init` scaffolds the shared harness once
-  (`helpers/{engine,actions,reporter}.ts`, `flows/login.flow.ts`, a
-  `.env.bubblegum.local.example`); existing files are never overwritten.
-- The previous playwright-bdd TypeScript emitter is removed; `.feature`
-  (Gherkin) and `python` (pytest-bdd) remain as opt-in `output.languages`.
-  Default `output.dir` is now `smart-tests`. New profile keys:
-  `output.typescript.{helpers_dir,flows_dir}`.
-- Reserved the `login` slug so a Feature literally named "Login" can't overwrite
-  the scaffolded `flows/login.flow.ts`. Generated TypeScript type-checks clean
-  under `tsc --strict`.
+  The store is per engine session, so reuse across steps works through the Node
+  client with no protocol change. Read it from Python via `bubblegum.variables()`
+  / `recall(name)`; seed or reset with `remember(name, value)` /
+  `clear_variables()`. Unknown `{{$name}}` recalls are left verbatim.
+- Coverage: `tests/unit/test_dialog_click_fallback.py`, capture/recall cases in
+  `test_dynamic_value_tokens.py`. Full unit suite 1864 passed. Engine
+  `0.0.6a24` → `0.0.6a25`.
 
-## feat(convert): manual-scenario → automation scaffold converter
+## 0.0.6a24 — fix(parser): a verify cue word in a field label no longer hijacks the action
 
-- New `bubblegum convert scenarios.xlsx -o generated/` command (and
-  `bubblegum.convert` package) that reads a spreadsheet of manually authored
-  test scenarios (Gherkin steps in a designated column plus metadata columns)
-  and generates reviewable automation scaffolds: normalized `.feature` files,
-  pytest-bdd step definitions (Python), and playwright-bdd step definitions
-  (TypeScript) that call Bubblegum's `act` / `verify` / `extract`.
-- Deterministic-first: steps are parsed with the existing
-  `core.parser.decompose` grammar; an optional AI fallback (off by default,
-  reusing the provider factory — anthropic/openai/gemini/local) handles only the
-  steps the grammar can't split. Each step is classified AUTO / NEEDS_DATA /
-  BACKEND / MANUAL, and non-AUTO steps emit explicit TODO / skip markers instead
-  of silently-wrong code.
-- Team conventions (column names, output languages/dirs, waits, domain glossary,
-  data bindings, AI provider) come from an optional `bubblegum.convert.yaml`
-  profile, so the engine stays team-agnostic. New optional extra:
-  `pip install "bubblegum-ai[convert]"` (adds openpyxl). Docs:
-  `docs/manual-to-automation-converter.md` and
-  `docs/authoring-scenarios-style-guide.md`.
+- `Enter "…" into Description shown when viewing an Earned Badge` was
+  misclassified as **verify** (then failed at execute with "Unsupported
+  action_type … verify") because the field label contains "shown" — one of the
+  verify cue words (`visible`/`present`/`displayed`/`shown`). The cue scan ran
+  over the whole instruction, including the target name.
+- The **leading action verb now wins**: when an instruction starts with an
+  explicit verb (`Enter`/`Type`/`Fill`/`Select`/`Click`/…), that owns the intent,
+  and verify cues appearing later in the target are ignored. The verify-cue scan
+  still catches verb-less phrasing ("login is visible"), and `Check that/if/whether …`
+  still resolves to verify. This unblocks typing into `textarea`s (and any field)
+  whose label happens to contain a state word — resolved via the existing
+  `input_dom` fallback once the action is correctly `type`.
+- Coverage: regression cases in `tests/unit/test_instruction_decompose.py`;
+  browser-verified against the H365 "Description shown when viewing an Earned
+  Badge" / "… when the Badge is awarded" textareas. Engine `0.0.6a23` → `0.0.6a24`.
 
+## 0.0.6a23 — feat(web): resolve hidden file inputs for `upload` steps (multi-section)
+
+- `Upload "<path>" into <target>` now resolves the real `<input type=file>` even
+  when it's **hidden** behind a styled button (Ant/MUI `Upload`), which the a11y
+  tree and the visible-input fallback can't reach. New pre-grounding resolver
+  `file_input_dom` scores every file input by its form-item label, **nearest
+  section heading**, and id/name/testid (camelCase + kebab split into words).
+- Handles **multiple upload widgets on one page** with repeated labels: name the
+  section in the phrase to disambiguate, e.g. `Upload "..." into Awarded Album
+  View` vs `... into Upcoming Album View` (the six Album/Front/Back × Awarded/
+  Upcoming uploaders on the H365 Create-Badge page all resolve uniquely).
+- Scoped and safe: only fires for `upload` steps that name a target, and is a
+  no-op on pages with no file input. Verified end-to-end against a **real Ant v5
+  `Upload`** (file registers in antd's list). Coverage:
+  `tests/unit/test_upload_fallback.py`. Engine `0.0.6a22` → `0.0.6a23`.
+
+## 0.0.6a22 — fix(web): commit typed value into date/time picker inputs (Enter)
+
+- Typing into a date/time picker input now **activates and commits** the field
+  (click → fill → Enter) instead of a bare `fill()`. Ant `RangePicker` keeps
+  "active editing" on one field until Enter, so a plain fill sent the *end* value
+  into the *start* input (both range values landed in "Start date", e.g.
+  `06/07/2026 07:0016/07/2026 23:59`). With the commit keystroke, start and end
+  each land in their own field.
+- Detected generically (no per-app selectors): the input is inside `.ant-picker`
+  / a `*[class*="DatePicker"|"datepicker"|"TimePicker"|"MuiPickers"]` widget, or
+  carries a `date-range` attribute. Ordinary text inputs keep the plain `fill()`
+  path — no stray Enter, so form submits aren't triggered.
+- Verified end-to-end against a **real Ant v5 `RangePicker`** (React + antd UMD),
+  not just static markup. Coverage: `tests/unit/test_picker_type_commit.py`.
+  Engine `0.0.6a21` → `0.0.6a22`; npm client unchanged.
+
+## 0.0.6a21 — fix(web): deterministic resolver for date-range picker start/end inputs
+
+- `type "…" into Start date` / `End date` now pins the exact input of an Ant
+  `RangePicker` from the DOM **before** name-based grounding runs, instead of
+  letting a nameless picker input (no id/label/aria — only a `date-range`
+  attribute or a "Start date"/"End date" placeholder) get mis-matched to some
+  other "date"-ish element on the page. The phrase's side word (`start`/`from`/
+  `begin` vs `end`/`until`/`finish`) selects which input; when a page has more
+  than one range picker, the form-item label breaks the tie. New resolver
+  `date_range_dom` (confidence 0.9).
+- Scoped and safe: only fires for `type`/`fill` steps whose phrase names a side,
+  and is a **no-op on pages without a range picker**, so ordinary text fields are
+  unaffected (they keep resolving via the a11y tree / `input_dom` fallback).
+- Coverage: `tests/unit/test_date_range_fallback.py`; validated against the real
+  H365 Create-Badge "Visibility Period" range picker markup. Engine `0.0.6a20` →
+  `0.0.6a21`; npm client unchanged.
+
+## 0.0.6a20 — feat: absolute time-of-day in date tokens (`@HH:MM`); consolidates a18+a19
+
+- Dynamic-value date tokens gain an **`@` absolute-time setter** so you can pin a
+  computed date to a specific clock time instead of midnight or "now shifted":
+  - `{{today+2d@07:00|%d/%m/%Y %H:%M}}` — 2 days out, at 07:00.
+  - `{{tomorrow@9am|%d/%m/%Y %H:%M}}` — accepts `9am` / `9:30pm` / `23:59` /
+    `07:00:00`. Applied after any date offset. When `@` is present and no `|`
+    format is given, the default format includes the time (`%Y-%m-%d %H:%M`).
+- Consolidation release: this is the first version published from `main` that
+  contains **both** the uniqueness tokens (`{{timestamp}}`/`{{uuid}}`/`{{random}}`,
+  originally `a18`) and the `a19` web clickable-fallback fix. `a18` was never on
+  `main` and `a19` was cut from `a17` without the tokens; `a20` merges both so
+  `pip install -U bubblegum-ai` gets every feature. Engine `0.0.6a19` → `0.0.6a20`.
+
+## 0.0.6a18 — feat: uniqueness dynamic-value tokens ({{timestamp}}, {{uuid}}, {{random}})
+
+- Dynamic-value tokens now cover **run-time uniqueness**, not just relative
+  dates, so a field with a unique constraint (a badge name, an email, any
+  create-form value) can be parameterised inline instead of hard-coded:
+  - `{{timestamp}}` — Unix epoch seconds; `:ms` for milliseconds, or a `|`
+    strftime for a readable stamp, e.g. `Badge_{{timestamp|%Y%m%d%H%M%S}}`.
+  - `{{uuid}}` — random uuid4 hex (32 chars); `:N` keeps the first N chars
+    (`{{uuid:8}}`). Unique regardless of the clock.
+  - `{{random}}` — N random digits, default 6 (`{{random:6}}`).
+- Same engine-side substitution path as the date tokens (`_decompose_for` in
+  `sdk.py`), so it works identically for the Python SDK and the Node client
+  across web, mobile, and CDP-attach. Malformed arguments and unrecognised
+  tokens are left verbatim; literal values are untouched.
+- Coverage: extended `tests/unit/test_dynamic_value_tokens.py`. Documented in
+  `docs/USER_GUIDE.md`, `docs/HOW_TO_USE_TYPESCRIPT.md`, and the Node README
+  (this fills a gap — the date tokens were previously undocumented in the guide).
+  Engine `0.0.6a17` → `0.0.6a18`; npm client unchanged (engine‑side feature).
+=======
 ## 0.0.6a19 — fix(web): clickable fallback strips trailing widget nouns
 
 - `Click the <X> menu` (and `button`/`link`/`tab`/`option`/`item`/`field`) now

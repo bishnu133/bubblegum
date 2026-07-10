@@ -297,6 +297,203 @@ _FIND_INPUT_JS = r"""
 """
 
 
+# JS: resolve a radio option by its label text and return a clickable target +
+# its checked state. Radios are commonly a hidden (`opacity:0`) `<input
+# type=radio>` inside a styled wrapper/label (Ant `.ant-radio-wrapper`, MUI
+# `FormControlLabel`), so name-based grounding misses them and clicking the input
+# is unreliable — click the wrapper/label instead. Works for native + Ant + MUI.
+_FIND_RADIO_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 1);
+  if (!tokens.length) return null;
+
+  const els = Array.from(document.querySelectorAll('input[type=radio], [role=radio]'));
+  if (!els.length) return null;
+
+  const wrapperOf = (e) => e.closest(
+    'label, .ant-radio-wrapper, [class*="radio-wrapper"], [class*="RadioWrapper"],'
+    + ' [class*="FormControlLabel"], [class*="form-check"]'
+  );
+  const shown = (e) => {
+    const w = wrapperOf(e) || e;
+    const r = w.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(w);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+
+  const labelText = (e) => {
+    const parts = [];
+    const wl = e.closest('label');
+    if (wl) parts.push(wl.textContent);
+    if (e.id) { const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]'); if (l) parts.push(l.textContent); }
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    const w = wrapperOf(e);
+    if (w) parts.push(w.textContent);
+    if (e.value) parts.push(e.value);
+    return norm(parts.join(' '));
+  };
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1;
+  els.filter(shown).forEach((e, i) => {
+    const score = overlap(labelText(e)) + i * 0.0001;
+    if (score > bestScore) { bestScore = score; best = e; }
+  });
+  if (!best || bestScore <= 0) return null;
+
+  const checked = !!best.checked
+    || best.getAttribute('aria-checked') === 'true'
+    || !!(wrapperOf(best) && wrapperOf(best).className &&
+          /(-|\b)(checked|selected|active)\b/.test(wrapperOf(best).className));
+  const target = wrapperOf(best) || best;
+  // A clean, human display name (the visible wrapper text, else aria-label/value)
+  // rather than the concatenated match signals.
+  const w = wrapperOf(best);
+  const displayName = norm((w && w.textContent) || best.getAttribute('aria-label') || best.value || '');
+  document.querySelectorAll('[data-bg-radio]').forEach((n) => n.removeAttribute('data-bg-radio'));
+  target.setAttribute('data-bg-radio', '1');
+  return { selector: '[data-bg-radio="1"]', checked, name: displayName };
+}
+"""
+
+
+# JS: resolve the start/end input of a date **range** picker. These inputs are
+# typically nameless (no id/label/aria) and only distinguishable by a
+# `date-range="start|end"` attribute, a "Start date"/"End date" placeholder, or
+# their position inside `.ant-picker-range` — so name-based grounding can send a
+# "type into Start date" step to the wrong element. Deterministic by construction.
+_FIND_DATE_RANGE_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const which = norm(args && args.which);          // "start" | "end"
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 2);
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+
+  // Candidate range inputs: explicit [date-range] first, else inputs inside an
+  // .ant-picker-range (tagged with their DOM position: 0=start, 1=end).
+  let cands = Array.from(document.querySelectorAll('input[date-range]')).filter(visible);
+  if (!cands.length) {
+    document.querySelectorAll('.ant-picker-range').forEach((p) => {
+      Array.from(p.querySelectorAll('input')).filter(visible).forEach((e, i) => {
+        e.__bgRangePos = i; cands.push(e);
+      });
+    });
+  }
+  if (!cands.length) return null;
+
+  const side = (e) => {
+    const dr = norm(e.getAttribute('date-range'));
+    if (dr === 'start' || dr === 'begin' || dr === 'from') return 'start';
+    if (dr === 'end' || dr === 'to' || dr === 'until') return 'end';
+    const ph = norm(e.getAttribute('placeholder'));
+    if (ph.includes('start') || ph.includes('from') || ph.includes('begin')) return 'start';
+    if (ph.includes('end') || ph.includes('to') || ph.includes('until')) return 'end';
+    if (e.__bgRangePos === 0) return 'start';
+    if (e.__bgRangePos === 1) return 'end';
+    return null;
+  };
+
+  let matches = cands.filter((e) => side(e) === which);
+  if (!matches.length) return null;
+
+  // Multiple range pickers on one page: pick the one whose form-item label best
+  // overlaps the phrase (e.g. "... into the Visibility Period start date").
+  if (matches.length > 1 && tokens.length) {
+    const labelText = (e) => {
+      const fi = e.closest('.ant-form-item, .ant-row, [class*="form-item"], [class*="field"]');
+      const l = fi && fi.querySelector('label, [class*="label"]');
+      return norm(l ? l.textContent : '');
+    };
+    const overlap = (txt) => { let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n; };
+    matches.sort((a, b) => overlap(labelText(b)) - overlap(labelText(a)));
+  }
+
+  const best = matches[0];
+  document.querySelectorAll('[data-bg-daterange]').forEach((n) => n.removeAttribute('data-bg-daterange'));
+  best.setAttribute('data-bg-daterange', '1');
+  return { selector: '[data-bg-daterange="1"]', which };
+}
+"""
+
+
+# JS: resolve a file `<input type=file>` for an upload step by its surrounding
+# context. These inputs are almost always hidden (Ant/MUI upload widgets wrap a
+# `display:none` input behind a styled button), so the a11y tree and the visible
+# input fallback can't reach them. Scores by form-item label, the nearest section
+# heading (so repeated labels like "Album View" under "Awarded" vs "Upcoming" are
+# distinguishable), and id/name/testid (camelCase + kebab split into words).
+_FIND_FILE_INPUT_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+                                .replace(/[-_]+/g, ' ')
+                                .replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 1);
+  if (!tokens.length) return null;
+
+  const els = Array.from(document.querySelectorAll('input[type=file]'));
+  if (!els.length) return null;
+
+  // Nearest section heading preceding the element in document order.
+  const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]'));
+  const sectionText = (el) => {
+    let best = '';
+    for (const h of headings) {
+      if (el.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_PRECEDING) best = h.textContent;
+      else break;
+    }
+    return norm(best);
+  };
+
+  const contextText = (e) => {
+    const parts = [];
+    if (e.id) {
+      const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]');
+      if (l) parts.push(l.textContent);
+    }
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const fi = e.closest('.ant-form-item, [class*="form-item"], [class*="field"], [class*="uploader"], [class*="upload"]');
+    if (fi) {
+      const l = fi.querySelector('label, [class*="label"], [title]');
+      if (l) parts.push(l.getAttribute('title') || l.textContent);
+      if (fi.getAttribute('data-testid')) parts.push(fi.getAttribute('data-testid'));
+    }
+    if (e.name) parts.push(e.name);
+    if (e.id) parts.push(e.id);
+    if (e.getAttribute('data-testid')) parts.push(e.getAttribute('data-testid'));
+    parts.push(sectionText(e));
+    return norm(parts.join(' '));
+  };
+
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1, bestTxt = '', tie = false;
+  els.forEach((e, i) => {
+    const txt = contextText(e);
+    const score = overlap(txt) + (els.length - i) * 0.0001;   // stable DOM tie-break
+    if (score > bestScore + 1e-9) { bestScore = score; best = e; bestTxt = txt; tie = false; }
+    else if (Math.abs(score - bestScore) <= 1e-4) { tie = true; }
+  });
+  if (!best || bestScore <= 0) return null;
+
+  document.querySelectorAll('[data-bg-file]').forEach((n) => n.removeAttribute('data-bg-file'));
+  best.setAttribute('data-bg-file', '1');
+  return { selector: '[data-bg-file="1"]', label: bestTxt, score: bestScore, tie };
+}
+"""
+
+
 # JS: click any interactive element by accessible name (button/link/menuitem/
 # tab/...). Exact → case-insensitive → substring; collapses nested matches to the
 # outermost interactive ancestor and prefers button/link roles. Marks the winner.
@@ -350,6 +547,72 @@ _FIND_CLICKABLE_JS = r"""
   document.querySelectorAll('[data-bg-click]').forEach((n) => n.removeAttribute('data-bg-click'));
   best.setAttribute('data-bg-click', '1');
   return { selector: '[data-bg-click="1"]', count: matches.length, name: nameOf(best), tag: best.tagName };
+}
+"""
+
+
+# JS: resolve a clickable INSIDE the topmost open dialog/modal by name. When a
+# blocking modal is open (e.g. an Ant confirm "Submit Badge?"), a button named
+# "Submit" also exists on the page behind it — the page copy is covered by the
+# modal mask, so clicking it hangs. This scopes the search to the dialog and
+# splits off an "... on <title> dialog" scope tail so the button label matches.
+_FIND_DIALOG_CLICKABLE_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const want = norm(args && args.text);
+  const exact = !!(args && args.exact);
+  if (!want) return null;
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+
+  // Topmost open dialog: role=dialog / native <dialog> / common modal classes,
+  // visible only, ranked by effective z-index then DOM order (last wins).
+  const DIALOG = "[role='dialog'],[role='alertdialog'],dialog[open],"
+               + ".ant-modal,.ant-modal-confirm,.MuiDialog-container,"
+               + "[class*='modal'][class*='show'],[class*='Modal'][class*='open']";
+  let dialogs = Array.from(document.querySelectorAll(DIALOG)).filter(visible);
+  if (!dialogs.length) return null;
+  const zOf = (e) => { let n = e, m = 0; while (n) { const v = parseInt(window.getComputedStyle(n).zIndex); if (!isNaN(v)) m = Math.max(m, v); n = n.parentElement; } return m; };
+  dialogs.sort((a, b) => (zOf(a) - zOf(b)) || ((a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1));
+  const dialog = dialogs[dialogs.length - 1];
+
+  // The button label is the part before a scope preposition ("Submit button on
+  // Submit Badge? dialog" -> "Submit button"); strip a trailing widget noun.
+  let main = want.split(/\s+(?:on|in|within|from|of)\s+/i)[0]
+                 .replace(/\s+(button|link|tab|option|item|menu\s*item|menuitem)$/i, '').trim();
+  const wants = [main, want].filter((v, i, a) => v && a.indexOf(v) === i);
+
+  const SEL = 'button, [role="button"], a, [role="link"], [role="menuitem"], [role="tab"],'
+            + ' input[type="submit"], input[type="button"], summary, [onclick]';
+  const nameOf = (e) => {
+    const al = e.getAttribute && e.getAttribute('aria-label');
+    if (al) return norm(al);
+    if (e.tagName === 'INPUT') return norm(e.value);
+    const t = norm(e.textContent);
+    if (t) return t;
+    return norm(e.getAttribute && e.getAttribute('title'));
+  };
+  const els = Array.from(dialog.querySelectorAll(SEL)).filter(visible);
+  if (!els.length) return null;
+
+  let matches = [];
+  for (const w of wants) {
+    const wl = w.toLowerCase();
+    matches = els.filter((e) => nameOf(e) === w);
+    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase() === wl);
+    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wl));
+    if (matches.length) break;
+  }
+  if (!matches.length) return null;
+  matches = matches.filter((e) => !matches.some((o) => o !== e && o.contains(e)));
+  const best = matches[0];
+  document.querySelectorAll('[data-bg-dialogclick]').forEach((n) => n.removeAttribute('data-bg-dialogclick'));
+  best.setAttribute('data-bg-dialogclick', '1');
+  return { selector: '[data-bg-dialogclick="1"]', name: nameOf(best), count: matches.length };
 }
 """
 
@@ -783,8 +1046,46 @@ class PlaywrightAdapter(BaseAdapter):
         except Exception:
             pass  # Document settle is best-effort; the URL already changed.
 
+    # An input that belongs to a date/time picker widget commits typed text only
+    # on a keystroke (Enter), and keeps "active editing" on one field until then.
+    # Detected generically across libraries (Ant `.ant-picker`, MUI pickers, and
+    # the `date-range` attribute) so a range picker's start/end don't collide.
+    _PICKER_PROBE_JS = r"""
+    (el) => {
+      if (!el) return false;
+      if (el.hasAttribute('date-range')) return true;
+      return !!el.closest(
+        '.ant-picker, .ant-picker-range,'
+        + '[class*="DatePicker"],[class*="datepicker"],[class*="date-picker"],'
+        + '[class*="TimePicker"],[class*="timepicker"],[class*="time-picker"],'
+        + '[class*="MuiPickers"],[class*="Pickers"]'
+      );
+    }
+    """
+
+    async def _is_picker_input(self, locator) -> bool:
+        try:
+            return bool(await locator.evaluate(self._PICKER_PROBE_JS))
+        except Exception:  # noqa: BLE001 — probe is best-effort
+            return False
+
     async def _do_type(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
+        # Date/time picker inputs (e.g. Ant RangePicker) need an explicit
+        # activate + commit: click to make this field the active editor, fill it,
+        # then press Enter to commit — otherwise the widget keeps routing text to
+        # the previously-active field (both range values land in "start").
+        if await self._is_picker_input(locator):
+            try:
+                await locator.click(timeout=timeout)
+            except Exception:  # noqa: BLE001 — focus via fill() is the fallback
+                pass
+            await locator.fill(value, timeout=timeout)
+            try:
+                await locator.press("Enter", timeout=timeout)
+            except Exception:  # noqa: BLE001 — value is already set; commit is best-effort
+                pass
+            return
         await locator.fill(value, timeout=timeout)
 
     async def _do_select(self, plan: ActionPlan, locator, timeout: int) -> None:
@@ -1106,6 +1407,53 @@ class PlaywrightAdapter(BaseAdapter):
         logger.debug("find_input %r -> %s", target_phrase, result)
         return result.get("selector")
 
+    async def find_date_range_input(self, which: str, target_phrase: str = "") -> str | None:
+        """Return a selector for the start/end input of a date **range** picker.
+
+        ``which`` is ``"start"`` or ``"end"``. These inputs are usually nameless
+        (Ant ``RangePicker``), so this keys off the ``date-range`` attribute, the
+        placeholder, or DOM position inside ``.ant-picker-range`` — deterministic
+        where name-based grounding is ambiguous. ``target_phrase`` disambiguates
+        when a page has more than one range picker. Returns ``None`` when the page
+        has no range picker (so non-picker pages are unaffected).
+        """
+        result = await self._page.evaluate(
+            _FIND_DATE_RANGE_JS, {"which": which or "", "phrase": target_phrase or ""}
+        )
+        if not result:
+            return None
+        logger.debug("find_date_range_input %r %r -> %s", which, target_phrase, result)
+        return result.get("selector")
+
+    async def find_radio(self, target_phrase: str) -> dict | None:
+        """Resolve a radio option by label text. Returns ``{selector, checked,
+
+        name}`` for the clickable wrapper/label (not the hidden input), or
+        ``None`` when the page has no radio. Used for both selecting a radio and
+        asserting its checked state; works for native, Ant and MUI radios.
+        """
+        result = await self._page.evaluate(_FIND_RADIO_JS, {"phrase": target_phrase or ""})
+        if not result:
+            return None
+        logger.debug("find_radio %r -> %s", target_phrase, result)
+        return result
+
+    async def find_file_input(self, target_phrase: str) -> str | None:
+        """Return a selector for the ``<input type=file>`` matching ``target_phrase``.
+
+        For ``upload`` steps against widgets (Ant/MUI ``Upload``) whose real file
+        input is hidden behind a styled button — unreachable via the a11y tree.
+        Scores every file input by its form-item label, nearest section heading
+        and id/name/testid, so repeated labels (e.g. "Album View" under two
+        sections) are disambiguated by naming the section in the phrase. Returns
+        ``None`` when the page has no file input (non-upload pages unaffected).
+        """
+        result = await self._page.evaluate(_FIND_FILE_INPUT_JS, {"phrase": target_phrase or ""})
+        if not result:
+            return None
+        logger.debug("find_file_input %r -> %s", target_phrase, result)
+        return result.get("selector")
+
     async def find_clickable(self, text: str, *, exact: bool = False) -> str | None:
         """Return a selector for a single interactive element named ``text``.
 
@@ -1121,6 +1469,23 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_clickable %r -> %s", text, result)
+        return result.get("selector")
+
+    async def find_dialog_clickable(self, text: str, *, exact: bool = False) -> str | None:
+        """Return a selector for a clickable named ``text`` inside the open dialog.
+
+        When a blocking modal is open, the same button name often also exists on
+        the page behind it (covered by the modal mask). Scopes the search to the
+        topmost visible dialog and splits off an ``... on <title> dialog`` scope
+        tail. Returns ``None`` when no dialog is open (so non-modal flows fall
+        through to normal grounding).
+        """
+        result = await self._page.evaluate(
+            _FIND_DIALOG_CLICKABLE_JS, {"text": text or "", "exact": bool(exact)}
+        )
+        if not result:
+            return None
+        logger.debug("find_dialog_clickable %r -> %s", text, result)
         return result.get("selector")
 
     async def find_link(self, text: str, *, exact: bool = False) -> str | None:

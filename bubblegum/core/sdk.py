@@ -323,8 +323,20 @@ async def act(
     # link text — resolved deterministically from the DOM rather than by name,
     # so they work when the visible text is dynamic (a UUID, a DB value, ...).
     table_target = await _maybe_resolve_table_or_link(adapter, channel, instruction, kwargs)
-    if table_target is not None:
-        target, traces = table_target, []
+    # Date-range pickers: "type into Start date / End date" targets a nameless
+    # Ant RangePicker input that name-based grounding mis-hits — pin it from the
+    # DOM first. No-op on pages without a range picker.
+    daterange_target = table_target or await _maybe_resolve_daterange(adapter, channel, intent)
+    # Upload steps: pin the hidden <input type=file> from the DOM (Ant/MUI upload
+    # widgets hide it behind a button). No-op on pages without a file input.
+    pre_target = daterange_target or await _maybe_resolve_upload(adapter, channel, intent)
+    # Click/tap while a modal is open: prefer the button inside the dialog (the
+    # page copy behind the mask can't be clicked). No-op when no dialog is open.
+    pre_target = pre_target or await _maybe_resolve_dialog_click(adapter, channel, intent)
+    # Radio selection: pin the radio wrapper/label from the DOM and click it.
+    pre_target = pre_target or await _maybe_resolve_radio(adapter, channel, intent)
+    if pre_target is not None:
+        target, traces = pre_target, []
     else:
         try:
             target, traces = await _ground_with_wait(adapter, intent)
@@ -474,6 +486,19 @@ async def verify(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
+    # Expand dynamic-value tokens in the assertion so {{$name}} recalls (and
+    # {{today}}, {{timestamp}}, …) work in verify — e.g. asserting a row that
+    # contains a value generated earlier in the run. Substituted once here so all
+    # verify branches (text, table, radio-state) see the expanded phrase.
+    instruction = substitute_dynamic_tokens(instruction) or instruction
+    for _k in ("expected_value",):
+        if isinstance(kwargs.get(_k), str):
+            kwargs[_k] = substitute_dynamic_tokens(kwargs[_k])
+    for _k in ("row_match", "row", "cell"):
+        if isinstance(kwargs.get(_k), dict):
+            kwargs[_k] = {kk: (substitute_dynamic_tokens(vv) if isinstance(vv, str) else vv)
+                          for kk, vv in kwargs[_k].items()}
+
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
 
     # Accessibility assertions are page-scoped — there is no element to ground,
@@ -497,6 +522,11 @@ async def verify(
     # table/column assertion (so plain-English verifies work too).
     if kwargs.get("assertion_type") == "table" or _looks_like_table_assertion(instruction, kwargs):
         return await _verify_table(adapter, channel, instruction, kwargs, options, t0)
+
+    # Radio/checkbox checked-state assertion ("... radio is selected"): read the
+    # control's state directly (a11y grounding + text_visible can't see it).
+    if _looks_like_selected_assertion(instruction, kwargs):
+        return await _verify_selected(adapter, channel, instruction, kwargs, t0)
 
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
@@ -630,6 +660,73 @@ async def _verify_a11y(adapter, channel: str, instruction: str, kwargs: dict, t0
     return _a11y_result(
         instruction=instruction, t0=t0, passed=passed, message=message,
         error=error, metadata=metadata,
+    )
+
+
+_SELECTED_STATE_RE = re.compile(r"\b(selected|checked|ticked|deselected|unchecked|unticked)\b", re.IGNORECASE)
+_NEGATED_STATE_RE = re.compile(r"\b(not\s+(selected|checked|ticked)|deselected|unchecked|unticked)\b", re.IGNORECASE)
+
+
+def _looks_like_selected_assertion(instruction: str, kwargs: dict) -> bool:
+    """True when the phrase asserts a radio/checkbox checked state."""
+    if kwargs.get("assertion_type"):
+        return False
+    low = (instruction or "").lower()
+    return ("radio" in low or "checkbox" in low) and bool(_SELECTED_STATE_RE.search(low))
+
+
+def _radio_label_from_assertion(instruction: str) -> str:
+    """Strip verify verbs / state words / widget nouns to leave the option label."""
+    s = (instruction or "").strip()
+    s = re.sub(r"^(verify|assert|confirm|ensure|check|see|make sure|that)\s+", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^the\s+", "", s, flags=re.IGNORECASE)
+    # Cut from the widget/state marker onward: "... radio is selected" -> "...".
+    s = re.sub(r"\s+(radio(\s+button)?|checkbox|option)\b.*$", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+is\s+(not\s+)?(selected|checked|ticked|deselected|unchecked|unticked)\b.*$", "", s, flags=re.IGNORECASE)
+    return s.strip(" \"'.")
+
+
+async def _verify_selected(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Assert a radio/checkbox is (not) selected by resolving it and reading state.
+
+    Web-only. Reuses the DOM radio finder (label / wrapper / value), so it works
+    for native, Ant and MUI radios where a11y grounding + text_visible can't see
+    the checked state.
+    """
+    finder = getattr(adapter, "find_radio", None)
+    if channel != "web" or finder is None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="radio-state assertions are web-only",
+            error=ErrorInfo(error_type="UnsupportedChannelError", message="radio-state check is web-only"),
+            ref="radio", resolver_name="radio_dom",
+        )
+    expected_checked = not bool(_NEGATED_STATE_RE.search(instruction or ""))
+    label = _radio_label_from_assertion(instruction)
+    try:
+        res = await finder(label)
+    except Exception as exc:  # noqa: BLE001
+        res = None
+        logger.debug("radio-state find errored: %s", exc)
+    if not res:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"no radio/checkbox matching {label!r}",
+            error=ErrorInfo(error_type="ElementNotFoundError", message=f"no radio matching {label!r}"),
+            ref="radio", resolver_name="radio_dom",
+        )
+    actual_checked = bool(res.get("checked"))
+    passed = actual_checked == expected_checked
+    state = "selected" if actual_checked else "not selected"
+    message = f"{res.get('name') or label!r} is {state}"
+    error = None if passed else ErrorInfo(
+        error_type="ValidationFailedError",
+        message=f"expected {label!r} {'selected' if expected_checked else 'not selected'}, but it is {state}",
+    )
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=message,
+        error=error, metadata={"checked": actual_checked, "expected_checked": expected_checked},
+        ref=res["selector"], resolver_name="radio_dom",
     )
 
 
@@ -1413,6 +1510,154 @@ async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, 
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name=resolver_name,
         metadata={"table_or_link_dom": True, "spec": spec},
+    )
+
+
+#: Words in a target phrase that pick the start vs end input of a range picker.
+_RANGE_START_WORDS = ("start", "from", "begin")
+_RANGE_END_WORDS = ("end", "until", "finish")
+
+
+def _date_range_side(target_phrase: str | None) -> str | None:
+    """Return "start"/"end" when the phrase names one side of a date range picker.
+
+    Returns ``None`` for phrases that don't clearly name a side, so the step
+    falls through to normal grounding (this resolver only claims start/end).
+    """
+    tokens = set((target_phrase or "").lower().replace("/", " ").split())
+    if tokens & set(_RANGE_START_WORDS):
+        return "start"
+    if tokens & set(_RANGE_END_WORDS):
+        return "end"
+    return None
+
+
+async def _maybe_resolve_daterange(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for the start/end input of a date **range** picker.
+
+    Ant ``RangePicker`` inputs are nameless (no id/label/aria) and differ only by
+    a ``date-range`` attribute / placeholder, so a "type into Start date" step can
+    ground onto the wrong element. When the phrase names a side ("Start date" /
+    "End date") and the page has a range picker, pin the exact input from the DOM.
+    Runs before grounding; returns ``None`` (no-op) on pages without a picker.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("type", "fill"):
+        return None
+    side = _date_range_side(getattr(intent, "target_phrase", None))
+    if side is None:
+        return None
+    finder = getattr(adapter, "find_date_range_input", None)
+    if finder is None:
+        return None
+    try:
+        ref = await finder(side, intent.target_phrase or "")
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("date-range DOM resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved date-range %s input via DOM (%s)", side, ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.9, resolver_name="date_range_dom",
+        metadata={"role": "textbox", "date_range_dom": True, "which": side},
+    )
+
+
+async def _maybe_resolve_radio(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for selecting a radio option by its label.
+
+    Radios are commonly a hidden ``<input type=radio>`` inside a styled wrapper
+    (Ant ``.ant-radio-wrapper``, MUI ``FormControlLabel``), so name-based
+    grounding misses them and a ``select`` step wrongly falls to the dropdown
+    resolver. This pins the wrapper/label from the DOM and coerces the step to a
+    click (selecting a radio == clicking it). No-op on pages without a radio.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in (
+        "select", "check", "click", "tap", "uncheck"
+    ):
+        return None
+    haystack = f"{getattr(intent, 'instruction', '') or ''} {intent.target_phrase or ''}".lower()
+    if "radio" not in haystack:
+        return None
+    finder = getattr(adapter, "find_radio", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        return None
+    try:
+        res = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("radio DOM resolution errored: %s", exc)
+        return None
+    if not res or not res.get("selector"):
+        return None
+    intent.action_type = "click"  # selecting a radio is a click on its wrapper
+    logger.debug("Resolved radio %r via DOM (%s)", text, res["selector"])
+    return ResolvedTarget(
+        ref=res["selector"], confidence=0.9, resolver_name="radio_dom",
+        metadata={"role": "radio", "radio_dom": True, "checked": res.get("checked")},
+    )
+
+
+async def _maybe_resolve_dialog_click(adapter, channel: str, intent: StepIntent):
+    """Prefer a clickable inside the topmost open dialog for a click/tap step.
+
+    When a blocking modal is open (Ant confirm, ``[role=dialog]``, …), a button
+    with the same name usually also exists on the page behind it — covered by the
+    modal mask, so clicking the page copy hangs. This pins the button inside the
+    dialog. Runs before grounding; returns ``None`` (no-op) when no dialog is open
+    so ordinary flows are unaffected.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("click", "tap"):
+        return None
+    finder = getattr(adapter, "find_dialog_clickable", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or intent.instruction or "").strip()
+    if not text:
+        return None
+    try:
+        ref = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("dialog-click DOM resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved click inside open dialog via DOM (%s)", ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.9, resolver_name="dialog_click_dom",
+        metadata={"role": "button", "dialog_click_dom": True},
+    )
+
+
+async def _maybe_resolve_upload(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for a file ``<input type=file>`` upload target.
+
+    Upload widgets (Ant/MUI ``Upload``) hide the real file input behind a styled
+    button, so name-based grounding can't reach it. When the step is an upload,
+    pin the input from the DOM by its label / section / id. Runs before grounding;
+    returns ``None`` (no-op) on pages without a file input.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) != "upload":
+        return None
+    finder = getattr(adapter, "find_file_input", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        return None
+    try:
+        ref = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("file-input DOM resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved upload target via DOM file-input fallback (%s)", ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.85, resolver_name="file_input_dom",
+        metadata={"role": "button", "file_input_dom": True},
     )
 
 

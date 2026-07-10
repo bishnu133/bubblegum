@@ -295,21 +295,27 @@ def infer_action_type(instruction: str, kwargs: dict) -> str:
     if gesture is not None:
         return gesture[0]
     lowered = instruction.lower()
-    # Explicit verify cues come first so they shadow ambiguous overlap with
-    # "check" as a verb (e.g. "Check that login is visible" → verify).
-    if any(w in lowered for w in ("verify", "assert", "visible", "present", "displayed", "shown")):
-        return "verify"
+    # "Check that/if/whether ..." is a verify assertion, not a checkbox action —
+    # resolve it before the leading-verb rule (where bare "check" means checkbox).
     if re.search(r'\bcheck\s+(?:that|if|whether)\b', lowered):
         return "verify"
 
-    # Leading-verb rule: when the first word is a known verb, use it.
-    # Catches "Click Select country" -> click (the verb is "Click", "Select"
-    # is part of the target's accessible name).
+    # Leading-verb rule: when the first word is a known verb, it wins — even if a
+    # verify cue word ("shown"/"displayed"/"visible") appears later in the target.
+    # An explicit action verb owns the intent: `Enter "x" into Description shown
+    # when viewing a Badge` is a type, not a verify, despite the field's name.
+    # (Also catches "Click Select country" -> click, verb over target name.)
     first_word_match = re.match(r"^\s*([a-z]+)", lowered)
     if first_word_match:
         first_word = first_word_match.group(1)
         if first_word in _LEADING_VERB_TO_ACTION:
             return _LEADING_VERB_TO_ACTION[first_word]
+
+    # Verify cues for verb-less / non-leading-verb phrasing (e.g. "login is
+    # visible"). Runs after the leading-verb rule so it can't hijack an explicit
+    # action verb whose target merely contains one of these words.
+    if any(w in lowered for w in ("verify", "assert", "visible", "present", "displayed", "shown")):
+        return "verify"
 
     # Substring fallbacks for instructions that do not start with a verb
     # (e.g. "tomsmith into Username" — bare value relying on a separator).
@@ -344,13 +350,22 @@ def extract_expected(instruction: str) -> str:
         instruction,
         flags=re.IGNORECASE,
     ).strip()
-    # Strip common trailing state words that describe the assertion, not the content.
+    # Drop a leading article ("the Create Badge page" -> "Create Badge page").
+    text = re.sub(r"^(the|a|an)\s+", "", text, flags=re.IGNORECASE).strip()
+    # Strip trailing words that describe the assertion, not the content — both
+    # state words (visible/present/…) and page-appearance verbs (appears/loaded/
+    # opens), with an optional "should"/"to"/"is"/"has" lead-in.
     text = re.sub(
-        r"\s+(is\s+)?(visible|present|shown|displayed|enabled|checked|selected|active)\s*$",
+        r"\s+(should\s+|to\s+)?(be\s+|is\s+|are\s+|has\s+|have\s+)?"
+        r"(visible|present|shown|displayed|enabled|checked|selected|active|"
+        r"appear|appears|appeared|appearing|load|loads|loaded|loading|"
+        r"open|opens|opened|render|renders|rendered|exist|exists)\s*$",
         "",
         text,
         flags=re.IGNORECASE,
     ).strip()
+    # A trailing "page" left over from "Create Badge page appear" -> "Create Badge".
+    text = re.sub(r"\s+page\s*$", "", text, flags=re.IGNORECASE).strip()
     return text
 
 

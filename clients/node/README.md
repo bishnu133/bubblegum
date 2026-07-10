@@ -63,23 +63,45 @@ const r = await bg.recover({ failedSelector: "#login-btn", intent: "Click Login"
 // r.status === "recovered" when Bubblegum healed it
 ```
 
-### Parameterised dates/times (dynamic-value tokens)
+### Dynamic-value tokens (dates/times + uniqueness)
 
-For date pickers (or any field) that need a value computed at run time, drop a
-`{{ ... }}` token into the step value instead of a literal that goes stale:
+For any field that needs a value computed at run time, drop a `{{ ... }}` token
+into the step value instead of a literal that goes stale or collides.
+
+**Relative dates/times** — date pickers and any date field:
 
 ```ts
-// Relative date in the app's display format:
 await bg.act('Enter "{{today+7d|%d/%m/%Y}}" into Start date');     // -> 23/06/2026
 await bg.act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment'); // -> 16/06/2026 04:00
 await bg.act('Enter "{{tomorrow|%d/%m/%Y}}" into End date');
+await bg.act('Enter "{{today+2d@07:00|%d/%m/%Y %H:%M}}" into Start'); // -> 05/07/2026 07:00
 ```
 
 - **Bases:** `today`, `now`, `tomorrow`, `yesterday`.
 - **Offsets (chainable, signed):** `+7d` `-3d` `+2w` `+1mo` `-1y` `+2h` `+30min` `+45s`
   (`mo` = months, `min` = minutes — spelled out so a bare `m` is never ambiguous).
+- **Absolute time (`@`, after offsets):** `@07:00` `@7am` `@9:30pm` `@23:59` `@07:00:00`
+  — pins a specific clock time (e.g. "2 days out at 7am"). With `@` and no `|`
+  format, output defaults to `%Y-%m-%d %H:%M`.
 - **Format:** anything after `|` is a `strftime` pattern. Defaults are
   `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.
+
+**Uniqueness** — for a field whose value must differ on every run (a badge
+name, an email, any create-form field with a unique constraint):
+
+```ts
+await bg.act('Enter "Badge_{{timestamp}}" into Display Name');            // -> Badge_1751558400
+await bg.act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S}}" into Display Name'); // -> Badge_20260703153012
+await bg.act('Enter "user_{{uuid:8}}@test.com" into Email');             // -> user_3f9a1c02@test.com
+await bg.act('Enter "SKU-{{random:6}}" into Code');                      // -> SKU-402913
+```
+
+- **`timestamp`** — Unix epoch **seconds**; `:ms` for milliseconds (tighter
+  uniqueness in fast loops), or a `|` `strftime` for a readable stamp such as
+  `{{timestamp|%Y%m%d%H%M%S}}`.
+- **`uuid`** — a random UUID hex string (32 chars); `:N` keeps the first `N`
+  chars, e.g. `{{uuid:8}}`. Unique regardless of the clock.
+- **`random`** — a run of random digits, default 6; `:N` for `N` digits.
 
 Token-free values (and any `{{...}}` that isn't a recognised expression) are
 passed through unchanged, so existing literal steps are unaffected. Expansion

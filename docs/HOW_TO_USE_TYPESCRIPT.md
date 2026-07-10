@@ -166,6 +166,54 @@ await bg.verify("login call succeeded", {
 
 ---
 
+## Dynamic values (dates, times & uniqueness)
+
+Drop a `{{ ... }}` token into any typed value to compute it at run time instead
+of hard‑coding a literal that goes stale or collides. Expansion happens
+engine‑side, so it works identically for web, mobile, and CDP‑attach.
+
+```ts
+// Relative dates — for date pickers and any date field:
+await bg.act('Enter "{{today+7d|%d/%m/%Y}}" into Start date');     // -> 23/06/2026
+await bg.act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment'); // -> 16/06/2026 04:00
+
+// Relative date + an ABSOLUTE time of day with "@" — "2 days out at 7:00am":
+await bg.act('Enter "{{today+2d@07:00|%d/%m/%Y %H:%M}}" into Start');  // -> 05/07/2026 07:00
+await bg.act('Enter "{{tomorrow@9am|%d/%m/%Y %H:%M}}" into Visible from');
+
+// Uniqueness — a value that must differ on every run (badge name, email, any
+// create‑form field with a unique constraint):
+await bg.act('Enter "Badge_{{timestamp}}" into Display Name');            // -> Badge_1751558400
+await bg.act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S}}" into Display Name'); // -> Badge_20260703153012
+await bg.act('Enter "user_{{uuid:8}}@test.com" into Email');             // -> user_3f9a1c02@test.com
+await bg.act('Enter "SKU-{{random:6}}" into Code');                      // -> SKU-402913
+```
+
+- **Dates** — bases `today` / `now` / `tomorrow` / `yesterday`; chainable signed
+  offsets `+7d` `-3d` `+2w` `+1mo` `-1y` `+2h` `+30min` `+45s`; `strftime` format
+  after `|`.
+- **Absolute time (`@`)** — pin a clock time after the date offset:
+  `{{today+2d@07:00}}`, `{{tomorrow@9am}}`, `{{today@23:59}}`. With `@` and no
+  `|` format, output defaults to `%Y-%m-%d %H:%M`.
+- **`timestamp`** — Unix epoch seconds; `:ms` for milliseconds; or a `|` strftime
+  for a readable stamp.
+- **`uuid`** — random uuid4 hex (32 chars); `:N` keeps the first N chars.
+- **`random`** — N random digits, default 6.
+
+> **Reading the value back.** The generated value isn't returned on `StepResult`.
+> If a later step needs the exact value (e.g. to search for the record you just
+> created), build it in your own code and pass it in both places:
+> ```ts
+> const badge = `Badge_${Date.now()}`;
+> await bg.act(`Enter "${badge}" into Display Name`);
+> // ...later...
+> await bg.act(`Search for "${badge}"`);
+> ```
+
+Token‑free values (and any unrecognised `{{...}}`) pass through unchanged.
+
+---
+
 ## Attach to your own Playwright browser (CDP)
 
 Most existing TS Playwright suites already have a `Browser`/`Page`. Instead of

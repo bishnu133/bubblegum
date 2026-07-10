@@ -237,6 +237,98 @@ the target, and any value from your sentence.
 
 ---
 
+## Dynamic values (dates, times & uniqueness)
+
+Any value you type can be **computed at run time** with a `{{ ... }}` token
+instead of hard‑coding a literal that goes stale or collides. Works on web and
+mobile, in the Python SDK and the Node client, in any step that carries a value
+(`act`, and the `value=`/`input_value=` overrides). Tokens are expanded
+engine‑side just before the value is used.
+
+```python
+# Relative dates — for date pickers and any date field:
+await act('Enter "{{today+7d|%d/%m/%Y}}" into Start date', page=page)   # -> 23/06/2026
+await act('Enter "{{now+2h|%d/%m/%Y %H:%M}}" into Appointment', page=page)
+
+# Relative date + an ABSOLUTE time of day (use "@") — "2 days out at 7:00am":
+await act('Enter "{{today+2d@07:00|%d/%m/%Y %H:%M}}" into Start', page=page)  # -> 05/07/2026 07:00
+await act('Enter "{{tomorrow@9am|%d/%m/%Y %H:%M}}" into Visible from', page=page)  # -> ... 09:00
+
+# Uniqueness — for a field whose value must differ every run
+# (a badge name, an email, any create‑form field with a unique constraint):
+await act('Enter "Badge_{{timestamp}}" into Display Name', page=page)           # -> Badge_1751558400
+await act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S}}" into Display Name', page=page)  # -> Badge_20260703153012
+await act('Enter "user_{{uuid:8}}@test.com" into Email', page=page)            # -> user_3f9a1c02@test.com
+await act('Enter "SKU-{{random:6}}" into Code', page=page)                     # -> SKU-402913
+```
+
+**Relative dates/times**
+
+| Part | Values |
+| --- | --- |
+| Base | `today`, `now`, `tomorrow`, `yesterday` |
+| Offset (chainable, signed) | `+7d` `-3d` `+2w` `+1mo` `-1y` `+2h` `+30min` `+45s` |
+| Absolute time (`@`, after offsets) | `@07:00` `@7am` `@9:30pm` `@23:59` `@07:00:00` |
+| Format | anything after `\|` is a `strftime` pattern |
+
+The `@` pins a **specific clock time** (after any date offset) — use it when you
+want "N days from today at exactly 7:00am" rather than midnight or the current
+time. If `@` is present and you give no `|` format, the default output includes
+the time (`%Y-%m-%d %H:%M`).
+
+**Date range pickers (start/end).** For a two-input range picker (e.g. Ant
+`RangePicker`) whose inputs are nameless, just say **"Start date"** / **"End
+date"** and Bubblegum pins the correct sub-input deterministically:
+
+```python
+await act('Enter "{{today+2d@07:00|%d/%m/%Y %H:%M}}" into Start date', page=page)
+await act('Enter "{{today+12d@23:59|%d/%m/%Y %H:%M}}" into End date', page=page)
+```
+
+If a page has more than one range picker, add the field's label to disambiguate
+(`"into the Visibility Period Start date"`). As a last resort you can always pin
+the input explicitly with `selector='input[date-range="start"]'`.
+
+Bubblegum also **commits** the value the way pickers expect — for a date/time
+picker input it clicks to activate the field, types, then presses Enter — so a
+range picker's start and end values land in their own fields instead of both
+piling into "Start date". Ordinary text fields are typed normally (no Enter).
+
+Units: `d` days, `w` weeks, `mo` months, `y` years, `h` hours, `min` minutes,
+`s` seconds (`mo`/`min` are spelled out so a bare `m` is never ambiguous).
+Default formats are `%Y-%m-%d` for date bases and `%Y-%m-%d %H:%M` for `now`.
+
+**Uniqueness tokens**
+
+| Token | Produces | Notes |
+| --- | --- | --- |
+| `{{timestamp}}` | Unix epoch **seconds** (e.g. `1751558400`) | `{{timestamp:ms}}` for milliseconds (tighter uniqueness in fast loops); `{{timestamp\|%Y%m%d%H%M%S}}` for a readable stamp |
+| `{{uuid}}` | random uuid4 hex, 32 chars | `{{uuid:8}}` keeps the first 8 chars — unique regardless of the clock |
+| `{{random}}` | 6 random digits | `{{random:N}}` for `N` digits |
+
+**Remember a value and reuse it later (`as name` / `{{$name}}`).** Append
+`as <name>` to a token to store its value, then recall the *same* value later in
+the session with `{{$name}}` — e.g. generate a unique Display Name, then search
+for the record you just created:
+
+```python
+await act('Enter "Badge_{{timestamp|%Y%m%d%H%M%S as badgeName}}" into Display Name', page=page)
+# ...later step / another page...
+await act('Enter "Badge_{{$badgeName}}" into Search', page=page)
+await verify('{{$badgeName}} is visible', page=page)
+```
+
+`as name` captures the **token's** value (here `20260704153012`); rebuild the full
+string with the same literal prefix (`Badge_{{$badgeName}}`). The store lives for
+the engine session, so recall works across steps (and through the Node client).
+Read it from code with `bubblegum.variables()` / `recall("badgeName")`; reset
+between runs with `clear_variables()`. An unknown `{{$name}}` is left verbatim.
+
+Token‑free values (and any `{{...}}` that isn't a recognised expression) are
+passed through unchanged, so existing literal steps are never altered.
+
+---
+
 ## Web
 
 The web channel drives a Playwright **async** `Page`.
@@ -287,6 +379,33 @@ await s.act("Expand Shipping section")                  # accordion
 the option is `<option value="FR">France</option>` — Bubblegum matches the
 visible label, falling back from the value automatically.
 
+**Radio buttons.** `Select "<label>" radio` (or `Choose … radio` / `Click …
+radio`) selects a radio by its visible label — including Ant/MUI radios whose
+real `<input type=radio>` is hidden behind a styled wrapper. Verify the choice
+with `verify("<label> radio is selected")` (see below).
+
+```python
+await s.act('Select "Create cumulative milestone(s)" radio')
+await s.verify("Create cumulative milestone(s) radio is selected")
+```
+
+**File upload (hidden inputs, multiple sections).** `Upload "<path>" into
+<field>` finds the real `<input type=file>` even when it's hidden behind a styled
+"+ Upload" button (Ant/MUI `Upload`). When a page has **several uploaders with
+repeating labels**, name the section to disambiguate — the nearest section
+heading is part of the match:
+
+```python
+await s.act('Upload "/tmp/album.png" into Awarded Album View')
+await s.act('Upload "/tmp/front.png" into Awarded Front View')
+await s.act('Upload "/tmp/back.png" into Upcoming Back View')
+# or spell out the section: '... into the Album View under Upcoming Badge Details'
+```
+
+Pass a list to attach multiple files: `value=["/a.png", "/b.png"]`. As a last
+resort you can pin the input explicitly, e.g.
+`selector='#alreadyEarnedThumbnailImageUploadInput'`.
+
 ### Verify (assertions)
 
 ```python
@@ -294,7 +413,23 @@ await s.verify("Welcome back is visible")               # default: text on page
 await s.verify("Dashboard", assertion_type="text_visible", expected_value="Dashboard")
 await s.verify("URL changed", assertion_type="page_transition", expected_value="/home")
 await s.verify("Save button", assertion_type="element_state", expected_value="#save")
+# Radio / checkbox checked state (reads the real state, not just visibility):
+await s.verify("Create cumulative milestone(s) radio is selected")
+await s.verify("None radio is not selected")
+await s.verify("Newsletter checkbox is checked")
+# A "page appeared" assertion checks the visible heading text:
+await s.verify("the Create Badge page appear")     # -> looks for "Create Badge"
+# Validate specific columns of the row matched by a key column (quote the values):
+await s.verify('in the row where Badge Internal Name is "{{$badgeName}}", '
+               'Status is "Submitted", Badge Type is "Proficiency"')
 ```
+
+> **Row validation tips.** Quote each value; the first `<col> is <val>` pair is the
+> row key and the rest are the cells checked in that row. `{{$name}}` recalls a
+> value you captured earlier (e.g. the unique name you generated on the create
+> page). If you captured only a token (`... as badgeName` stored the timestamp),
+> rebuild the full key with its literal prefix:
+> `Badge Internal Name is "BadgeInternalName-{{$badgeName}}"`.
 
 `assertion_type` options (web): `text_visible` (default), `element_state`
 (a CSS selector is visible), `page_transition` (URL contains a fragment),
@@ -417,7 +552,19 @@ await s.act("Click the lazy-loaded Continue", resolve_retries=4)
 
 ### Dialogs and scopes
 
-When a modal is open, scope steps to it and close it cleanly:
+When a **confirmation modal** is open, a click automatically prefers the button
+*inside* the dialog — so the same-named button on the page behind the mask
+(a common cause of "click times out / intercepts pointer events") is avoided:
+
+```python
+await s.act("Click Submit")                    # opens a "Submit Badge?" confirm
+await s.act("Click Submit on Submit Badge? dialog")  # clicks the modal's Submit
+# or just: await s.act("Click Submit")   # with the modal open, the modal wins
+await s.act("Click No, cancel")                # the modal's cancel button
+```
+
+This works for Ant `Modal.confirm`, `[role=dialog]`, native `<dialog>`, and
+common modal classes. You can still scope explicitly and close cleanly:
 
 ```python
 s.push_scope("dialog", label="Confirm delete")
