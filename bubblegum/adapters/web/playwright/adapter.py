@@ -183,7 +183,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
     while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -219,7 +219,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
     const lb = e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
-    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]'); if (l) parts.push(l.textContent); }
+    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])'); if (l) parts.push(l.textContent); }
     let p = e.previousElementSibling, hops = 0;
     while (p && hops < 3) { if (p.tagName === 'LABEL' || /label/i.test(p.className)) parts.push(p.textContent); p = p.previousElementSibling; hops++; }
     return norm(parts.join(' '));
@@ -269,7 +269,7 @@ _FIND_INPUT_JS = r"""
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
     while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -301,7 +301,7 @@ _FIND_INPUT_JS = r"""
     const lb = e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
-    if (fi) { const l = fi.querySelector('label, [class*="label"]'); if (l) parts.push(l.textContent); }
+    if (fi) { const l = fi.querySelector('label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])'); if (l) parts.push(l.textContent); }
     if (e.name) parts.push(e.name);
     if (e.id) parts.push(e.id);
     return norm(parts.join(' '));
@@ -343,7 +343,7 @@ _FIND_RICH_TEXT_JS = r"""
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
     while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -374,7 +374,7 @@ _FIND_RICH_TEXT_JS = r"""
     const lb = e.getAttribute && e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
-    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]'); if (l) parts.push(l.textContent); }
+    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])'); if (l) parts.push(l.textContent); }
     if (e.name) parts.push(e.name);
     if (e.id) parts.push(e.id);
     return norm(parts.join(' '));
@@ -478,7 +478,7 @@ _FIND_DATE_RANGE_JS = r"""
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
     while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -526,7 +526,7 @@ _FIND_DATE_RANGE_JS = r"""
   if (matches.length > 1 && tokens.length) {
     const labelText = (e) => {
       const fi = __bgField(e, '.ant-form-item, .ant-row, [class*="form-item"], [class*="field"]');
-      const l = fi && fi.querySelector('label, [class*="label"]');
+      const l = fi && fi.querySelector('label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])');
       return norm(l ? l.textContent : '');
     };
     const overlap = (txt) => { let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n; };
@@ -555,7 +555,7 @@ _FIND_FILE_INPUT_JS = r"""
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
     while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"], [title]')) return p;
+      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -590,7 +590,7 @@ _FIND_FILE_INPUT_JS = r"""
     if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
     const fi = __bgField(e, '.ant-form-item, [class*="form-item"], [class*="field"], [class*="uploader"], [class*="upload"]');
     if (fi) {
-      const l = fi.querySelector('label, [class*="label"], [title]');
+      const l = fi.querySelector('label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]), [title]:not([class*="ql-"]):not([class*="picker"])');
       if (l) parts.push(l.getAttribute('title') || l.textContent);
       if (fi.getAttribute('data-testid')) parts.push(fi.getAttribute('data-testid'));
     }

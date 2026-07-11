@@ -115,6 +115,12 @@ _ANT_RTE_FORM = """
       <label for="description" title="About this Challenge">About this Challenge</label></div>
     <div class="ant-col ant-form-item-control"><div class="ant-form-item-control-input">
       <div class="ant-form-item-control-input-content"><div id="txt-description" class="quill">
+        <div role="toolbar" class="ql-toolbar ql-snow">
+          <span class="ql-formats"><span class="ql-header ql-picker">
+            <span class="ql-picker-label" role="button">Normal</span></span></span>
+          <span class="ql-formats"><span class="ql-color ql-picker ql-color-picker">
+            <span class="ql-picker-label" role="button"></span></span></span>
+        </div>
         <pre class="ql-container"><div class="ql-editor" contenteditable="true"><p><br></p></div></pre>
       </div></div></div></div>
   </div></div>
@@ -123,6 +129,10 @@ _ANT_RTE_FORM = """
       <label for="details" title="Key Details">Key Details</label></div>
     <div class="ant-col ant-form-item-control"><div class="ant-form-item-control-input">
       <div class="ant-form-item-control-input-content"><div id="txt-details" class="quill">
+        <div role="toolbar" class="ql-toolbar ql-snow">
+          <span class="ql-formats"><span class="ql-header ql-picker">
+            <span class="ql-picker-label" role="button">Normal</span></span></span>
+        </div>
         <pre class="ql-container"><div class="ql-editor" contenteditable="true"><p><br></p></div></pre>
       </div></div></div></div>
   </div></div>
