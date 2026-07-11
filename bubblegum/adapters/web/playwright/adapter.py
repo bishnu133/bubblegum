@@ -328,10 +328,16 @@ _FIND_INPUT_JS = r"""
 # form-item label. RTE widgets (Quill, TinyMCE, ProseMirror, CKEditor, Draft.js)
 # render as a bare `[contenteditable]` div with NO `textbox` role and NO
 # accessible name, so they are invisible to role-based grounding — the a11y chain
-# then mis-matches a nearby valued input instead. This resolves them
-# deterministically by label. To avoid ever hijacking a plain <input> step it
-# only returns a match when the editor's label contains EVERY phrase token (a
-# full label match), and reports whether that match was unambiguous.
+# then mis-matches a nearby valued input instead.
+#
+# It scores EVERY fillable control (inputs, textareas, contenteditables) by label
+# the same way `_FIND_INPUT_JS` does, then claims the step only when the best
+# match is a rich-text editor. Comparing against inputs on equal footing is what
+# keeps plain-field steps safe: a phrase like "Challenge Name" matches the name
+# <input> better than any editor, so a plain input wins and this returns null
+# (the normal input path handles it). This relative ranking is robust to phrasing
+# — it does not require an exact/full label match — so small differences in how
+# the target phrase is decomposed no longer cause a miss.
 _FIND_RICH_TEXT_JS = r"""
 (args) => {
   const __bgField = (e, sel) => {
@@ -347,7 +353,10 @@ _FIND_RICH_TEXT_JS = r"""
   const tokens = phrase.split(' ').filter((t) => t.length > 2);
   if (!tokens.length) return null;
 
-  let els = Array.from(document.querySelectorAll('[contenteditable=""], [contenteditable="true"]'))
+  const SEL = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio])'
+            + ':not([type=submit]):not([type=button]):not([type=file]),'
+            + 'textarea, [contenteditable=""], [contenteditable="true"]';
+  let els = Array.from(document.querySelectorAll(SEL))
     .filter((e) => !e.classList.contains('ant-select-selection-search-input'));
   const visible = (e) => {
     const r = e.getBoundingClientRect();
@@ -358,31 +367,35 @@ _FIND_RICH_TEXT_JS = r"""
   els = els.filter(visible);
   if (!els.length) return null;
 
+  const isCE = (e) => !!(e.isContentEditable || (e.getAttribute && e.getAttribute('contenteditable') !== null && e.getAttribute('contenteditable') !== 'false'));
   const labelText = (e) => {
     const parts = [];
-    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
-    const lb = e.getAttribute('aria-labelledby');
+    if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute && e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
     if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]'); if (l) parts.push(l.textContent); }
+    if (e.name) parts.push(e.name);
+    if (e.id) parts.push(e.id);
     return norm(parts.join(' '));
   };
+  const placeholder = (e) => norm((e.getAttribute && e.getAttribute('placeholder')) || '');
   const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
 
-  let best = null, bestScore = -1, fulls = 0;
+  let best = null, bestScore = -1;
   els.forEach((e, i) => {
-    const ov = overlap(labelText(e));
-    if (ov >= 1) fulls++;                     // count exact (all-token) label matches
-    const score = ov + (els.length - i) * 0.0001;   // earlier-in-DOM tie-break
+    let score = 3.0 * overlap(labelText(e)) + 1.2 * overlap(placeholder(e));
+    if (e.disabled) score -= 5;
+    score += (els.length - i) * 0.001;         // earlier-in-DOM tie-break
     if (score > bestScore) { bestScore = score; best = e; }
   });
-  // Only claim the step when the winning editor is a full label match. A partial
-  // overlap (e.g. "Challenge Name" sharing "challenge" with an "About this
-  // Challenge" editor) must fall through to normal grounding, untouched.
-  if (!best || overlap(labelText(best)) < 1) return null;
+  // Claim the step only when a rich-text editor is the best fillable match AND it
+  // actually matched the phrase's label (guards against a weak editor winning a
+  // field of otherwise-nameless controls). Otherwise let the input path run.
+  if (!best || !isCE(best) || overlap(labelText(best)) < 0.5) return null;
   document.querySelectorAll('[data-bg-input]').forEach((n) => n.removeAttribute('data-bg-input'));
   best.setAttribute('data-bg-input', '1');
-  return { selector: '[data-bg-input="1"]', label: labelText(best), unique: fulls === 1 };
+  return { selector: '[data-bg-input="1"]', label: labelText(best), score: bestScore };
 }
 """
 

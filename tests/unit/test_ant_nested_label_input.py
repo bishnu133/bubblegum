@@ -153,7 +153,12 @@ def test_find_rich_text_resolves_contenteditable_editors() -> None:
                 )
 
             hits = {}
-            for phrase in ("About this Challenge", "Key Details"):
+            # Includes phrase variants (extra/fewer words, different order): the
+            # resolver ranks fillable controls relatively, so it must not depend
+            # on an exact full-token label match.
+            for phrase in ("About this Challenge", "Key Details",
+                           "the About this Challenge section", "About this Challenge details",
+                           "Key Detail"):
                 res = page.evaluate(A._FIND_RICH_TEXT_JS, {"phrase": phrase})
                 assert res, f"RTE not resolved for {phrase!r}"
                 hits[phrase] = container_id(res)
@@ -170,6 +175,9 @@ def test_find_rich_text_resolves_contenteditable_editors() -> None:
         pw.stop()
 
     assert hits["About this Challenge"] == "txt-description"
+    assert hits["the About this Challenge section"] == "txt-description"
+    assert hits["About this Challenge details"] == "txt-description"
     assert hits["Key Details"] == "txt-details"
+    assert hits["Key Detail"] == "txt-details"
     assert misses["Challenge Tagline"] is None
     assert misses["Challenge Name"] is None
