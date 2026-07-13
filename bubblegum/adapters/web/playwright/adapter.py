@@ -1309,23 +1309,78 @@ class PlaywrightAdapter(BaseAdapter):
         # to the OTHER visible comboboxes and commit to whichever actually
         # contains the value. The value is ground truth, so this self-corrects a
         # mis-scored trigger instead of typing into the wrong field.
-        if await self._try_pick_option(trigger, value, timeout):
-            return
+        candidates = [trigger] + await self._other_select_triggers(trigger)
+        before = [await self._selected_texts(c) for c in candidates]
 
+        picked = -1
         last_exc: Exception | None = None
-        for cand in await self._other_select_triggers(trigger):
+        for i, cand in enumerate(candidates):
             try:
                 if await self._try_pick_option(cand, value, timeout):
-                    return
+                    picked = i
+                    break
             except Exception as exc:  # noqa: BLE001 — try the next candidate
                 last_exc = exc
 
+        # Some widgets auto-select the active option when the field blurs, so
+        # probing a wrong candidate can leave a stray selection (e.g. the first
+        # "Challenges Joined" option). Undo any NEW selection in every combobox we
+        # did not commit to, so only the intended field changes. Best-effort.
+        for i, cand in enumerate(candidates):
+            if i == picked:
+                continue
+            try:
+                await self._remove_new_selections(cand, before[i])
+            except Exception:  # noqa: BLE001 — cleanup is best-effort
+                pass
+
+        if picked >= 0:
+            return
         raise ValueError(
             f"could not find a dropdown option matching {value!r} after opening "
             f"the combobox (tried role=option/menuitem, .ant-select-item-option "
             f"by title/text, open-popup text/title, the aria-controls listbox, "
             f"and every other combobox on the page)"
         ) from last_exc
+
+    async def _selected_texts(self, trigger) -> list:
+        """Titles/labels of the items currently selected in a combobox (Ant tags)."""
+        try:
+            return await trigger.evaluate(
+                "el => Array.from(el.querySelectorAll('.ant-select-selection-item'))"
+                ".map(n => (n.getAttribute('title') || n.textContent || '').trim())"
+            )
+        except Exception:  # noqa: BLE001
+            return []
+
+    async def _remove_new_selections(self, trigger, before: list) -> None:
+        """Deselect items that appeared in ``trigger`` since ``before`` was taken.
+
+        Clicks each new tag's remove (×) control so a wrong candidate we merely
+        probed is left exactly as we found it. Bounded and best-effort.
+        """
+        from collections import Counter
+
+        for _ in range(6):
+            cur = await self._selected_texts(trigger)
+            new_items = list((Counter(cur) - Counter(before)).elements())
+            if not new_items:
+                return
+            target = new_items[0]
+            esc = target.replace("\\", "\\\\").replace('"', '\\"')
+            remove = trigger.locator(
+                f'.ant-select-selection-item[title="{esc}"] .ant-select-selection-item-remove'
+            ).first
+            if await remove.count() == 0:
+                remove = trigger.locator(
+                    ".ant-select-selection-item", has_text=target
+                ).locator(".ant-select-selection-item-remove").first
+            if await remove.count() == 0:
+                return
+            try:
+                await remove.click(timeout=1000)
+            except Exception:  # noqa: BLE001
+                return
 
     async def _try_pick_option(self, trigger, value: str, timeout: int) -> bool:
         """Open one combobox, filter by typing, and click the matching option.

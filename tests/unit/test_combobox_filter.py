@@ -72,45 +72,60 @@ def test_searchable_combobox_types_to_filter_then_selects() -> None:
 
 
 # Two functional selects: the resolved (primary) one does NOT offer the value;
-# a neighbouring one does. The selection must self-correct to the right select
-# using the value as ground truth, and leave the wrong one untouched.
+# a neighbouring one does. The "wrong" one also mimics the Ant quirk of
+# auto-selecting its first option on blur — so the test proves the selection both
+# self-corrects to the right select AND leaves the wrong one untouched.
 _TWO_SELECTS = """
 <div class="ant-select ant-select-multiple ant-select-show-search" data-testid="wrong" data-bg-select="1"
      style="width:280px" data-opts="Test Challenge 1234|EDSH Challenge">
-  <div class="ant-select-selector"><span class="ant-select-selection-search">
-    <input class="ant-select-selection-search-input" role="combobox" type="search"></span></div>
+  <div class="ant-select-selector"><span class="ant-select-selection-wrap">
+    <div class="ant-select-selection-overflow"></div>
+    <span class="ant-select-selection-search">
+      <input class="ant-select-selection-search-input" role="combobox" type="search"></span></span></div>
 </div>
 <span>Eligibility Tags</span>
 <div class="ant-select ant-select-multiple ant-select-show-search" data-testid="right"
      style="width:280px" data-opts="ADBetaUser|FeelingHealthy|GaqAccepted">
-  <div class="ant-select-selector"><span class="ant-select-selection-search">
-    <input class="ant-select-selection-search-input" role="combobox" type="search"></span></div>
+  <div class="ant-select-selector"><span class="ant-select-selection-wrap">
+    <div class="ant-select-selection-overflow"></div>
+    <span class="ant-select-selection-search">
+      <input class="ant-select-selection-search-input" role="combobox" type="search"></span></span></div>
 </div>
 <div id="committed">none</div>
 <script>
   document.querySelectorAll('.ant-select').forEach(sel=>{
-    const inp=sel.querySelector('input'); let dd=null;
+    const inp=sel.querySelector('input'); const overflow=sel.querySelector('.ant-select-selection-overflow'); let dd=null;
     const opts=()=>sel.getAttribute('data-opts').split('|');
+    function addTag(o){ if([...overflow.querySelectorAll('.ant-select-selection-item')].some(n=>n.title===o))return;
+      const it=document.createElement('div'); it.className='ant-select-selection-overflow-item';
+      it.innerHTML='<span class="ant-select-selection-item" title="'+o+'"><span class="ant-select-selection-item-content">'+o+'</span><span class="ant-select-selection-item-remove">x</span></span>';
+      it.querySelector('.ant-select-selection-item-remove').addEventListener('mousedown',(e)=>{e.preventDefault();e.stopPropagation();it.remove();});
+      overflow.appendChild(it); }
     function open(){ if(dd) dd.remove(); dd=document.createElement('div'); dd.className='ant-select-dropdown'; document.body.appendChild(dd); render(''); }
     function render(q){ dd.innerHTML='';
       opts().filter(o=>!q||o.toLowerCase().includes(q.toLowerCase())).forEach(o=>{
         const d=document.createElement('div'); d.className='ant-select-item ant-select-item-option'; d.title=o;
         d.innerHTML='<div class="ant-select-item-option-content">'+o+'</div>';
-        d.addEventListener('mousedown',(e)=>{e.preventDefault();document.getElementById('committed').textContent='SEL:'+sel.getAttribute('data-testid')+':'+o;if(dd)dd.remove();dd=null;});
+        d.addEventListener('mousedown',(e)=>{e.preventDefault();addTag(o);document.getElementById('committed').textContent='SEL:'+sel.getAttribute('data-testid')+':'+o;if(dd)dd.remove();dd=null;});
         dd.appendChild(d); }); }
     sel.addEventListener('click',open);
     inp.addEventListener('input',()=>{ if(!dd) open(); render(inp.value); });
-    inp.addEventListener('keydown',(e)=>{ if(e.key==='Escape'&&dd){dd.remove();dd=null;} });
+    inp.addEventListener('blur',()=>{ if(sel.getAttribute('data-testid')==='wrong'){ addTag(opts()[0]); } if(dd){dd.remove();dd=null;} });
   });
 </script>
 """
 
 
 @pytest.mark.playwright
-def test_combobox_self_corrects_to_the_select_that_offers_the_value() -> None:
+def test_combobox_self_corrects_and_leaves_wrong_select_untouched() -> None:
     async def drive(adapter, page):
         plan = ActionPlan(action_type="select", target_hint="Eligibility Tags",
                           input_value="GaqAccepted", options=ExecutionOptions())
         await adapter._do_select(plan, page.locator('[data-bg-select="1"]'), 5000)
+        wrong = await page.locator('[data-testid=wrong] .ant-select-selection-item').evaluate_all(
+            "ns => ns.map(n => n.getAttribute('title'))"
+        )
+        # The mis-scored select must end up with NO stray selection.
+        assert wrong == [], f"wrong select left with stray selection: {wrong}"
 
     assert asyncio.run(_run(_TWO_SELECTS, drive)) == "SEL:right:GaqAccepted"
