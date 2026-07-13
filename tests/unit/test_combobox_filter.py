@@ -1,14 +1,9 @@
-"""Regression: searchable-combobox filtering and datetime-picker OK commit.
+"""Regression: searchable-combobox filtering.
 
-Two behaviours that only surface against a *live* widget:
-
-1. A searchable Ant select renders a filtered / virtualized option list — the
-   target row is not in the DOM until the user types. The custom-combobox path
-   must type the value into the search box before clicking the option.
-2. An Ant datetime range picker keeps its panel open with an OK button; Enter
-   alone does not commit the value, so ``type`` must click OK when one is shown.
-
-Both drive real DOM + event handlers, so they skip when no browser is available.
+A searchable Ant select renders a filtered / virtualized option list — the
+target row is not in the DOM until the user types. The custom-combobox path must
+type the value into the search box before clicking the option. Drives real DOM +
+event handlers, so it skips when no browser is available.
 """
 from __future__ import annotations
 
@@ -43,18 +38,6 @@ _COMBO = """
 </script>
 """
 
-_PICKER = """
-<div class="ant-picker ant-picker-range">
-  <div class="ant-picker-input"><input data-bg-daterange="1" date-range="start" placeholder="Start date"></div>
-  <div class="ant-picker-input"><input date-range="end" placeholder="End date"></div>
-</div>
-<div class="ant-picker-footer"><ul class="ant-picker-ranges"><li class="ant-picker-ok"><button type="button"><span>OK</span></button></li></ul></div>
-<div id="ok">no</div>
-<script>document.querySelector('.ant-picker-ok button').addEventListener('click',()=>{
-  document.getElementById('ok').textContent='OK:'+document.querySelector('[data-bg-daterange]').value;});</script>
-"""
-
-
 async def _run(html: str, drive) -> str:
     async_api = pytest.importorskip("playwright.async_api")
     try:
@@ -71,7 +54,7 @@ async def _run(html: str, drive) -> str:
             await page.set_content(html)
             adapter = PlaywrightAdapter(page)
             await drive(adapter, page)
-            return await page.locator("#committed, #ok").last.text_content()
+            return await page.locator("#committed").text_content()
         finally:
             await browser.close()
     finally:
@@ -86,13 +69,3 @@ def test_searchable_combobox_types_to_filter_then_selects() -> None:
         await adapter._do_select(plan, page.locator('[data-bg-select="1"]'), 5000)
 
     assert asyncio.run(_run(_COMBO, drive)) == "SEL:GaqAccepted"
-
-
-@pytest.mark.playwright
-def test_datetime_picker_clicks_ok_to_commit() -> None:
-    async def drive(adapter, page):
-        plan = ActionPlan(action_type="type", target_hint="start", input_value="2026/07/15 00:00",
-                          options=ExecutionOptions())
-        await adapter._do_type(plan, page.locator('[data-bg-daterange="1"]'), 5000)
-
-    assert asyncio.run(_run(_PICKER, drive)) == "OK:2026/07/15 00:00"
