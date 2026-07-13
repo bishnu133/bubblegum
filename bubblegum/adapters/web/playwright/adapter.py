@@ -494,6 +494,71 @@ _FIND_RADIO_JS = r"""
 """
 
 
+# JS: resolve a checkbox by its label text — mirror of _FIND_RADIO_JS. Ant/MUI
+# checkboxes are a hidden (`opacity:0`) `<input type=checkbox>` inside a styled
+# `<label>` wrapper (`.ant-checkbox-wrapper`), so name-based grounding is
+# unreliable and a "Select X checkbox" step wrongly falls to the dropdown
+# resolver. Returns the clickable wrapper/label plus the current checked state so
+# the caller can toggle idempotently.
+_FIND_CHECKBOX_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 1);
+  if (!tokens.length) return null;
+
+  const els = Array.from(document.querySelectorAll('input[type=checkbox], [role=checkbox]'));
+  if (!els.length) return null;
+
+  const wrapperOf = (e) => e.closest(
+    'label, .ant-checkbox-wrapper, [class*="checkbox-wrapper"], [class*="CheckboxWrapper"],'
+    + ' [class*="FormControlLabel"], [class*="form-check"]'
+  );
+  const shown = (e) => {
+    const w = wrapperOf(e) || e;
+    const r = w.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(w);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const labelText = (e) => {
+    const parts = [];
+    const wl = e.closest('label');
+    if (wl) parts.push(wl.textContent);
+    if (e.id) { const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]'); if (l) parts.push(l.textContent); }
+    if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    const w = wrapperOf(e);
+    if (w) parts.push(w.textContent);
+    if (e.value) parts.push(e.value);
+    return norm(parts.join(' '));
+  };
+  // Full-token match so "Food purchase" prefers the exact checkbox over a partial
+  // ("Drink purchase" shares "purchase"); fall back to best partial otherwise.
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+
+  let best = null, bestScore = -1;
+  els.filter(shown).forEach((e, i) => {
+    const score = overlap(labelText(e)) - i * 0.0001;   // prefer earlier on ties
+    if (score > bestScore) { bestScore = score; best = e; }
+  });
+  if (!best || bestScore <= 0) return null;
+
+  const checked = !!best.checked
+    || best.getAttribute('aria-checked') === 'true'
+    || !!(wrapperOf(best) && wrapperOf(best).className &&
+          /(-|\b)(checked|selected|active)\b/.test(wrapperOf(best).className));
+  const target = wrapperOf(best) || best;
+  const w = wrapperOf(best);
+  const displayName = norm((w && w.textContent) || best.getAttribute('aria-label') || best.value || '');
+  document.querySelectorAll('[data-bg-checkbox]').forEach((n) => n.removeAttribute('data-bg-checkbox'));
+  target.setAttribute('data-bg-checkbox', '1');
+  return { selector: '[data-bg-checkbox="1"]', checked, name: displayName };
+}
+"""
+
+
 # JS: resolve the start/end input of a date **range** picker. These inputs are
 # typically nameless (no id/label/aria) and only distinguishable by a
 # `date-range="start|end"` attribute, a "Start date"/"End date" placeholder, or
@@ -1537,10 +1602,49 @@ class PlaywrightAdapter(BaseAdapter):
         await locator.set_input_files(value, timeout=timeout)
 
     async def _do_check(self, plan: ActionPlan, locator, timeout: int) -> None:
-        await locator.check(timeout=timeout)
+        await self._set_checkbox(locator, True, timeout)
 
     async def _do_uncheck(self, plan: ActionPlan, locator, timeout: int) -> None:
-        await locator.uncheck(timeout=timeout)
+        await self._set_checkbox(locator, False, timeout)
+
+    async def _set_checkbox(self, locator, desired: bool, timeout: int) -> None:
+        """Toggle a checkbox to ``desired`` idempotently.
+
+        The resolved target is often the styled ``<label>``/wrapper (the real
+        `<input>` is hidden and not directly checkable), and the box may already
+        be in the wanted state. Read the current state; do nothing if it matches;
+        otherwise click the wrapper (which toggles it). Falls back to Playwright's
+        native check/uncheck when the element is a plain, directly-usable input.
+        """
+        state = None
+        try:
+            state = await locator.evaluate(
+                "el => { const inp = el.matches('input') ? el : "
+                "el.querySelector('input[type=checkbox], [role=checkbox]');"
+                " if (!inp) return null;"
+                " return inp.checked !== undefined ? !!inp.checked "
+                ": inp.getAttribute('aria-checked') === 'true'; }"
+            )
+        except Exception:  # noqa: BLE001 — no evaluate() (e.g. test double) / probe failed
+            state = None
+
+        if state is not None:
+            # Resolved a styled wrapper whose real <input> is hidden — toggle by
+            # clicking the wrapper, and only when the state actually differs.
+            if bool(state) == bool(desired):
+                return  # already in the wanted state — idempotent no-op
+            try:
+                await locator.click(timeout=timeout)
+                return
+            except Exception:  # noqa: BLE001 — fall through to native check/uncheck
+                pass
+
+        # Plain, directly-checkable input (or state unknown): Playwright's native
+        # check/uncheck (itself idempotent).
+        if desired:
+            await locator.check(timeout=timeout)
+        else:
+            await locator.uncheck(timeout=timeout)
 
     async def _do_scroll(self, plan: ActionPlan, locator, timeout: int) -> None:
         await locator.scroll_into_view_if_needed(timeout=timeout)
@@ -1720,6 +1824,17 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_radio %r -> %s", target_phrase, result)
+        return result
+
+    async def find_checkbox(self, target_phrase: str) -> dict | None:
+        """Resolve a checkbox by label text. Returns ``{selector, checked, name}``
+        for the clickable wrapper/label (not the hidden input), or ``None`` when
+        the page has no checkbox. Works for native, Ant and MUI checkboxes.
+        """
+        result = await self._page.evaluate(_FIND_CHECKBOX_JS, {"phrase": target_phrase or ""})
+        if not result:
+            return None
+        logger.debug("find_checkbox %r -> %s", target_phrase, result)
         return result
 
     async def find_file_input(self, target_phrase: str) -> str | None:

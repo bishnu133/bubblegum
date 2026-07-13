@@ -335,6 +335,10 @@ async def act(
     pre_target = pre_target or await _maybe_resolve_dialog_click(adapter, channel, intent)
     # Radio selection: pin the radio wrapper/label from the DOM and click it.
     pre_target = pre_target or await _maybe_resolve_radio(adapter, channel, intent)
+    # Checkbox selection: pin the checkbox wrapper/label from the DOM and toggle it
+    # idempotently. Ant/MUI hide the real <input>, so name-based grounding misses
+    # it and a "Select X checkbox" step wrongly falls to the dropdown resolver.
+    pre_target = pre_target or await _maybe_resolve_checkbox(adapter, channel, intent)
     # Rich-text editors: "type into <label>" targeting a contenteditable RTE
     # (Quill/TinyMCE/…) which has no textbox role and is invisible to name-based
     # grounding — pin it by label from the DOM. Only fires on a full label match,
@@ -1589,6 +1593,12 @@ async def _maybe_resolve_radio(adapter, channel: str, intent: StepIntent):
         return None
     text = (intent.target_phrase or "").strip()
     if not text:
+        # `Select "NA" radio button for Recommendation Sex` — the "for …" tail
+        # defeats deterministic target extraction, so fall back to the quoted
+        # option label.
+        quoted = _quoted_segments(getattr(intent, "instruction", "") or "")
+        text = quoted[0] if quoted else ""
+    if not text:
         return None
     try:
         res = await finder(text)
@@ -1602,6 +1612,49 @@ async def _maybe_resolve_radio(adapter, channel: str, intent: StepIntent):
     return ResolvedTarget(
         ref=res["selector"], confidence=0.9, resolver_name="radio_dom",
         metadata={"role": "radio", "radio_dom": True, "checked": res.get("checked")},
+    )
+
+
+async def _maybe_resolve_checkbox(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for selecting/clearing a checkbox by its label.
+
+    Like radios, Ant/MUI checkboxes hide the real ``<input>`` inside a styled
+    ``<label>``, so name-based grounding misses them and a "Select X checkbox"
+    step (parsed as ``select``) wrongly falls to the dropdown resolver. This pins
+    the wrapper from the DOM and coerces the step to check/uncheck (toggled
+    idempotently by the adapter). Gated on the word "checkbox" so radio/dropdown
+    steps are untouched. No-op on pages without a checkbox.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in (
+        "select", "check", "click", "tap", "uncheck"
+    ):
+        return None
+    haystack = f"{getattr(intent, 'instruction', '') or ''} {intent.target_phrase or ''}".lower()
+    if "checkbox" not in haystack and "check box" not in haystack:
+        return None
+    finder = getattr(adapter, "find_checkbox", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        quoted = _quoted_segments(getattr(intent, "instruction", "") or "")
+        text = quoted[0] if quoted else ""
+    if not text:
+        return None
+    try:
+        res = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("checkbox DOM resolution errored: %s", exc)
+        return None
+    if not res or not res.get("selector"):
+        return None
+    # "uncheck / unselect / deselect / clear X checkbox" wants it OFF; else ON.
+    desired_off = any(w in haystack for w in ("uncheck", "unselect", "deselect", "untick", "clear"))
+    intent.action_type = "uncheck" if desired_off else "check"
+    logger.debug("Resolved checkbox %r via DOM (%s)", text, res["selector"])
+    return ResolvedTarget(
+        ref=res["selector"], confidence=0.9, resolver_name="checkbox_dom",
+        metadata={"role": "checkbox", "checkbox_dom": True, "checked": res.get("checked")},
     )
 
 
@@ -1755,6 +1808,24 @@ async def _maybe_resolve_clickable(adapter, channel: str, instruction: str, inte
     )
 
 
+def _clean_dropdown_phrase(phrase: str) -> str:
+    """Strip stray quotes and trailing widget words from a dropdown target.
+
+    Deterministic parsing of `… from "X" drop down` can leave `X" drop down`;
+    normalise it to just the dropdown's name (`X`) so label scoring is clean.
+    """
+    import re
+
+    p = (phrase or "").strip().strip('"').strip("'").strip()
+    p = re.sub(
+        r"\s*(drop\s*down|dropdown|combo\s*box|combobox|select|selection|list|menu|field)\s*$",
+        "",
+        p,
+        flags=re.IGNORECASE,
+    ).strip().strip('"').strip("'").strip()
+    return p
+
+
 async def _maybe_resolve_select_trigger(adapter, channel: str, intent: StepIntent):
     """DOM fallback for dropdown/select intents that failed to ground.
 
@@ -1771,8 +1842,19 @@ async def _maybe_resolve_select_trigger(adapter, channel: str, intent: StepInten
     finder = getattr(adapter, "find_select_trigger", None)
     if finder is None:
         return None
+    # `Select "Aerobic" from "Recommendation Tags" drop down` — deterministic
+    # parsing mangles the target into `Recommendation Tags" drop down` (stray
+    # quote + trailing words), which mis-scores the dropdown and sends the step
+    # to the wrong (first) select. The dropdown's own name is the 2nd quoted
+    # segment; prefer it, else clean the parsed phrase.
+    quoted = _quoted_segments(getattr(intent, "instruction", "") or "")
+    value = intent.input_value or (quoted[0] if quoted else "")
+    if len(quoted) >= 2:
+        phrase = quoted[1]
+    else:
+        phrase = _clean_dropdown_phrase(intent.target_phrase or "")
     try:
-        ref = await finder(intent.target_phrase or "", intent.input_value or "")
+        ref = await finder(phrase, value or "")
     except Exception as exc:  # noqa: BLE001 — fallback must never mask the original error
         logger.debug("select-trigger DOM fallback errored: %s", exc)
         return None
