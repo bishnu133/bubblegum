@@ -1239,6 +1239,19 @@ class PlaywrightAdapter(BaseAdapter):
                 await locator.press("Enter", timeout=timeout)
             except Exception:  # noqa: BLE001 — value is already set; commit is best-effort
                 pass
+            # Ant datetime pickers keep the panel open with an OK button that
+            # confirms the selected date+time; Enter alone can leave the range
+            # uncommitted. Click a visible OK if the widget shows one (best-effort;
+            # plain date pickers without a time panel have no OK button).
+            try:
+                ok = self._page.locator(
+                    '.ant-picker-ok button, .ant-picker-footer button, '
+                    '[class*="picker"] [class*="footer"] button'
+                ).filter(has_text="OK").first
+                if await ok.count() > 0 and await ok.is_visible():
+                    await ok.click(timeout=min(timeout, 1500))
+            except Exception:  # noqa: BLE001 — commit via OK is best-effort
+                pass
             return
         await locator.fill(value, timeout=timeout)
 
@@ -1307,6 +1320,22 @@ class PlaywrightAdapter(BaseAdapter):
 
         probe = min(timeout, 3000)
         last_exc: Exception | None = None
+
+        # Searchable comboboxes (Ant `showSearch`, MUI Autocomplete, react-select)
+        # render a *filtered / virtualized* option list — the target row is often
+        # not in the DOM until the user types. Type the value into the trigger's
+        # own editable search box to filter it in. Best-effort and a no-op for
+        # non-search selects, whose inner input is readonly or absent.
+        try:
+            search = trigger.locator(
+                'input.ant-select-selection-search-input, input[role="combobox"], '
+                'input[type="search"], input:not([type="hidden"]):not([readonly])'
+            ).first
+            if await search.count() > 0 and await search.is_editable(timeout=500):
+                await search.fill(value, timeout=min(timeout, 2000))
+                await self._page.wait_for_timeout(200)
+        except Exception:  # noqa: BLE001 — filtering is an optimisation, not required
+            pass
 
         # Wait (bounded, best-effort) for the popup to materialize after opening,
         # so the count()-guarded attempts below see a settled DOM rather than
