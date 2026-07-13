@@ -182,8 +182,8 @@ _FIND_SELECT_TRIGGER_JS = r"""
   // container that has a label; fall back to closest() when none does.
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
-    while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
+    while (p && hops < 15) {
+      if (p.matches(sel) && p.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -219,9 +219,33 @@ _FIND_SELECT_TRIGGER_JS = r"""
     const lb = e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
-    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])'); if (l) parts.push(l.textContent); }
+    if (fi) { const l = fi.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])'); if (l) parts.push(l.textContent); }
     let p = e.previousElementSibling, hops = 0;
     while (p && hops < 3) { if (p.tagName === 'LABEL' || /label/i.test(p.className)) parts.push(p.textContent); p = p.previousElementSibling; hops++; }
+    return norm(parts.join(' '));
+  };
+  // A control is often introduced by a short heading that is NOT a <label for>
+  // (a bare <span>Eligibility Tags</span>, a <h4>, a <b>…) sitting before the
+  // group that wraps it. Climb a few ancestors and, at each level, read the
+  // nearest preceding sibling that looks like a heading (short text, no controls
+  // inside). Generic: works for any "group label" pattern, not just Ant.
+  const groupHeading = (e) => {
+    const parts = [];
+    let a = e, up = 0;
+    while (a && up < 8) {
+      let s = a.previousElementSibling, seen = 0;
+      while (s && seen < 3) {
+        if (/^(SPAN|LABEL|H[1-6]|B|STRONG|LEGEND|P|DIV)$/.test(s.tagName)) {
+          const t = (s.textContent || '').trim();
+          if (t && t.length <= 40 && !s.querySelector('input, select, textarea, button, [role="combobox"]')) {
+            parts.push(t);
+            break;
+          }
+        }
+        s = s.previousElementSibling; seen++;
+      }
+      a = a.parentElement; up++;
+    }
     return norm(parts.join(' '));
   };
   const displayed = (e) => {
@@ -240,9 +264,14 @@ _FIND_SELECT_TRIGGER_JS = r"""
     const lbl = labelText(e), disp = displayed(e), ph = placeholder(e);
     let score = 0;
     score += 3.0 * overlap(lbl);                 // associated label — strongest signal
+    score += 2.0 * overlap(groupHeading(e));     // preceding group heading (not a <label for>)
     score += 0.8 * overlap(ph);                  // placeholder hint
     score += 0.5 * overlap(disp);                // displayed-text hint
     if (valN && disp === valN) score += 1.5;     // already shows the value we want
+    // Tie-breaker: when a group heading (e.g. "Eligibility Tags") labels more than
+    // one select — a compact qualifier ("All/Any") plus the value picker — the
+    // value being selected belongs in the multi-select. Nudge it ahead.
+    if (e.matches('.ant-select-multiple') || e.getAttribute('aria-multiselectable') === 'true' || e.multiple) score += 0.3;
     score += (els.length - i) * 0.001;           // tiny earlier-in-DOM tie-breaker
     if (score > bestScore) { bestScore = score; best = e; }
   });
@@ -268,8 +297,8 @@ _FIND_INPUT_JS = r"""
   // order so the first field wins for every phrase.
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
-    while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
+    while (p && hops < 15) {
+      if (p.matches(sel) && p.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -301,7 +330,7 @@ _FIND_INPUT_JS = r"""
     const lb = e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
-    if (fi) { const l = fi.querySelector('label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])'); if (l) parts.push(l.textContent); }
+    if (fi) { const l = fi.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])'); if (l) parts.push(l.textContent); }
     if (e.name) parts.push(e.name);
     if (e.id) parts.push(e.id);
     return norm(parts.join(' '));
@@ -342,8 +371,8 @@ _FIND_RICH_TEXT_JS = r"""
 (args) => {
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
-    while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
+    while (p && hops < 15) {
+      if (p.matches(sel) && p.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -374,7 +403,7 @@ _FIND_RICH_TEXT_JS = r"""
     const lb = e.getAttribute && e.getAttribute('aria-labelledby');
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
-    if (fi) { const l = fi.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])'); if (l) parts.push(l.textContent); }
+    if (fi) { const l = fi.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])'); if (l) parts.push(l.textContent); }
     if (e.name) parts.push(e.name);
     if (e.id) parts.push(e.id);
     return norm(parts.join(' '));
@@ -477,8 +506,8 @@ _FIND_DATE_RANGE_JS = r"""
   // swallows closest() and the label disambiguation returns nothing).
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
-    while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
+    while (p && hops < 15) {
+      if (p.matches(sel) && p.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -526,7 +555,7 @@ _FIND_DATE_RANGE_JS = r"""
   if (matches.length > 1 && tokens.length) {
     const labelText = (e) => {
       const fi = __bgField(e, '.ant-form-item, .ant-row, [class*="form-item"], [class*="field"]');
-      const l = fi && fi.querySelector('label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])');
+      const l = fi && fi.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])');
       return norm(l ? l.textContent : '');
     };
     const overlap = (txt) => { let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n; };
@@ -554,8 +583,8 @@ _FIND_FILE_INPUT_JS = r"""
   // swallows closest() and the label/testid context returns nothing).
   const __bgField = (e, sel) => {
     let p = e.parentElement, hops = 0;
-    while (p && hops < 8) {
-      if (p.matches(sel) && p.querySelector('label, .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"])')) return p;
+    while (p && hops < 15) {
+      if (p.matches(sel) && p.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])')) return p;
       p = p.parentElement; hops++;
     }
     return e.closest(sel);
@@ -590,7 +619,7 @@ _FIND_FILE_INPUT_JS = r"""
     if (e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
     const fi = __bgField(e, '.ant-form-item, [class*="form-item"], [class*="field"], [class*="uploader"], [class*="upload"]');
     if (fi) {
-      const l = fi.querySelector('label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]), [title]:not([class*="ql-"]):not([class*="picker"])');
+      const l = fi.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"]), [title]:not([class*="ql-"]):not([class*="picker"]):not([class*="checkbox"]):not([class*="radio"])');
       if (l) parts.push(l.getAttribute('title') || l.textContent);
       if (fi.getAttribute('data-testid')) parts.push(fi.getAttribute('data-testid'));
     }
