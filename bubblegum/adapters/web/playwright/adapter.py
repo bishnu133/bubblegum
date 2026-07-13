@@ -1303,16 +1303,48 @@ class PlaywrightAdapter(BaseAdapter):
           3. Generic: any element with the exact text, scoped to an open popup
              (listbox/menu/dropdown), then the aria-controls/aria-owns listbox.
         """
-        await self._open_combobox(trigger, timeout)
+        # Try the resolved trigger first. If it does not actually offer the value
+        # — the classic failure when a group heading ("Eligibility Tags") sits
+        # over several selects and label-scoring picks the wrong one — fall back
+        # to the OTHER visible comboboxes and commit to whichever actually
+        # contains the value. The value is ground truth, so this self-corrects a
+        # mis-scored trigger instead of typing into the wrong field.
+        if await self._try_pick_option(trigger, value, timeout):
+            return
 
-        probe = min(timeout, 3000)
         last_exc: Exception | None = None
+        for cand in await self._other_select_triggers(trigger):
+            try:
+                if await self._try_pick_option(cand, value, timeout):
+                    return
+            except Exception as exc:  # noqa: BLE001 — try the next candidate
+                last_exc = exc
+
+        raise ValueError(
+            f"could not find a dropdown option matching {value!r} after opening "
+            f"the combobox (tried role=option/menuitem, .ant-select-item-option "
+            f"by title/text, open-popup text/title, the aria-controls listbox, "
+            f"and every other combobox on the page)"
+        ) from last_exc
+
+    async def _try_pick_option(self, trigger, value: str, timeout: int) -> bool:
+        """Open one combobox, filter by typing, and click the matching option.
+
+        Returns True when an option was clicked, False when this combobox does
+        not offer ``value`` (leaving it cleared + closed so the next candidate
+        starts from a clean page). Never raises for a normal "not found".
+        """
+        probe = min(timeout, 3000)
+        try:
+            await self._open_combobox(trigger, timeout)
+        except Exception:  # noqa: BLE001 — an un-openable trigger simply doesn't match
+            return False
 
         # Searchable comboboxes (Ant `showSearch`, MUI Autocomplete, react-select)
         # render a *filtered / virtualized* option list — the target row is often
         # not in the DOM until the user types. Type the value into the trigger's
-        # own editable search box to filter it in. Best-effort and a no-op for
-        # non-search selects, whose inner input is readonly or absent.
+        # own editable search box. No-op for non-search selects (readonly input).
+        search = None
         try:
             search = trigger.locator(
                 'input.ant-select-selection-search-input, input[role="combobox"], '
@@ -1322,11 +1354,8 @@ class PlaywrightAdapter(BaseAdapter):
                 await search.fill(value, timeout=min(timeout, 2000))
                 await self._page.wait_for_timeout(200)
         except Exception:  # noqa: BLE001 — filtering is an optimisation, not required
-            pass
+            search = None
 
-        # Wait (bounded, best-effort) for the popup to materialize after opening,
-        # so the count()-guarded attempts below see a settled DOM rather than
-        # racing an animating dropdown.
         opened = self._page.locator(
             '[role="option"], [role="menuitem"], .ant-select-item-option, '
             '[role="listbox"], [role="menu"], .ant-select-dropdown'
@@ -1336,36 +1365,20 @@ class PlaywrightAdapter(BaseAdapter):
         except Exception:  # noqa: BLE001 — proceed; the attempts still guard themselves
             pass
 
-        attempts: list = []
-
-        # 1) Standard ARIA listbox / menu options.
-        attempts += [
+        esc = value.replace("\\", "\\\\").replace('"', '\\"')
+        attempts: list = [
             self._page.get_by_role("option", name=value, exact=True),
             self._page.get_by_role("option", name=value),
             self._page.get_by_role("menuitem", name=value, exact=True),
             self._page.get_by_role("menuitem", name=value),
-        ]
-
-        # 2) Role-less library option rows (Ant Design rc-select & lookalikes):
-        #    <div class="ant-select-item-option" title="V">. The trigger's own
-        #    label is .ant-select-selection-item, so it is never matched here.
-        esc = value.replace("\\", "\\\\").replace('"', '\\"')
-        attempts += [
             self._page.locator(f'.ant-select-item-option[title="{esc}"]'),
             self._page.locator(".ant-select-item-option", has_text=value),
         ]
-
-        # 3a) Generic: exact text/title inside any open popup container.
         popup = self._page.locator(
             '[role="listbox"], [role="menu"], .ant-select-dropdown, '
             '[class*="dropdown"], [class*="menu"], [class*="popover"], [class*="popup"]'
         )
-        attempts += [
-            popup.get_by_text(value, exact=True),
-            popup.get_by_title(value, exact=True),
-        ]
-
-        # 3b) The listbox the trigger explicitly owns (aria-controls / aria-owns).
+        attempts += [popup.get_by_text(value, exact=True), popup.get_by_title(value, exact=True)]
         container = await self._owned_listbox(trigger)
         if container is not None:
             attempts += [
@@ -1374,23 +1387,52 @@ class PlaywrightAdapter(BaseAdapter):
                 container.get_by_text(value),
             ]
 
-        # count() returns immediately (no implicit wait), so non-matching shapes
-        # are skipped instantly instead of each burning the probe timeout — only
-        # a shape that actually matches is clicked.
         for option in attempts:
             try:
                 if await option.count() == 0:
                     continue
                 await option.first.click(timeout=probe)
-                return
-            except Exception as exc:  # noqa: BLE001 — try the next option shape
-                last_exc = exc
+                return True
+            except Exception:  # noqa: BLE001 — try the next option shape
+                continue
 
-        raise ValueError(
-            f"could not find a dropdown option matching {value!r} after opening "
-            f"the combobox (tried role=option/menuitem, .ant-select-item-option "
-            f"by title/text, open-popup text/title, and the aria-controls listbox)"
-        ) from last_exc
+        # No match here — reset this combobox (clear the typed filter, close the
+        # popup) so a following candidate isn't confused by a stale open list.
+        try:
+            if search is not None and await search.count() > 0:
+                await search.fill("", timeout=500)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            await self._page.keyboard.press("Escape")
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+    async def _other_select_triggers(self, exclude_trigger) -> list:
+        """Visible combobox triggers other than the already-tried one.
+
+        Tags each with ``data-bg-select-alt`` and returns their locators (DOM
+        order, capped). Used to self-correct when the scored trigger did not
+        offer the value — the right select is found by which one actually has it.
+        """
+        try:
+            n = await self._page.evaluate(r"""() => {
+              const SEL='select, [role="combobox"], .ant-select, .MuiSelect-select, [class*="select__control"]';
+              let els=Array.from(document.querySelectorAll(SEL))
+                .filter(e=>!e.matches('.ant-select-selection-search-input'));
+              els=els.filter(e=>!els.some(o=>o!==e&&o.contains(e)));
+              const vis=(e)=>{const r=e.getBoundingClientRect();if(r.width<=0||r.height<=0)return false;
+                const s=window.getComputedStyle(e);return s.visibility!=='hidden'&&s.display!=='none';};
+              els=els.filter(vis).filter(e=>!e.matches('[data-bg-select="1"]')
+                && !e.closest('[data-bg-select="1"]') && !e.querySelector('[data-bg-select="1"]'));
+              document.querySelectorAll('[data-bg-select-alt]').forEach(n=>n.removeAttribute('data-bg-select-alt'));
+              els.slice(0,6).forEach((e,i)=>e.setAttribute('data-bg-select-alt', String(i)));
+              return Math.min(els.length,6);
+            }""")
+        except Exception:  # noqa: BLE001 — no fallback candidates on failure
+            return []
+        return [self._page.locator(f'[data-bg-select-alt="{i}"]') for i in range(n or 0)]
 
     async def _owned_listbox(self, trigger):
         """Locator for the popup a combobox owns via aria-controls / aria-owns.
