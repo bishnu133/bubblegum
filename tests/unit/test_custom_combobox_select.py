@@ -88,7 +88,15 @@ class _TriggerLocator:
     def first(self) -> "_TriggerLocator":
         return self
 
-    async def evaluate(self, _expr: str, *args: Any, **kwargs: Any) -> str:
+    async def evaluate(self, _expr: str, *args: Any, **kwargs: Any):
+        # `_is_ant_select` probe — these dispatch fakes are not Ant selects, so
+        # the adapter keeps the legacy "a dispatched click is success" path
+        # (commit-verification for real Ant selects is covered by a browser test).
+        if "ant-select" in _expr and "selection-item" not in _expr:
+            return False
+        # `_selected_texts` probe — no rendered selection items in a fake.
+        if "selection-item" in _expr:
+            return []
         return self._tag
 
     async def get_attribute(self, name: str) -> str | None:

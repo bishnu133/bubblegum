@@ -1,0 +1,94 @@
+"""A dropdown pick must be *committed*, not merely dispatched.
+
+Symptom reported from the field: the value is typed into an Ant multi-select's
+search box, an option is clicked, the step reports success — yet no tag is
+selected. Some virtualised / portalled lists accept the option click as a DOM
+event but never commit it. ``_try_pick_option`` now confirms the choice actually
+rendered as a selection item (for Ant selects) and, when a click didn't take,
+presses Enter to commit the filtered option.
+
+These are browser-gated (skip when no Chromium is available). The page is a
+minimal but functional Ant-style multi-select: typing filters options; clicking
+an option commits it — unless ``data-block`` is set, which swallows option clicks
+(mimicking the miss) while the search box still commits on Enter.
+"""
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
+
+
+def _page_html(block: bool) -> str:
+    blk = " data-block='1'" if block else ""
+    return (
+        "<!doctype html><html><body" + blk + ">"
+        "<span>Eligibility Tags</span>"
+        "<div class='ant-select ant-select-multiple ant-select-show-search' data-testid='tags' style='width:300px'>"
+        "  <div class='ant-select-selector'><span class='ant-select-selection-wrap'>"
+        "    <div class='ant-select-selection-overflow'></div>"
+        "    <span class='ant-select-selection-search'>"
+        "      <input class='ant-select-selection-search-input' role='combobox' type='search' id='search'>"
+        "    </span></span></div></div>"
+        "<div id='dd' class='ant-select-dropdown ant-select-dropdown-hidden' style='position:absolute'></div>"
+        "<script>"
+        "var OPTIONS=['Aerobic','Anaerobic','Strength'];"
+        "var input=document.getElementById('search'),dd=document.getElementById('dd');"
+        "var overflow=document.querySelector('.ant-select-selection-overflow');"
+        "function selected(){return Array.from(overflow.querySelectorAll('.ant-select-selection-item')).map(function(n){return n.getAttribute('title')});}"
+        "function commit(v){if(selected().indexOf(v)>=0)return;var t=document.createElement('div');t.className='ant-select-selection-overflow-item';"
+        "t.innerHTML=\"<span class='ant-select-selection-item' title='\"+v+\"'><span class='ant-select-selection-item-content'>\"+v+'</span></span>';"
+        "overflow.appendChild(t);input.value='';render();}"
+        "function items(){var q=input.value.trim().toLowerCase();return OPTIONS.filter(function(o){return o.toLowerCase().indexOf(q)>=0});}"
+        "function render(){var it=items();dd.innerHTML=it.map(function(o,i){return \"<div class='ant-select-item ant-select-item-option\"+(i===0?' ant-select-item-option-active':'')+\"' title='\"+o+\"'><div class='ant-select-item-option-content'>\"+o+'</div></div>'}).join('');"
+        "dd.querySelectorAll('.ant-select-item-option').forEach(function(el){el.addEventListener('mousedown',function(e){if(document.body.dataset.block){e.preventDefault();e.stopPropagation();return;}commit(el.getAttribute('title'));});});}"
+        "function open(){dd.classList.remove('ant-select-dropdown-hidden');var r=input.getBoundingClientRect();dd.style.left=r.left+'px';dd.style.top=r.bottom+'px';render();}"
+        "document.querySelector('.ant-select-selector').addEventListener('click',open);input.addEventListener('focus',open);input.addEventListener('input',render);"
+        "input.addEventListener('keydown',function(e){if(e.key==='Enter'){var it=items();if(it.length)commit(it[0]);}});"
+        "</script></body></html>"
+    )
+
+
+def _select(block: bool):
+    async_api = pytest.importorskip("playwright.async_api")
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_page_html(block))
+                adapter = PlaywrightAdapter(page)
+                trigger = page.locator('[data-testid="tags"]')
+                try:
+                    await adapter._select_from_custom_combobox(trigger, "Aerobic", 4000)
+                except Exception:  # noqa: BLE001 — inspect the committed result below
+                    pass
+                return await adapter._selected_texts(trigger)
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    return asyncio.run(go())
+
+
+@pytest.mark.playwright
+def test_click_path_commits_selection() -> None:
+    assert "Aerobic" in _select(block=False)
+
+
+@pytest.mark.playwright
+def test_enter_fallback_commits_when_click_is_swallowed() -> None:
+    # The click is dispatched but the widget drops it — the pick must still land
+    # via the Enter-to-commit fallback rather than reporting a phantom success.
+    assert "Aerobic" in _select(block=True)

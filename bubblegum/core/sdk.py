@@ -1572,6 +1572,29 @@ async def _maybe_resolve_daterange(adapter, channel: str, intent: StepIntent):
     )
 
 
+async def _call_dom_finder(finder, text: str, context: str):
+    """Call a DOM finder that may or may not accept a ``context`` argument.
+
+    The section-aware finders (``find_radio``/``find_checkbox``) take an optional
+    second ``context`` argument; older adapters and test doubles define only the
+    single-arg form. Introspect the signature and pass ``context`` only when the
+    callee can receive it, so both shapes work without a broad try/except that
+    would mask genuine ``TypeError``s from inside the finder.
+    """
+    import inspect
+
+    try:
+        params = inspect.signature(finder).parameters
+        accepts_ctx = len(params) >= 2 or any(
+            p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD) for p in params.values()
+        )
+    except (TypeError, ValueError):
+        accepts_ctx = False
+    if accepts_ctx:
+        return await finder(text, context)
+    return await finder(text)
+
+
 async def _maybe_resolve_radio(adapter, channel: str, intent: StepIntent):
     """Deterministic resolver for selecting a radio option by its label.
 
@@ -1600,15 +1623,22 @@ async def _maybe_resolve_radio(adapter, channel: str, intent: StepIntent):
         text = quoted[0] if quoted else ""
     if not text:
         return None
+    # The full instruction is the section context ("… for Eligibility") — two
+    # sections often share option labels (Male/Female), so the resolver needs the
+    # surrounding words to pin the right section, not just the option text.
+    context = getattr(intent, "instruction", "") or ""
     try:
-        res = await finder(text)
+        res = await _call_dom_finder(finder, text, context)
     except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
         logger.debug("radio DOM resolution errored: %s", exc)
         return None
     if not res or not res.get("selector"):
         return None
     intent.action_type = "click"  # selecting a radio is a click on its wrapper
-    logger.debug("Resolved radio %r via DOM (%s)", text, res["selector"])
+    logger.debug(
+        "Resolved radio %r via DOM -> name=%r section=%r (%s)",
+        text, res.get("name"), res.get("section"), res["selector"],
+    )
     return ResolvedTarget(
         ref=res["selector"], confidence=0.9, resolver_name="radio_dom",
         metadata={"role": "radio", "radio_dom": True, "checked": res.get("checked")},
@@ -1641,8 +1671,9 @@ async def _maybe_resolve_checkbox(adapter, channel: str, intent: StepIntent):
         text = quoted[0] if quoted else ""
     if not text:
         return None
+    context = getattr(intent, "instruction", "") or ""
     try:
-        res = await finder(text)
+        res = await _call_dom_finder(finder, text, context)
     except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
         logger.debug("checkbox DOM resolution errored: %s", exc)
         return None
@@ -1651,7 +1682,10 @@ async def _maybe_resolve_checkbox(adapter, channel: str, intent: StepIntent):
     # "uncheck / unselect / deselect / clear X checkbox" wants it OFF; else ON.
     desired_off = any(w in haystack for w in ("uncheck", "unselect", "deselect", "untick", "clear"))
     intent.action_type = "uncheck" if desired_off else "check"
-    logger.debug("Resolved checkbox %r via DOM (%s)", text, res["selector"])
+    logger.debug(
+        "Resolved checkbox %r via DOM -> name=%r section=%r (%s)",
+        text, res.get("name"), res.get("section"), res["selector"],
+    )
     return ResolvedTarget(
         ref=res["selector"], confidence=0.9, resolver_name="checkbox_dom",
         metadata={"role": "checkbox", "checkbox_dom": True, "checked": res.get("checked")},

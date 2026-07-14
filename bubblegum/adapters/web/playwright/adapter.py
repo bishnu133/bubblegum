@@ -434,12 +434,63 @@ _FIND_RICH_TEXT_JS = r"""
 # type=radio>` inside a styled wrapper/label (Ant `.ant-radio-wrapper`, MUI
 # `FormControlLabel`), so name-based grounding misses them and clicking the input
 # is unreliable — click the wrapper/label instead. Works for native + Ant + MUI.
+# JS snippet (spliced into the radio/checkbox resolvers via __SECTION_JS): the
+# nearest section heading(s) above a control — an Ant card head-title, a
+# <legend>/<hN>, or a heading in a preceding sibling block (e.g. a bare
+# <h4>Eligibility</h4> that titles the block the control sits in). Headings only
+# — never body text — so a shared option label ("Male", present in BOTH sections'
+# bodies) can't leak in and defeat the section disambiguation. Defines
+# `sectionText(e)` and relies on `norm` being in scope.
+_SECTION_HEADING_JS = r"""
+  const sectionText = (e) => {
+    // 1) The nearest explicit section container's OWN heading is the most
+    //    reliable signal (an Ant card head-title, a <legend>, or its first <hN>).
+    //    Reading only this — and stopping — keeps a sibling section's heading
+    //    (e.g. "Eligibility" sitting before the "Recommendation" card) from
+    //    leaking in when we would otherwise climb to the shared <form> root.
+    // Whole-token class match (`~=`) so we land on the real card
+    // (class "ant-card") and not its inner "ant-card-body" — the head-title lives
+    // in the card head, a sibling of the body, so matching the body would miss it.
+    const sec = e.closest('.ant-card, .MuiCard-root, section, fieldset, [class~="card"], [class~="section"], [role="group"]');
+    if (sec) {
+      const h = sec.querySelector('.ant-card-head-title, legend, h1, h2, h3, h4, h5, h6');
+      if (h && (h.textContent || '').trim()) return norm(h.textContent);
+    }
+    // 2) No container: the nearest preceding heading while climbing. Stop at the
+    //    FIRST one so an earlier, different-section heading can't leak in.
+    let a = e, up = 0;
+    while (a && up < 12) {
+      let s = a.previousElementSibling, seen = 0;
+      while (s && seen < 4) {
+        if (/^(H[1-6]|LEGEND)$/.test(s.tagName)) {
+          const t = (s.textContent || '').trim();
+          if (t && t.length <= 60) return norm(t);
+        }
+        const hh = s.querySelector && s.querySelector('h1, h2, h3, h4, h5, h6, legend');
+        if (hh && (hh.textContent || '').trim()) return norm(hh.textContent);
+        s = s.previousElementSibling; seen++;
+      }
+      a = a.parentElement; up++;
+    }
+    return '';
+  };
+"""
+
+
 _FIND_RADIO_JS = r"""
 (args) => {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const phrase = norm(args && args.phrase);
   const tokens = phrase.split(' ').filter((t) => t.length > 1);
   if (!tokens.length) return null;
+  // Section context ("… for Eligibility", "… on the Recommendation section").
+  // Two sections often carry the SAME option label (Male/Female), so the option
+  // text alone ties and DOM order wins — landing on the wrong section. Context
+  // tokens that are NOT part of the option label (and not generic action words)
+  // disambiguate by matching the nearest section heading (see sectionText below).
+  const STOP = new Set(['select','radio','button','buttons','option','the','for','on','in','of','to','a','an','choose','click','pick','set','and','with','sex','gender','value','field']);
+  const ctx = norm(args && args.context);
+  const ctxTokens = ctx.split(' ').filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
 
   const els = Array.from(document.querySelectorAll('input[type=radio], [role=radio]'));
   if (!els.length) return null;
@@ -469,12 +520,29 @@ _FIND_RADIO_JS = r"""
     if (e.value) parts.push(e.value);
     return norm(parts.join(' '));
   };
-  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+  __SECTION_JS
+  // Whole-word match, NOT substring: "male" must not match "female" (which
+  // contains the substring "male"), or every Male query ties with the adjacent
+  // Female radio and DOM order decides. Underscores/digits count as boundaries so
+  // a value like "male" inside "0_eligibilityrules_male" still matches as a word.
+  const RE = {};
+  const hasWord = (txt, t) => {
+    if (!txt) return false;
+    let re = RE[t];
+    if (!re) re = RE[t] = new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)');
+    return re.test(txt);
+  };
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / tokens.length; };
+  const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / ctxTokens.length; };
 
-  let best = null, bestScore = -1;
+  let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
-    const score = overlap(labelText(e)) + i * 0.0001;
-    if (score > bestScore) { bestScore = score; best = e; }
+    const sec = sectionText(e);
+    // Option label is the dominant signal (weight 1.0); the section context is a
+    // bounded tiebreak (weight 0.5 < 1.0) so it can never override which OPTION
+    // is chosen — only which of two equally-matching sections it lives in.
+    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sec) + i * 0.0001;
+    if (score > bestScore) { bestScore = score; best = e; bestSection = sec; }
   });
   if (!best || bestScore <= 0) return null;
 
@@ -489,9 +557,9 @@ _FIND_RADIO_JS = r"""
   const displayName = norm((w && w.textContent) || best.getAttribute('aria-label') || best.value || '');
   document.querySelectorAll('[data-bg-radio]').forEach((n) => n.removeAttribute('data-bg-radio'));
   target.setAttribute('data-bg-radio', '1');
-  return { selector: '[data-bg-radio="1"]', checked, name: displayName };
+  return { selector: '[data-bg-radio="1"]', checked, name: displayName, section: bestSection, score: bestScore };
 }
-"""
+""".replace("__SECTION_JS", _SECTION_HEADING_JS)
 
 
 # JS: resolve a checkbox by its label text — mirror of _FIND_RADIO_JS. Ant/MUI
@@ -506,6 +574,9 @@ _FIND_CHECKBOX_JS = r"""
   const phrase = norm(args && args.phrase);
   const tokens = phrase.split(' ').filter((t) => t.length > 1);
   if (!tokens.length) return null;
+  const STOP = new Set(['select','check','checkbox','tick','box','option','the','for','on','in','of','to','a','an','choose','click','pick','set','and','with','value','field','uncheck','unselect','deselect','untick','clear']);
+  const ctx = norm(args && args.context);
+  const ctxTokens = ctx.split(' ').filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
 
   const els = Array.from(document.querySelectorAll('input[type=checkbox], [role=checkbox]'));
   if (!els.length) return null;
@@ -534,14 +605,27 @@ _FIND_CHECKBOX_JS = r"""
     if (e.value) parts.push(e.value);
     return norm(parts.join(' '));
   };
-  // Full-token match so "Food purchase" prefers the exact checkbox over a partial
-  // ("Drink purchase" shares "purchase"); fall back to best partial otherwise.
-  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+  __SECTION_JS
+  // Whole-word match (see the radio resolver): "Food purchase" prefers the exact
+  // checkbox over a partial ("Drink purchase" shares "purchase"), and a shared
+  // substring can't create a false tie.
+  const RE = {};
+  const hasWord = (txt, t) => {
+    if (!txt) return false;
+    let re = RE[t];
+    if (!re) re = RE[t] = new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)');
+    return re.test(txt);
+  };
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / tokens.length; };
+  const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / ctxTokens.length; };
 
-  let best = null, bestScore = -1;
+  let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
-    const score = overlap(labelText(e)) - i * 0.0001;   // prefer earlier on ties
-    if (score > bestScore) { bestScore = score; best = e; }
+    const sec = sectionText(e);
+    // Option label dominates (weight 1.0); section context is a bounded tiebreak
+    // (0.5) that only decides between equally-matching sections.
+    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sec) - i * 0.0001;
+    if (score > bestScore) { bestScore = score; best = e; bestSection = sec; }
   });
   if (!best || bestScore <= 0) return null;
 
@@ -554,9 +638,9 @@ _FIND_CHECKBOX_JS = r"""
   const displayName = norm((w && w.textContent) || best.getAttribute('aria-label') || best.value || '');
   document.querySelectorAll('[data-bg-checkbox]').forEach((n) => n.removeAttribute('data-bg-checkbox'));
   target.setAttribute('data-bg-checkbox', '1');
-  return { selector: '[data-bg-checkbox="1"]', checked, name: displayName };
+  return { selector: '[data-bg-checkbox="1"]', checked, name: displayName, section: bestSection, score: bestScore };
 }
-"""
+""".replace("__SECTION_JS", _SECTION_HEADING_JS)
 
 
 # JS: resolve the start/end input of a date **range** picker. These inputs are
@@ -1418,6 +1502,33 @@ class PlaywrightAdapter(BaseAdapter):
         except Exception:  # noqa: BLE001
             return []
 
+    async def _is_ant_select(self, trigger) -> bool:
+        """Whether the trigger is an Ant ``.ant-select`` (selection is a tag/item).
+
+        Only these reliably reflect a committed choice as a
+        ``.ant-select-selection-item``, so only for these can we *verify* that a
+        click actually took — see ``_value_committed``.
+        """
+        try:
+            return bool(await trigger.evaluate(
+                "el => el.matches('.ant-select') || !!el.querySelector('.ant-select')"
+                " || !!el.closest('.ant-select')"
+            ))
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def _value_committed(self, trigger, value: str) -> bool:
+        """True when ``value`` now shows as a selected item in an Ant select.
+
+        Guards the "click landed but nothing was selected" failure: some widgets
+        (virtualised / portalled lists) accept the option click as a DOM event
+        yet never commit it, leaving the value merely typed. Comparing against the
+        rendered selection items catches that so the caller can retry via Enter.
+        """
+        want = " ".join((value or "").split()).strip().lower()
+        return any(" ".join(t.split()).strip().lower() == want
+                   for t in await self._selected_texts(trigger))
+
     async def _remove_new_selections(self, trigger, before: list) -> None:
         """Deselect items that appeared in ``trigger`` since ``before`` was taken.
 
@@ -1507,14 +1618,68 @@ class PlaywrightAdapter(BaseAdapter):
                 container.get_by_text(value),
             ]
 
+        # For Ant selects the committed choice renders as a selection item, so we
+        # can confirm the click actually took. For other widgets we can't verify
+        # reliably, so a dispatched click counts as success (legacy behaviour).
+        verify = await self._is_ant_select(trigger)
         for option in attempts:
             try:
                 if await option.count() == 0:
                     continue
                 await option.first.click(timeout=probe)
-                return True
+                if not verify:
+                    logger.debug("combobox pick: clicked option %r", value)
+                    return True
+                await self._page.wait_for_timeout(120)
+                if await self._value_committed(trigger, value):
+                    logger.debug("combobox pick: clicked + committed %r", value)
+                    return True
+                # Click was dispatched but the widget did not commit it — keep
+                # trying the remaining option shapes, then the Enter fallback.
+                logger.debug("combobox pick: click on %r did not commit; retrying", value)
             except Exception:  # noqa: BLE001 — try the next option shape
                 continue
+
+        # Enter-to-commit fallback. After typing to filter, Ant (and most
+        # searchable selects) highlight the single matching option; a click can
+        # still miss it in a virtualised/portalled list, leaving the value merely
+        # TYPED but never committed as a selected tag (the exact symptom: "value
+        # entered but item not selected"). Only press Enter when the filtered list
+        # shows exactly one option whose text matches the value, so we never
+        # commit an unrelated highlighted row.
+        if search is not None:
+            try:
+                match = await self._page.evaluate(
+                    r"""(v) => {
+                      const norm = (s) => (s || '').replace(/\s+/g,' ').trim().toLowerCase();
+                      const want = norm(v);
+                      const opts = Array.from(document.querySelectorAll(
+                        '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option, '
+                        + '[role="listbox"]:not([aria-hidden="true"]) [role="option"]'
+                      )).filter((o) => {
+                        const r = o.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0
+                          && !o.className.includes('ant-select-item-option-disabled')
+                          && o.getAttribute('aria-disabled') !== 'true';
+                      });
+                      if (!opts.length) return false;
+                      const texts = opts.map((o) => norm(o.getAttribute('title') || o.textContent));
+                      const exact = texts.filter((t) => t === want);
+                      // Single exact match, or a single option that clearly contains it.
+                      if (exact.length === 1) return true;
+                      const contains = texts.filter((t) => t.includes(want));
+                      return opts.length === 1 && contains.length === 1;
+                    }""",
+                    value,
+                )
+                if match:
+                    await self._page.keyboard.press("Enter")
+                    await self._page.wait_for_timeout(150)
+                    if value.strip().lower() in [t.lower() for t in await self._selected_texts(trigger)]:
+                        logger.debug("combobox pick: committed %r via Enter", value)
+                        return True
+            except Exception:  # noqa: BLE001 — Enter fallback is best-effort
+                pass
 
         # No match here — reset this combobox (clear the typed filter, close the
         # popup) so a following candidate isn't confused by a stale open list.
@@ -1813,25 +1978,44 @@ class PlaywrightAdapter(BaseAdapter):
         logger.debug("find_date_range_input %r %r -> %s", which, target_phrase, result)
         return result.get("selector")
 
-    async def find_radio(self, target_phrase: str) -> dict | None:
+    async def find_radio(self, target_phrase: str, context: str = "") -> dict | None:
         """Resolve a radio option by label text. Returns ``{selector, checked,
 
         name}`` for the clickable wrapper/label (not the hidden input), or
         ``None`` when the page has no radio. Used for both selecting a radio and
         asserting its checked state; works for native, Ant and MUI radios.
+
+        ``context`` is the surrounding instruction (e.g. "… for Eligibility"):
+        when two sections share the same option label ("Male"), its non-option
+        words are matched against the nearest section heading to pin the right
+        section instead of falling to DOM order.
         """
-        result = await self._page.evaluate(_FIND_RADIO_JS, {"phrase": target_phrase or ""})
+        result = await self._page.evaluate(
+            _FIND_RADIO_JS, {"phrase": target_phrase or "", "context": context or ""}
+        )
         if not result:
             return None
-        logger.debug("find_radio %r -> %s", target_phrase, result)
+        logger.debug(
+            "find_radio phrase=%r context=%r -> name=%r section=%r score=%.3f (%s)",
+            target_phrase, context, result.get("name"), result.get("section"),
+            result.get("score", 0.0), result.get("selector"),
+        )
         return result
 
-    async def find_checkbox(self, target_phrase: str) -> dict | None:
+    async def find_checkbox(self, target_phrase: str, context: str = "") -> dict | None:
         """Resolve a checkbox by label text. Returns ``{selector, checked, name}``
         for the clickable wrapper/label (not the hidden input), or ``None`` when
         the page has no checkbox. Works for native, Ant and MUI checkboxes.
+
+        ``context`` (the surrounding instruction) disambiguates sections that
+        share an option label — see :meth:`find_radio`.
         """
-        result = await self._page.evaluate(_FIND_CHECKBOX_JS, {"phrase": target_phrase or ""})
+        result = await self._page.evaluate(
+            _FIND_CHECKBOX_JS, {"phrase": target_phrase or "", "context": context or ""}
+        )
+        logger.debug(
+            "find_checkbox phrase=%r context=%r -> %s", target_phrase, context, result,
+        )
         if not result:
             return None
         logger.debug("find_checkbox %r -> %s", target_phrase, result)
