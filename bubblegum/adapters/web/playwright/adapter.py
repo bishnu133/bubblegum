@@ -523,7 +523,9 @@ _FIND_RADIO_JS = r"""
   // disambiguate by matching the nearest section heading (see sectionText below).
   const STOP = new Set(['select','radio','button','buttons','option','the','for','on','in','of','to','a','an','choose','click','pick','set','and','with','sex','gender','value','field']);
   const ctx = norm(args && args.context);
-  const ctxTokens = ctx.split(' ').filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
+  const ctxTokens = ctx.split(' ')
+    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))   // strip quotes/punctuation edges
+    .filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
 
   const els = Array.from(document.querySelectorAll('input[type=radio], [role=radio]'));
   if (!els.length) return null;
@@ -566,7 +568,26 @@ _FIND_RADIO_JS = r"""
     return re.test(txt);
   };
   const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / tokens.length; };
-  const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / ctxTokens.length; };
+  // Section context matches by SUBSTRING (not whole word): the discriminating
+  // word is frequently a prefix inside a camelCase id/name ("eligibility" in
+  // "eligibilityRules_male"), which a word-boundary test would miss. The section
+  // words ("eligibility"/"recommendation") are long and distinctive, so substring
+  // matching won't create the male/female-style false ties that the option label
+  // must avoid.
+  const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (txt.indexOf(t) >= 0) n++; }); return n / ctxTokens.length; };
+  // The section a control lives in is signalled not just by a heading but also by
+  // the control's own id/name and its ancestors' ids (Ant names radios
+  // "eligibilityRules_male" / "recommendationRules_male"), which is far more
+  // reliable than headings alone.
+  const sectionHaystack = (e) => {
+    const parts = [sectionText(e)];
+    if (e.id) parts.push(e.id);
+    if (e.name) parts.push(e.name);
+    if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 6) { if (p.id) parts.push(p.id); p = p.parentElement; hops++; }
+    return norm(parts.join(' '));
+  };
 
   let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
@@ -574,7 +595,7 @@ _FIND_RADIO_JS = r"""
     // Option label is the dominant signal (weight 1.0); the section context is a
     // bounded tiebreak (weight 0.5 < 1.0) so it can never override which OPTION
     // is chosen — only which of two equally-matching sections it lives in.
-    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sec) + i * 0.0001;
+    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sectionHaystack(e)) + i * 0.0001;
     if (score > bestScore) { bestScore = score; best = e; bestSection = sec; }
   });
   if (!best || bestScore <= 0) return null;
@@ -609,7 +630,9 @@ _FIND_CHECKBOX_JS = r"""
   if (!tokens.length) return null;
   const STOP = new Set(['select','check','checkbox','tick','box','option','the','for','on','in','of','to','a','an','choose','click','pick','set','and','with','value','field','uncheck','unselect','deselect','untick','clear']);
   const ctx = norm(args && args.context);
-  const ctxTokens = ctx.split(' ').filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
+  const ctxTokens = ctx.split(' ')
+    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
+    .filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
 
   const els = Array.from(document.querySelectorAll('input[type=checkbox], [role=checkbox]'));
   if (!els.length) return null;
@@ -650,14 +673,25 @@ _FIND_CHECKBOX_JS = r"""
     return re.test(txt);
   };
   const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / tokens.length; };
-  const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / ctxTokens.length; };
+  // Substring match for the section context (see the radio resolver) so a word
+  // that is only a prefix inside a camelCase id/name still counts.
+  const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (txt.indexOf(t) >= 0) n++; }); return n / ctxTokens.length; };
+  const sectionHaystack = (e) => {
+    const parts = [sectionText(e)];
+    if (e.id) parts.push(e.id);
+    if (e.name) parts.push(e.name);
+    if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 6) { if (p.id) parts.push(p.id); p = p.parentElement; hops++; }
+    return norm(parts.join(' '));
+  };
 
   let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
     const sec = sectionText(e);
     // Option label dominates (weight 1.0); section context is a bounded tiebreak
     // (0.5) that only decides between equally-matching sections.
-    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sec) - i * 0.0001;
+    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sectionHaystack(e)) - i * 0.0001;
     if (score > bestScore) { bestScore = score; best = e; bestSection = sec; }
   });
   if (!best || bestScore <= 0) return null;
@@ -1485,29 +1519,81 @@ class PlaywrightAdapter(BaseAdapter):
           3. Generic: any element with the exact text, scoped to an open popup
              (listbox/menu/dropdown), then the aria-controls/aria-owns listbox.
         """
-        # Try the resolved trigger first. If it does not actually offer the value
-        # — the classic failure when a group heading ("Eligibility Tags") sits
-        # over several selects and label-scoring picks the wrong one — fall back
-        # to the OTHER visible comboboxes and commit to whichever actually
-        # contains the value. The value is ground truth, so this self-corrects a
-        # mis-scored trigger instead of typing into the wrong field.
+        # Multi-select support: a tags widget takes several values in one step,
+        # written comma-separated ("GaqAccepted, Aerobic, Strength"). Only split
+        # for an actual multi-select so a single value that legitimately contains
+        # a comma is left intact on ordinary selects.
+        values = await self._split_multi_values(trigger, value)
+        if len(values) > 1:
+            missed = []
+            for v in values:
+                if not await self._select_single(trigger, v, timeout):
+                    missed.append(v)
+            if missed and len(missed) == len(values):
+                raise ValueError(
+                    f"could not add any of {values!r} to the multi-select dropdown"
+                )
+            if missed:
+                logger.warning("multi-select: could not add %r (added the rest)", missed)
+            return
+
+        if await self._select_single(trigger, values[0], timeout):
+            return
+        raise ValueError(
+            f"could not find a dropdown option matching {value!r} after opening "
+            f"the combobox (tried role=option/menuitem, .ant-select-item-option "
+            f"by title/text, open-popup text/title, the aria-controls listbox, "
+            f"and every other combobox on the page)"
+        )
+
+    async def _split_multi_values(self, trigger, value: str) -> list:
+        """Split a comma-joined value into items, but only for a multi-select.
+
+        A tags widget (``ant-select-multiple``) accepts several values in one
+        step ("GaqAccepted, Aerobic"). For an ordinary single select a comma is
+        part of the value and must not be split.
+        """
+        if not value or "," not in value:
+            return [value]
+        try:
+            is_multi = await trigger.evaluate(
+                "el => { const r = (el.closest && el.closest('.ant-select')) || el;"
+                " return !!(r.classList && r.classList.contains('ant-select-multiple'))"
+                " || (r.getAttribute && r.getAttribute('aria-multiselectable') === 'true')"
+                " || !!(r.querySelector && r.querySelector('.ant-select-multiple')); }"
+            )
+        except Exception:  # noqa: BLE001
+            is_multi = False
+        if not is_multi:
+            return [value]
+        parts = [v.strip() for v in value.split(",") if v.strip()]
+        return parts or [value]
+
+    async def _select_single(self, trigger, value: str, timeout: int) -> bool:
+        """Commit one ``value`` into a combobox, self-correcting the trigger.
+
+        Tries the resolved trigger first; if it does not actually offer the value
+        (a group heading like "Eligibility Tags" over several selects, so
+        label-scoring picked the wrong one) it falls back to the OTHER visible
+        comboboxes and commits to whichever contains the value — the value is
+        ground truth. Returns True when an option was committed. Any stray
+        selection left on a merely-probed candidate is undone.
+        """
         candidates = [trigger] + await self._other_select_triggers(trigger)
         before = [await self._selected_texts(c) for c in candidates]
 
         picked = -1
-        last_exc: Exception | None = None
         for i, cand in enumerate(candidates):
             try:
                 if await self._try_pick_option(cand, value, timeout):
                     picked = i
                     break
-            except Exception as exc:  # noqa: BLE001 — try the next candidate
-                last_exc = exc
+            except Exception:  # noqa: BLE001 — try the next candidate
+                pass
 
         # Some widgets auto-select the active option when the field blurs, so
-        # probing a wrong candidate can leave a stray selection (e.g. the first
-        # "Challenges Joined" option). Undo any NEW selection in every combobox we
-        # did not commit to, so only the intended field changes. Best-effort.
+        # probing a wrong candidate can leave a stray selection. Undo any NEW
+        # selection in every combobox we did not commit to.
         for i, cand in enumerate(candidates):
             if i == picked:
                 continue
@@ -1515,22 +1601,22 @@ class PlaywrightAdapter(BaseAdapter):
                 await self._remove_new_selections(cand, before[i])
             except Exception:  # noqa: BLE001 — cleanup is best-effort
                 pass
-
-        if picked >= 0:
-            return
-        raise ValueError(
-            f"could not find a dropdown option matching {value!r} after opening "
-            f"the combobox (tried role=option/menuitem, .ant-select-item-option "
-            f"by title/text, open-popup text/title, the aria-controls listbox, "
-            f"and every other combobox on the page)"
-        ) from last_exc
+        return picked >= 0
 
     async def _selected_texts(self, trigger) -> list:
-        """Titles/labels of the items currently selected in a combobox (Ant tags)."""
+        """Titles/labels of the items currently selected in a combobox (Ant tags).
+
+        Climbs to the ``.ant-select`` widget root first: grounding often resolves a
+        select to its INNER ``<input role=combobox>`` (accessible name), and the
+        selection items are siblings/ancestors of that input, not descendants — so
+        querying the input alone returns nothing and every commit check
+        false-negatives (the "ran twice + 28s probe" symptom).
+        """
         try:
             return await trigger.evaluate(
-                "el => Array.from(el.querySelectorAll('.ant-select-selection-item'))"
-                ".map(n => (n.getAttribute('title') || n.textContent || '').trim())"
+                "el => { const root = (el.closest && el.closest('.ant-select')) || el;"
+                " return Array.from(root.querySelectorAll('.ant-select-selection-item'))"
+                ".map(n => (n.getAttribute('title') || n.textContent || '').trim()); }"
             )
         except Exception:  # noqa: BLE001
             return []

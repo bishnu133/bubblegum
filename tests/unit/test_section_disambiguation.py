@@ -99,6 +99,65 @@ _TWO_SECTIONS = """
 """
 
 
+_GENERIC_HEADINGS = """
+<form class="ant-form">
+  <div class="ant-card"><div class="ant-card-head"><div class="ant-card-head-title">Criteria #1</div></div><div class="ant-card-body">
+    <div class="ant-radio-group" id="eligibilityRuleGroups_0_eligibilityRules_gender">
+      <label class="ant-radio-wrapper"><input id="eligibilityRules_all" type="radio" value="all" name="0_eligibilityRules_gender"><span class="ant-radio-label">All</span></label>
+      <label class="ant-radio-wrapper"><input id="eligibilityRules_male" type="radio" value="male" name="0_eligibilityRules_gender"><span class="ant-radio-label">Male</span></label>
+      <label class="ant-radio-wrapper"><input id="eligibilityRules_female" type="radio" value="female" name="0_eligibilityRules_gender"><span class="ant-radio-label">Female</span></label>
+    </div></div></div>
+  <div class="ant-card"><div class="ant-card-head"><div class="ant-card-head-title">Criteria #1</div></div><div class="ant-card-body">
+    <div class="ant-radio-group" id="recommendationRuleGroups_0_recommendationRules_gender">
+      <label class="ant-radio-wrapper"><input id="recommendationRules_NA" type="radio" value="NA" name="0_recommendationRules_gender"><span class="ant-radio-label">NA</span></label>
+      <label class="ant-radio-wrapper"><input id="recommendationRules_male" type="radio" value="male" name="0_recommendationRules_gender"><span class="ant-radio-label">Male</span></label>
+      <label class="ant-radio-wrapper"><input id="recommendationRules_female" type="radio" value="female" name="0_recommendationRules_gender"><span class="ant-radio-label">Female</span></label>
+    </div></div></div>
+</form>
+"""
+
+
+@pytest.mark.playwright
+def test_radio_section_disambiguated_by_id_when_headings_are_generic() -> None:
+    # The section word may be absent from the heading and live only in the
+    # control's id/name ("eligibilityRules_male"). That signal must still pin the
+    # right section — headings alone are not enough.
+    async_api = pytest.importorskip("playwright.async_api")
+    from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_GENERIC_HEADINGS)
+                ad = PlaywrightAdapter(page)
+
+                async def rid(phrase, ctx):
+                    r = await ad.find_radio(phrase, ctx)
+                    return await page.locator(r["selector"]).locator("input").first.get_attribute("id")
+
+                return (
+                    await rid("Male", 'Select "Male" radio button for Eligibility'),
+                    await rid("Male", 'Select "Male" radio button for Recommendation Sex'),
+                )
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    e, r = asyncio.run(go())
+    assert e == "eligibilityRules_male"
+    assert r == "recommendationRules_male"
+
+
 @pytest.mark.playwright
 def test_radio_lands_in_named_section_not_dom_order() -> None:
     async_api = pytest.importorskip("playwright.async_api")

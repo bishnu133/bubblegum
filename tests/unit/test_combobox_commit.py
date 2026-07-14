@@ -117,6 +117,77 @@ _SINGLE = (
 
 
 @pytest.mark.playwright
+def test_multi_select_adds_every_comma_separated_value() -> None:
+    # A tags (multi-select) widget takes several values in one step, written
+    # comma-separated. Each must be committed as its own tag.
+    async_api = pytest.importorskip("playwright.async_api")
+    from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_page_html(block=False))
+                adapter = PlaywrightAdapter(page)
+                trigger = page.locator('[data-testid="tags"]')
+                await adapter._select_from_custom_combobox(trigger, "Aerobic, Strength", 4000)
+                return await adapter._selected_texts(trigger)
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    sel = asyncio.run(go())
+    assert "Aerobic" in sel and "Strength" in sel
+
+
+@pytest.mark.playwright
+def test_inner_combobox_input_trigger_commits_without_probe() -> None:
+    # Grounding often resolves a select to its INNER <input role=combobox>. Reading
+    # the selection must climb to the .ant-select root, else the commit check
+    # false-negatives and the slow other-combobox probe / double Enter kicks in.
+    async_api = pytest.importorskip("playwright.async_api")
+    from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_SINGLE)
+                adapter = PlaywrightAdapter(page)
+                inner = page.locator("#s")   # the <input>, as a11y resolves it
+                import time as _t
+                t0 = _t.time()
+                await adapter._select_from_custom_combobox(inner, "HPB Healthy Food & Dining", 4000)
+                elapsed = _t.time() - t0
+                return await page.evaluate("window.__commits"), elapsed
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    commits, elapsed = asyncio.run(go())
+    assert commits == 1, f"expected a single commit, got {commits}"
+    assert elapsed < 10, f"should not fall into the slow probe (took {elapsed:.1f}s)"
+
+
+@pytest.mark.playwright
 def test_single_select_commits_once_when_label_has_affix() -> None:
     async_api = pytest.importorskip("playwright.async_api")
     from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
