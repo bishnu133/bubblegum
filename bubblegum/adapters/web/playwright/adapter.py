@@ -584,8 +584,21 @@ _FIND_RADIO_JS = r"""
     if (e.id) parts.push(e.id);
     if (e.name) parts.push(e.name);
     if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    // Climb ancestors and, at each, pick up its id and the text of a DIRECT
+    // heading/title child (card head, a *[class*=title], a <b>/<strong>/<legend>/
+    // <hN>). Direct-child only + short cap so we grab the block's own title (e.g.
+    // "Eligibility Criteria #1") and never its body — robust to the exact Ant
+    // markup so section detection doesn't hinge on one class name.
     let p = e.parentElement, hops = 0;
-    while (p && hops < 6) { if (p.id) parts.push(p.id); p = p.parentElement; hops++; }
+    while (p && hops < 8) {
+      if (p.id) parts.push(p.id);
+      let h = null;
+      try {
+        h = p.querySelector(':scope > .ant-card-head, :scope > [class*="head"], :scope > [class*="title"], :scope > [class*="Title"], :scope > legend, :scope > b, :scope > strong, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+      } catch (err) { h = null; }
+      if (h) { const t = (h.textContent || '').trim(); if (t && t.length <= 80) parts.push(t); }
+      p = p.parentElement; hops++;
+    }
     return norm(parts.join(' '));
   };
 
@@ -682,7 +695,15 @@ _FIND_CHECKBOX_JS = r"""
     if (e.name) parts.push(e.name);
     if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
     let p = e.parentElement, hops = 0;
-    while (p && hops < 6) { if (p.id) parts.push(p.id); p = p.parentElement; hops++; }
+    while (p && hops < 8) {
+      if (p.id) parts.push(p.id);
+      let h = null;
+      try {
+        h = p.querySelector(':scope > .ant-card-head, :scope > [class*="head"], :scope > [class*="title"], :scope > [class*="Title"], :scope > legend, :scope > b, :scope > strong, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+      } catch (err) { h = null; }
+      if (h) { const t = (h.textContent || '').trim(); if (t && t.length <= 80) parts.push(t); }
+      p = p.parentElement; hops++;
+    }
     return norm(parts.join(' '));
   };
 
@@ -1527,7 +1548,11 @@ class PlaywrightAdapter(BaseAdapter):
         if len(values) > 1:
             missed = []
             for v in values:
-                if not await self._select_single(trigger, v, timeout):
+                # Don't self-correct across other dropdowns for each value: we
+                # already know THIS multi-select is the target, and probing the
+                # rest per value is what made the step take ~44s and left a stray
+                # popup open in another section.
+                if not await self._select_single(trigger, v, timeout, probe_others=False):
                     missed.append(v)
             if missed and len(missed) == len(values):
                 raise ValueError(
@@ -1569,7 +1594,8 @@ class PlaywrightAdapter(BaseAdapter):
         parts = [v.strip() for v in value.split(",") if v.strip()]
         return parts or [value]
 
-    async def _select_single(self, trigger, value: str, timeout: int) -> bool:
+    async def _select_single(self, trigger, value: str, timeout: int,
+                             probe_others: bool = True) -> bool:
         """Commit one ``value`` into a combobox, self-correcting the trigger.
 
         Tries the resolved trigger first; if it does not actually offer the value
@@ -1578,8 +1604,13 @@ class PlaywrightAdapter(BaseAdapter):
         comboboxes and commits to whichever contains the value — the value is
         ground truth. Returns True when an option was committed. Any stray
         selection left on a merely-probed candidate is undone.
+
+        ``probe_others=False`` restricts the attempt to the given trigger (used
+        when adding several values to one known multi-select).
         """
-        candidates = [trigger] + await self._other_select_triggers(trigger)
+        candidates = [trigger]
+        if probe_others:
+            candidates += await self._other_select_triggers(trigger)
         before = [await self._selected_texts(c) for c in candidates]
 
         picked = -1

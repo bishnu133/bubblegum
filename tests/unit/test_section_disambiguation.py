@@ -117,6 +117,73 @@ _GENERIC_HEADINGS = """
 """
 
 
+_ANT_CARD_TITLE_ONLY = """
+<form class="ant-form">
+  <div class="ant-card ant-card-bordered">
+    <div class="ant-card-head"><div class="ant-card-head-wrapper"><div class="ant-card-head-title"><b>Eligibility Criteria #1</b></div><div class="ant-card-extra"><button type="button" class="ant-btn"><span>Remove</span></button></div></div></div>
+    <div class="ant-card-body">
+      <div class="ant-form-item"><div class="ant-form-item-label"><label>Sex</label></div>
+        <div class="ant-radio-group" role="radiogroup">
+          <label class="ant-radio-wrapper ant-radio-wrapper-checked"><span class="ant-radio ant-radio-checked"><input id="rc_radio_1" type="radio" value="all" checked name="0_gender"></span><span class="ant-radio-label">All</span></label>
+          <label class="ant-radio-wrapper"><span class="ant-radio"><input id="rc_radio_2" type="radio" value="male" name="0_gender"></span><span class="ant-radio-label">Male</span></label>
+          <label class="ant-radio-wrapper"><span class="ant-radio"><input id="rc_radio_3" type="radio" value="female" name="0_gender"></span><span class="ant-radio-label">Female</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:20px"><h4>Recommendation</h4>
+    <div class="ant-card ant-card-bordered">
+      <div class="ant-card-head"><div class="ant-card-head-wrapper"><div class="ant-card-head-title"><b>Recommendation Criteria #1</b></div></div></div>
+      <div class="ant-card-body">
+        <div class="ant-form-item"><div class="ant-form-item-label"><label>Sex</label></div>
+          <div class="ant-radio-group" role="radiogroup">
+            <label class="ant-radio-wrapper ant-radio-wrapper-checked"><span class="ant-radio ant-radio-checked"><input id="rc_radio_7" type="radio" value="NA" checked name="1_gender"></span><span class="ant-radio-label">NA</span></label>
+            <label class="ant-radio-wrapper"><span class="ant-radio"><input id="rc_radio_8" type="radio" value="male" name="1_gender"></span><span class="ant-radio-label">Male</span></label>
+            <label class="ant-radio-wrapper"><span class="ant-radio"><input id="rc_radio_9" type="radio" value="female" name="1_gender"></span><span class="ant-radio-label">Female</span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+"""
+
+
+@pytest.mark.playwright
+def test_radio_section_from_ant_card_title_with_generic_ids() -> None:
+    # The real EDSH form: generic radio ids (rc_radio_*), a shared "Sex" label,
+    # and the ONLY discriminating word in the Ant card head-title ("Eligibility
+    # Criteria #1"). Section detection must read that title, else DOM order picks
+    # the later (Recommendation) Male — the a41 failure.
+    async_api = pytest.importorskip("playwright.async_api")
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_ANT_CARD_TITLE_ONLY)
+                await sdk.act('Select "Male" radio button for Eligibility', channel="web", page=page)
+                return (
+                    await page.locator("#rc_radio_2").is_checked(),   # Eligibility Male
+                    await page.locator("#rc_radio_8").is_checked(),   # Recommendation Male
+                )
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    elig_male, reco_male = asyncio.run(go())
+    assert elig_male is True and reco_male is False
+
+
 @pytest.mark.playwright
 def test_radio_section_disambiguated_by_id_when_headings_are_generic() -> None:
     # The section word may be absent from the heading and live only in the
