@@ -165,6 +165,58 @@ _EXTRACT_TABLES_JS = r"""
   return tables;
 }
 """
+# JS snippet (spliced into the input/radio/checkbox resolvers via the
+# `__SECTION_JS` placeholder): defines `sectionText(e)` — the heading(s) of the
+# form section a control lives in. Two similar sections ("Eligibility" /
+# "Recommendation") often share option labels (Male/Female) and field labels
+# (Minimum Age), so the option/field text ties and DOM order wrongly decides.
+# The section heading breaks the tie. We gather BOTH the nearest section
+# container's own heading (an Ant card head-title / <legend> / <hN>) AND the
+# nearest *preceding* block heading (e.g. a bare <h4>Eligibility</h4> that titles
+# the block) — because the discriminating word may live in either. We never cross
+# into a sibling SECTION while climbing, so one section's heading can't leak into
+# another's. Headings only, never body text (which would re-introduce the shared
+# labels). Relies on `norm` being in scope.
+_SECTION_HEADING_JS = r"""
+  const sectionText = (e) => {
+    const parts = [];
+    const SECTION_SEL = '.ant-card, .MuiCard-root, section, fieldset, [class~="card"], [class~="section"], [role="group"]';
+    const isSection = (n) => !!(n && n.matches && n.matches(SECTION_SEL));
+    // (a) the nearest section container's own heading. Whole-token class match
+    //     (`~=`) lands on the real card (class "ant-card"), not its inner
+    //     "ant-card-body" whose head-title sibling would then be missed.
+    const card = e.closest(SECTION_SEL);
+    if (card) {
+      const h = card.querySelector('.ant-card-head-title, legend, h1, h2, h3, h4, h5, h6');
+      if (h && (h.textContent || '').trim()) parts.push(h.textContent);
+    }
+    // (b) the nearest preceding heading, climbing ancestors. Stop at the FIRST
+    //     one found, and never look inside a sibling section — either would pull
+    //     in a different section's title.
+    let a = e, up = 0, done = false;
+    while (a && up < 12 && !done) {
+      let s = a.previousElementSibling, seen = 0;
+      while (s && seen < 4) {
+        if (!isSection(s)) {
+          if (/^(H[1-6]|LEGEND)$/.test(s.tagName)) {
+            const t = (s.textContent || '').trim();
+            if (t && t.length <= 60) { parts.push(t); done = true; break; }
+          } else {
+            const hh = s.querySelector && s.querySelector('h1, h2, h3, h4, h5, h6, legend');
+            if (hh && (hh.textContent || '').trim() && !isSection(hh.parentElement)) {
+              parts.push(hh.textContent); done = true; break;
+            }
+          }
+        }
+        s = s.previousElementSibling; seen++;
+      }
+      a = a.parentElement; up++;
+    }
+    return norm(parts.join(' '));
+  };
+"""
+
+
 
 
 # JS run in the page to pick the best dropdown/select trigger for a step. Scores
@@ -320,7 +372,12 @@ _FIND_INPUT_JS = r"""
   els = els.filter(visible);
   if (!els.length) return null;
 
-  const labelText = (e) => {
+  // The VISIBLE label (associated <label>/aria/form-item label) — no name/id.
+  // Used to detect when two fields share the same on-screen label ("Minimum Age"
+  // in both the Eligibility and Recommendation sections); the section heading
+  // then disambiguates. name/id often ALSO encode the section, so they go into
+  // the full label used for the final score, but not into the collision test.
+  const visibleLabel = (e) => {
     const parts = [];
     if (e.id) {
       const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]');
@@ -331,26 +388,45 @@ _FIND_INPUT_JS = r"""
     if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
     const fi = __bgField(e, '.ant-form-item, .ant-row, .form-group, [class*="form-item"], [class*="field"]');
     if (fi) { const l = fi.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])'); if (l) parts.push(l.textContent); }
+    return norm(parts.join(' '));
+  };
+  const labelText = (e) => {
+    const parts = [visibleLabel(e)];
     if (e.name) parts.push(e.name);
     if (e.id) parts.push(e.id);
     return norm(parts.join(' '));
   };
+  __SECTION_JS
   const placeholder = (e) => norm(e.getAttribute('placeholder') || '');
   const overlap = (txt) => { if (!tokens.length || !txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
 
-  let best = null, bestScore = -1;
+  let best = null, bestScore = -1, bestVis = 0, bestSec = '';
+  const vis = els.map(visibleLabel);
   els.forEach((e, i) => {
-    let score = 3.0 * overlap(labelText(e)) + 1.2 * overlap(placeholder(e));
+    const secOv = overlap(sectionText(e));
+    // Section overlap (weight 1.0 < the label weight 3.0) breaks ties between
+    // same-labelled fields in different sections without overriding a field whose
+    // own label is a clearly better match.
+    let score = 3.0 * overlap(labelText(e)) + 1.2 * overlap(placeholder(e)) + 1.0 * secOv;
     if (e.disabled) score -= 5;             // strongly avoid disabled fields
     score += (els.length - i) * 0.001;      // earlier-in-DOM tie-break
-    if (score > bestScore) { bestScore = score; best = e; }
+    if (score > bestScore) { bestScore = score; best = e; bestVis = overlap(vis[i]); bestSec = sectionText(e); }
   });
   if (!best || bestScore <= 0) return null;
+  // "sectioned": the winner shares its (matched) visible label with at least one
+  // other field, and a section heading is what set it apart. This is the signal
+  // that lets the caller pre-empt grounding — without it, an ambiguous field
+  // would be resolved from the a11y snapshot (which can pick the wrong section).
+  let tie = 0;
+  els.forEach((e, i) => { if (bestVis > 0 && overlap(vis[i]) >= bestVis) tie++; });
+  const sectioned = overlap(bestSec) > 0 && tie >= 2;
+
   document.querySelectorAll('[data-bg-input]').forEach((n) => n.removeAttribute('data-bg-input'));
   best.setAttribute('data-bg-input', '1');
-  return { selector: '[data-bg-input="1"]', label: labelText(best), score: bestScore };
+  return { selector: '[data-bg-input="1"]', label: labelText(best), score: bestScore,
+           section: bestSec, sectioned };
 }
-"""
+""".replace("__SECTION_JS", _SECTION_HEADING_JS)
 
 
 # JS: resolve a rich-text editor (`contenteditable`) for a "type" step by its
@@ -434,49 +510,6 @@ _FIND_RICH_TEXT_JS = r"""
 # type=radio>` inside a styled wrapper/label (Ant `.ant-radio-wrapper`, MUI
 # `FormControlLabel`), so name-based grounding misses them and clicking the input
 # is unreliable — click the wrapper/label instead. Works for native + Ant + MUI.
-# JS snippet (spliced into the radio/checkbox resolvers via __SECTION_JS): the
-# nearest section heading(s) above a control — an Ant card head-title, a
-# <legend>/<hN>, or a heading in a preceding sibling block (e.g. a bare
-# <h4>Eligibility</h4> that titles the block the control sits in). Headings only
-# — never body text — so a shared option label ("Male", present in BOTH sections'
-# bodies) can't leak in and defeat the section disambiguation. Defines
-# `sectionText(e)` and relies on `norm` being in scope.
-_SECTION_HEADING_JS = r"""
-  const sectionText = (e) => {
-    // 1) The nearest explicit section container's OWN heading is the most
-    //    reliable signal (an Ant card head-title, a <legend>, or its first <hN>).
-    //    Reading only this — and stopping — keeps a sibling section's heading
-    //    (e.g. "Eligibility" sitting before the "Recommendation" card) from
-    //    leaking in when we would otherwise climb to the shared <form> root.
-    // Whole-token class match (`~=`) so we land on the real card
-    // (class "ant-card") and not its inner "ant-card-body" — the head-title lives
-    // in the card head, a sibling of the body, so matching the body would miss it.
-    const sec = e.closest('.ant-card, .MuiCard-root, section, fieldset, [class~="card"], [class~="section"], [role="group"]');
-    if (sec) {
-      const h = sec.querySelector('.ant-card-head-title, legend, h1, h2, h3, h4, h5, h6');
-      if (h && (h.textContent || '').trim()) return norm(h.textContent);
-    }
-    // 2) No container: the nearest preceding heading while climbing. Stop at the
-    //    FIRST one so an earlier, different-section heading can't leak in.
-    let a = e, up = 0;
-    while (a && up < 12) {
-      let s = a.previousElementSibling, seen = 0;
-      while (s && seen < 4) {
-        if (/^(H[1-6]|LEGEND)$/.test(s.tagName)) {
-          const t = (s.textContent || '').trim();
-          if (t && t.length <= 60) return norm(t);
-        }
-        const hh = s.querySelector && s.querySelector('h1, h2, h3, h4, h5, h6, legend');
-        if (hh && (hh.textContent || '').trim()) return norm(hh.textContent);
-        s = s.previousElementSibling; seen++;
-      }
-      a = a.parentElement; up++;
-    }
-    return '';
-  };
-"""
-
-
 _FIND_RADIO_JS = r"""
 (args) => {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -1524,10 +1557,38 @@ class PlaywrightAdapter(BaseAdapter):
         (virtualised / portalled lists) accept the option click as a DOM event
         yet never commit it, leaving the value merely typed. Comparing against the
         rendered selection items catches that so the caller can retry via Enter.
+
+        The match is lenient (equal, or either string contains the other, after
+        whitespace/case normalisation): a real widget may render the committed
+        choice with extra affixes (counts, icons, a truncated label), and a
+        *strict* equality check there false-negatives — which used to send a
+        correctly-selected single-select into the slow other-combobox probe and a
+        redundant Enter press ("ran twice"). Lenient matching avoids that.
         """
         want = " ".join((value or "").split()).strip().lower()
-        return any(" ".join(t.split()).strip().lower() == want
-                   for t in await self._selected_texts(trigger))
+        if not want:
+            return False
+        for t in await self._selected_texts(trigger):
+            got = " ".join((t or "").split()).strip().lower()
+            if got and (got == want or want in got or got in want):
+                return True
+        return False
+
+    async def _dropdown_open(self) -> bool:
+        """Whether any option popup is currently open and visible on the page."""
+        try:
+            return bool(await self._page.evaluate(
+                r"""() => {
+                  const sel = '.ant-select-dropdown:not(.ant-select-dropdown-hidden),'
+                    + ' [role="listbox"]:not([aria-hidden="true"]), [role="menu"]';
+                  return Array.from(document.querySelectorAll(sel)).some((o) => {
+                    const r = o.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                  });
+                }"""
+            ))
+        except Exception:  # noqa: BLE001
+            return False
 
     async def _remove_new_selections(self, trigger, before: list) -> None:
         """Deselect items that appeared in ``trigger`` since ``before`` was taken.
@@ -1576,6 +1637,7 @@ class PlaywrightAdapter(BaseAdapter):
         # not in the DOM until the user types. Type the value into the trigger's
         # own editable search box. No-op for non-search selects (readonly input).
         search = None
+        typed_filter = False
         try:
             search = trigger.locator(
                 'input.ant-select-selection-search-input, input[role="combobox"], '
@@ -1584,6 +1646,7 @@ class PlaywrightAdapter(BaseAdapter):
             if await search.count() > 0 and await search.is_editable(timeout=500):
                 await search.fill(value, timeout=min(timeout, 2000))
                 await self._page.wait_for_timeout(200)
+                typed_filter = True
         except Exception:  # noqa: BLE001 — filtering is an optimisation, not required
             search = None
 
@@ -1622,6 +1685,7 @@ class PlaywrightAdapter(BaseAdapter):
         # can confirm the click actually took. For other widgets we can't verify
         # reliably, so a dispatched click counts as success (legacy behaviour).
         verify = await self._is_ant_select(trigger)
+        before_sel = await self._selected_texts(trigger) if verify else []
         for option in attempts:
             try:
                 if await option.count() == 0:
@@ -1634,6 +1698,14 @@ class PlaywrightAdapter(BaseAdapter):
                 if await self._value_committed(trigger, value):
                     logger.debug("combobox pick: clicked + committed %r", value)
                     return True
+                # A single-select replaces its display and closes on commit; if the
+                # selection changed and the popup closed, the click took even when
+                # the rendered label doesn't string-match the value. This keeps a
+                # working single-select on the fast path (no Enter, no probing).
+                after_sel = await self._selected_texts(trigger)
+                if after_sel != before_sel and not await self._dropdown_open():
+                    logger.debug("combobox pick: selection changed + popup closed for %r", value)
+                    return True
                 # Click was dispatched but the widget did not commit it — keep
                 # trying the remaining option shapes, then the Enter fallback.
                 logger.debug("combobox pick: click on %r did not commit; retrying", value)
@@ -1644,10 +1716,10 @@ class PlaywrightAdapter(BaseAdapter):
         # searchable selects) highlight the single matching option; a click can
         # still miss it in a virtualised/portalled list, leaving the value merely
         # TYPED but never committed as a selected tag (the exact symptom: "value
-        # entered but item not selected"). Only press Enter when the filtered list
-        # shows exactly one option whose text matches the value, so we never
-        # commit an unrelated highlighted row.
-        if search is not None:
+        # entered but item not selected"). Only press Enter when we actually typed
+        # a filter AND the filtered list shows exactly one option matching the
+        # value, so we never commit an unrelated highlighted row.
+        if typed_filter:
             try:
                 match = await self._page.evaluate(
                     r"""(v) => {
@@ -1675,7 +1747,7 @@ class PlaywrightAdapter(BaseAdapter):
                 if match:
                     await self._page.keyboard.press("Enter")
                     await self._page.wait_for_timeout(150)
-                    if value.strip().lower() in [t.lower() for t in await self._selected_texts(trigger)]:
+                    if await self._value_committed(trigger, value):
                         logger.debug("combobox pick: committed %r via Enter", value)
                         return True
             except Exception:  # noqa: BLE001 — Enter fallback is best-effort
@@ -1934,14 +2006,30 @@ class PlaywrightAdapter(BaseAdapter):
         For ``type`` steps where the field has no accessible name (e.g. a
         ``<textarea>`` whose ``<label for=...>`` points at a missing id). Scores
         every visible, enabled input/textarea by associated label, placeholder,
-        name/id and nearby form-item label against the target phrase. Excludes the
-        ant-select search inputs (those are dropdowns, handled elsewhere).
+        name/id, nearby form-item label and section heading against the target
+        phrase. Excludes the ant-select search inputs (those are dropdowns).
+        """
+        result = await self.find_input_ex(target_phrase)
+        return result.get("selector") if result else None
+
+    async def find_input_ex(self, target_phrase: str) -> dict | None:
+        """Like :meth:`find_input` but returns the full match dict.
+
+        Includes ``section`` (the resolved field's section heading) and
+        ``sectioned`` — True when the field shares its visible label with another
+        field and a section heading is what set it apart. The section-aware
+        pre-resolver uses ``sectioned`` to claim a step ahead of grounding so a
+        duplicated field ("Minimum Age" in two sections) isn't mis-resolved.
         """
         result = await self._page.evaluate(_FIND_INPUT_JS, {"phrase": target_phrase or ""})
         if not result:
             return None
-        logger.debug("find_input %r -> %s", target_phrase, result)
-        return result.get("selector")
+        logger.debug(
+            "find_input %r -> section=%r sectioned=%s score=%.3f (%s)",
+            target_phrase, result.get("section"), result.get("sectioned"),
+            result.get("score", 0.0), result.get("selector"),
+        )
+        return result
 
     async def find_rich_text(self, target_phrase: str) -> str | None:
         """Resolve a rich-text editor (``contenteditable``) by its form-item label.

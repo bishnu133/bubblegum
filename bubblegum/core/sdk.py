@@ -344,6 +344,11 @@ async def act(
     # grounding — pin it by label from the DOM. Only fires on a full label match,
     # so plain <input> steps and non-RTE pages are untouched.
     pre_target = pre_target or await _maybe_resolve_rich_text(adapter, channel, intent)
+    # Section-disambiguated text input: a "type" step whose field label is shared
+    # by two sections ("Minimum Age" in Eligibility AND Recommendation) and whose
+    # phrase names the section. Claims ahead of grounding so the a11y snapshot
+    # can't pick the wrong section's copy. No-op for unique/normal fields.
+    pre_target = pre_target or await _maybe_resolve_sectioned_input(adapter, channel, intent)
     if pre_target is not None:
         target, traces = pre_target, []
     else:
@@ -1750,6 +1755,42 @@ async def _maybe_resolve_upload(adapter, channel: str, intent: StepIntent):
     return ResolvedTarget(
         ref=ref, confidence=0.85, resolver_name="file_input_dom",
         metadata={"role": "button", "file_input_dom": True},
+    )
+
+
+async def _maybe_resolve_sectioned_input(adapter, channel: str, intent: StepIntent):
+    """Pre-resolve a `type` step to a *section-disambiguated* input.
+
+    Two sections ("Eligibility"/"Recommendation") often carry an identically
+    labelled field ("Minimum Age"). The a11y snapshot can resolve such a field as
+    "unique" and pick the wrong section, so the value lands in the other section.
+    This claims the step ahead of grounding — but ONLY when the field's visible
+    label collides with another field and a section heading named in the phrase is
+    what disambiguates it (``sectioned``). For a normal, unique field it returns
+    ``None`` and grounding runs exactly as before, so nothing else is affected.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("type", "fill"):
+        return None
+    finder = getattr(adapter, "find_input_ex", None)
+    if finder is None:
+        return None
+    text = (intent.target_phrase or "").strip()
+    if not text:
+        return None
+    try:
+        res = await finder(text)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("sectioned-input DOM resolution errored: %s", exc)
+        return None
+    if not res or not res.get("selector") or not res.get("sectioned"):
+        return None
+    logger.debug(
+        "Resolved sectioned input %r via DOM -> section=%r (%s)",
+        text, res.get("section"), res["selector"],
+    )
+    return ResolvedTarget(
+        ref=res["selector"], confidence=0.8, resolver_name="input_dom",
+        metadata={"role": "textbox", "input_dom": True, "sectioned": True},
     )
 
 

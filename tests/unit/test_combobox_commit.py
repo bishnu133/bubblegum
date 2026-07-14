@@ -92,3 +92,59 @@ def test_enter_fallback_commits_when_click_is_swallowed() -> None:
     # The click is dispatched but the widget drops it — the pick must still land
     # via the Enter-to-commit fallback rather than reporting a phantom success.
     assert "Aerobic" in _select(block=True)
+
+
+# A functional SINGLE-select whose committed label carries an extra affix, so a
+# strict value==label check would false-negative. The pick must commit exactly
+# once (not re-fire Enter or probe other selects) — the "ran twice" regression.
+_SINGLE = (
+    "<!doctype html><html><body><label>Division Name</label>"
+    "<div class='ant-select ant-select-single ant-select-show-search' data-testid='d' style='width:320px'>"
+    "  <div class='ant-select-selector'><span class='ant-select-selection-wrap'>"
+    "    <span class='ant-select-selection-search'><input class='ant-select-selection-search-input' role='combobox' type='search' id='s'></span>"
+    "    <span class='ant-select-selection-item' title=''></span></span></div></div>"
+    "<div id='dd' class='ant-select-dropdown ant-select-dropdown-hidden' style='position:absolute'></div>"
+    "<script>window.__commits=0;var OPTIONS=['HPB Healthy Food & Dining','HPB Sports'];"
+    "var input=document.getElementById('s'),dd=document.getElementById('dd'),item=document.querySelector('.ant-select-selection-item');"
+    "function commit(v){window.__commits++;item.setAttribute('title',v+' (active)');item.textContent=v+' (active)';input.value='';dd.classList.add('ant-select-dropdown-hidden');}"
+    "function items(){var q=input.value.trim().toLowerCase();return OPTIONS.filter(function(o){return o.toLowerCase().indexOf(q)>=0});}"
+    "function render(){dd.innerHTML=items().map(function(o){return \"<div class='ant-select-item ant-select-item-option' title='\"+o+\"'>\"+o+'</div>'}).join('');"
+    "dd.querySelectorAll('.ant-select-item-option').forEach(function(el){el.addEventListener('mousedown',function(){commit(el.getAttribute('title'));});});}"
+    "function open(){dd.classList.remove('ant-select-dropdown-hidden');var r=input.getBoundingClientRect();dd.style.left=r.left+'px';dd.style.top=r.bottom+'px';render();}"
+    "document.querySelector('.ant-select-selector').addEventListener('click',open);input.addEventListener('focus',open);input.addEventListener('input',render);"
+    "input.addEventListener('keydown',function(e){if(e.key==='Enter'){var it=items();if(it.length)commit(it[0]);}});</script></body></html>"
+)
+
+
+@pytest.mark.playwright
+def test_single_select_commits_once_when_label_has_affix() -> None:
+    async_api = pytest.importorskip("playwright.async_api")
+    from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_SINGLE)
+                adapter = PlaywrightAdapter(page)
+                trigger = page.locator('[data-testid="d"]')
+                await adapter._select_from_custom_combobox(trigger, "HPB Healthy Food & Dining", 4000)
+                commits = await page.evaluate("window.__commits")
+                sel = await adapter._selected_texts(trigger)
+                return commits, sel
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    commits, sel = asyncio.run(go())
+    assert commits == 1, f"expected a single commit, got {commits} (double-run regression)"
+    assert sel and "HPB Healthy Food & Dining" in sel[0]
