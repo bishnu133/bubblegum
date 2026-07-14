@@ -626,7 +626,20 @@ _FIND_RADIO_JS = r"""
   const displayName = norm((w && w.textContent) || best.getAttribute('aria-label') || best.value || '');
   document.querySelectorAll('[data-bg-radio]').forEach((n) => n.removeAttribute('data-bg-radio'));
   target.setAttribute('data-bg-radio', '1');
-  return { selector: '[data-bg-radio="1"]', checked, name: displayName, section: bestSection, score: bestScore };
+  // Prefer a STABLE selector keyed on the input's id (or name+value) so that a
+  // React re-render between resolution and the click — which wipes the custom
+  // data-bg-radio attribute — cannot retarget the click to a different radio.
+  // The data-bg-radio marker stays as a fallback for controls without an id.
+  const escq = (s) => (s || '').split('"').join('\\"');
+  let stable = '[data-bg-radio="1"]';
+  if (best.id) {
+    if (target && target.matches && target.matches('.ant-radio-wrapper')) stable = '.ant-radio-wrapper:has(input[id="' + escq(best.id) + '"])';
+    else if (target && target.tagName === 'LABEL') stable = 'label:has(input[id="' + escq(best.id) + '"])';
+    else stable = 'input[id="' + escq(best.id) + '"]';
+  } else if (best.name && best.value) {
+    stable = 'label:has(input[name="' + escq(best.name) + '"][value="' + escq(best.value) + '"])';
+  }
+  return { selector: stable, checked, name: displayName, section: bestSection, score: bestScore };
 }
 """.replace("__SECTION_JS", _SECTION_HEADING_JS)
 
@@ -712,7 +725,18 @@ _FIND_CHECKBOX_JS = r"""
   const displayName = norm((w && w.textContent) || best.getAttribute('aria-label') || best.value || '');
   document.querySelectorAll('[data-bg-checkbox]').forEach((n) => n.removeAttribute('data-bg-checkbox'));
   target.setAttribute('data-bg-checkbox', '1');
-  return { selector: '[data-bg-checkbox="1"]', checked, name: displayName, section: bestSection, score: bestScore };
+  // Stable selector keyed on the input id/name (see the radio resolver) so a
+  // React re-render that wipes data-bg-checkbox can't retarget the click.
+  const escq = (s) => (s || '').split('"').join('\\"');
+  let stable = '[data-bg-checkbox="1"]';
+  if (best.id) {
+    if (target && target.matches && target.matches('.ant-checkbox-wrapper')) stable = '.ant-checkbox-wrapper:has(input[id="' + escq(best.id) + '"])';
+    else if (target && target.tagName === 'LABEL') stable = 'label:has(input[id="' + escq(best.id) + '"])';
+    else stable = 'input[id="' + escq(best.id) + '"]';
+  } else if (best.name && best.value) {
+    stable = 'label:has(input[name="' + escq(best.name) + '"][value="' + escq(best.value) + '"])';
+  }
+  return { selector: stable, checked, name: displayName, section: bestSection, score: bestScore };
 }
 """.replace("__SECTION_JS", _SECTION_HEADING_JS)
 

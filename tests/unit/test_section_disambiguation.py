@@ -149,6 +149,47 @@ _ANT_CARD_TITLE_ONLY = """
 """
 
 
+@pytest.mark.playwright
+def test_radio_returns_stable_selector_surviving_rerender() -> None:
+    # The resolver marks the target with a temporary data-bg-radio attribute, but a
+    # React re-render between resolution and click wipes unknown attributes. The
+    # returned selector must therefore be a STABLE one (keyed on the input id), so
+    # the click still lands after the marker is gone. This reproduces the exact
+    # field failure where "Male for Eligibility" clicked a Recommendation radio.
+    async_api = pytest.importorskip("playwright.async_api")
+    from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_DEEP_CARDS)
+                ad = PlaywrightAdapter(page)
+                res = await ad.find_radio("Male", 'Select "Male" radio button for Eligibility Sex')
+                sel = res["selector"]
+                # the returned selector must not be the throwaway marker
+                assert "data-bg-radio" not in sel, sel
+                # simulate the re-render that wipes marker attributes, then click
+                await page.evaluate("document.querySelectorAll('[data-bg-radio]').forEach(n=>n.removeAttribute('data-bg-radio'))")
+                await page.locator(sel).click(timeout=2000)
+                return await page.locator("#rc_radio_2").is_checked(), await page.locator("#rc_radio_8").is_checked()
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    elig_male, reco_male = asyncio.run(go())
+    assert elig_male is True and reco_male is False
+
+
 def _deep_radio_group(prefix, options):
     # Realistic Ant nesting: form-item > row > col > control > control-input >
     # content > radio-group > space > space-item > wrapper > radio > input.
