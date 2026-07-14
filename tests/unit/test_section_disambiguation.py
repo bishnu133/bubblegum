@@ -149,6 +149,82 @@ _ANT_CARD_TITLE_ONLY = """
 """
 
 
+def _deep_radio_group(prefix, options):
+    # Realistic Ant nesting: form-item > row > col > control > control-input >
+    # content > radio-group > space > space-item > wrapper > radio > input.
+    items = ""
+    for oid, label, val, checked in options:
+        wc = " ant-radio-wrapper-checked" if checked else ""
+        rc = " ant-radio-checked" if checked else ""
+        chk = " checked" if checked else ""
+        items += (
+            f'<div class="ant-space-item"><label class="ant-radio-wrapper{wc}">'
+            f'<span class="ant-radio{rc}"><input id="{oid}" class="ant-radio-input" type="radio" value="{val}"{chk} name="{prefix}_gender"></span>'
+            f'<span class="ant-radio-label">{label}</span></label></div>'
+        )
+    return (
+        '<div class="ant-form-item ant-form-item-vertical"><div class="ant-row ant-form-item-row">'
+        '<div class="ant-col ant-form-item-label"><label>Sex</label></div>'
+        '<div class="ant-col ant-form-item-control"><div class="ant-form-item-control-input">'
+        '<div class="ant-form-item-control-input-content">'
+        f'<div class="ant-radio-group" role="radiogroup"><div class="ant-space ant-space-horizontal">{items}</div></div>'
+        '</div></div></div></div></div>'
+    )
+
+
+_DEEP_CARDS = (
+    '<form class="ant-form ant-form-vertical">'
+    '<div class="ant-card ant-card-bordered"><div class="ant-card-head"><div class="ant-card-head-wrapper">'
+    '<div class="ant-card-head-title"><b>Eligibility Criteria #1</b></div>'
+    '<div class="ant-card-extra"><button type="button" class="ant-btn"><span>Remove</span></button></div></div></div>'
+    '<div class="ant-card-body">'
+    + _deep_radio_group("elig", [("rc_radio_1", "All", "all", True), ("rc_radio_2", "Male", "male", False), ("rc_radio_3", "Female", "female", False)])
+    + '</div></div>'
+    '<div style="margin-top:40px"><h4>Recommendation</h4>'
+    '<div class="ant-card ant-card-bordered"><div class="ant-card-head"><div class="ant-card-head-wrapper">'
+    '<div class="ant-card-head-title"><b>Recommendation Criteria #1</b></div></div></div>'
+    '<div class="ant-card-body">'
+    + _deep_radio_group("reco", [("rc_radio_7", "NA", "NA", True), ("rc_radio_8", "Male", "male", False), ("rc_radio_9", "Female", "female", False)])
+    + '</div></div></div></form>'
+)
+
+
+@pytest.mark.playwright
+def test_radio_section_works_at_realistic_ant_nesting_depth() -> None:
+    # The real form nests the radio ~12 levels below its .ant-card. Section
+    # detection must find the card title at ANY depth (via closest), not a bounded
+    # ancestor climb — the a42 failure, where the climb stopped short of the card.
+    async_api = pytest.importorskip("playwright.async_api")
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_DEEP_CARDS)
+                depth = await page.evaluate(
+                    "() => { let e=document.getElementById('rc_radio_2'), n=0;"
+                    " while (e && !(e.matches && e.matches('.ant-card'))) { e=e.parentElement; n++; } return n; }"
+                )
+                await sdk.act('Select "Male" radio button for Eligibility', channel="web", page=page)
+                return depth, await page.locator("#rc_radio_2").is_checked(), await page.locator("#rc_radio_8").is_checked()
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    depth, elig_male, reco_male = asyncio.run(go())
+    assert depth >= 10                       # genuinely deep nesting
+    assert elig_male is True and reco_male is False
+
+
 @pytest.mark.playwright
 def test_radio_section_from_ant_card_title_with_generic_ids() -> None:
     # The real EDSH form: generic radio ids (rc_radio_*), a shared "Sex" label,

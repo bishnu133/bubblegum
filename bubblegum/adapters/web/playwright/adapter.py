@@ -178,32 +178,36 @@ _EXTRACT_TABLES_JS = r"""
 # another's. Headings only, never body text (which would re-introduce the shared
 # labels). Relies on `norm` being in scope.
 _SECTION_HEADING_JS = r"""
+  // A real section container (a card / fieldset / section) — NOT an inner widget
+  // like .ant-radio-group. `closest` finds it at ANY nesting depth, so this does
+  // not depend on how deeply Ant nests the control (form-item-row > col >
+  // control-input > content > radio-group > wrapper > input can be 10+ levels).
+  const BG_SECTION_SEL = '.ant-card, .MuiCard-root, section, fieldset';
+  const bgHeadingOf = (container) => {
+    if (!container) return '';
+    const h = container.querySelector('.ant-card-head-title, .ant-card-head, legend, h1, h2, h3, h4, h5, h6, [class*="head-title"], [class*="headTitle"], [class*="card-head"]');
+    return (h && (h.textContent || '').trim()) ? h.textContent : '';
+  };
   const sectionText = (e) => {
     const parts = [];
-    const SECTION_SEL = '.ant-card, .MuiCard-root, section, fieldset, [class~="card"], [class~="section"], [role="group"]';
-    const isSection = (n) => !!(n && n.matches && n.matches(SECTION_SEL));
-    // (a) the nearest section container's own heading. Whole-token class match
-    //     (`~=`) lands on the real card (class "ant-card"), not its inner
-    //     "ant-card-body" whose head-title sibling would then be missed.
-    const card = e.closest(SECTION_SEL);
-    if (card) {
-      const h = card.querySelector('.ant-card-head-title, legend, h1, h2, h3, h4, h5, h6');
-      if (h && (h.textContent || '').trim()) parts.push(h.textContent);
-    }
-    // (b) the nearest preceding heading, climbing ancestors. Stop at the FIRST
-    //     one found, and never look inside a sibling section — either would pull
-    //     in a different section's title.
+    // (a) the nearest section container's own heading — depth independent.
+    const ht = bgHeadingOf(e.closest(BG_SECTION_SEL));
+    if (ht) parts.push(ht);
+    // (b) the nearest *preceding* block heading (a bare <h4>Eligibility</h4> that
+    //     titles the block). Stop at the first found; never look inside a sibling
+    //     section, which would pull in a different section's title.
     let a = e, up = 0, done = false;
-    while (a && up < 12 && !done) {
+    while (a && up < 20 && !done) {
       let s = a.previousElementSibling, seen = 0;
       while (s && seen < 4) {
-        if (!isSection(s)) {
+        if (!(s.matches && s.matches(BG_SECTION_SEL))) {
           if (/^(H[1-6]|LEGEND)$/.test(s.tagName)) {
             const t = (s.textContent || '').trim();
             if (t && t.length <= 60) { parts.push(t); done = true; break; }
           } else {
             const hh = s.querySelector && s.querySelector('h1, h2, h3, h4, h5, h6, legend');
-            if (hh && (hh.textContent || '').trim() && !isSection(hh.parentElement)) {
+            if (hh && (hh.textContent || '').trim()
+                && !(hh.parentElement && hh.parentElement.matches && hh.parentElement.matches(BG_SECTION_SEL))) {
               parts.push(hh.textContent); done = true; break;
             }
           }
@@ -211,6 +215,25 @@ _SECTION_HEADING_JS = r"""
         s = s.previousElementSibling; seen++;
       }
       a = a.parentElement; up++;
+    }
+    return norm(parts.join(' '));
+  };
+  // Everything that signals WHICH section a control lives in: its section heading
+  // (depth-independent), the control's own id/name/aria-label, and every ancestor
+  // id up to and including the section container. The section word ("eligibility"
+  // / "recommendation") is often only a prefix inside a camelCase id, so callers
+  // match this by substring.
+  const sectionHaystackOf = (e) => {
+    const parts = [sectionText(e)];
+    if (e.id) parts.push(e.id);
+    if (e.name) parts.push(e.name);
+    if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const card = e.closest(BG_SECTION_SEL);
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 20) {
+      if (p.id) parts.push(p.id);
+      if (card && p === card) break;
+      p = p.parentElement; hops++;
     }
     return norm(parts.join(' '));
   };
@@ -579,28 +602,7 @@ _FIND_RADIO_JS = r"""
   // the control's own id/name and its ancestors' ids (Ant names radios
   // "eligibilityRules_male" / "recommendationRules_male"), which is far more
   // reliable than headings alone.
-  const sectionHaystack = (e) => {
-    const parts = [sectionText(e)];
-    if (e.id) parts.push(e.id);
-    if (e.name) parts.push(e.name);
-    if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
-    // Climb ancestors and, at each, pick up its id and the text of a DIRECT
-    // heading/title child (card head, a *[class*=title], a <b>/<strong>/<legend>/
-    // <hN>). Direct-child only + short cap so we grab the block's own title (e.g.
-    // "Eligibility Criteria #1") and never its body — robust to the exact Ant
-    // markup so section detection doesn't hinge on one class name.
-    let p = e.parentElement, hops = 0;
-    while (p && hops < 8) {
-      if (p.id) parts.push(p.id);
-      let h = null;
-      try {
-        h = p.querySelector(':scope > .ant-card-head, :scope > [class*="head"], :scope > [class*="title"], :scope > [class*="Title"], :scope > legend, :scope > b, :scope > strong, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
-      } catch (err) { h = null; }
-      if (h) { const t = (h.textContent || '').trim(); if (t && t.length <= 80) parts.push(t); }
-      p = p.parentElement; hops++;
-    }
-    return norm(parts.join(' '));
-  };
+  const sectionHaystack = (e) => sectionHaystackOf(e);
 
   let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
@@ -689,23 +691,7 @@ _FIND_CHECKBOX_JS = r"""
   // Substring match for the section context (see the radio resolver) so a word
   // that is only a prefix inside a camelCase id/name still counts.
   const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (txt.indexOf(t) >= 0) n++; }); return n / ctxTokens.length; };
-  const sectionHaystack = (e) => {
-    const parts = [sectionText(e)];
-    if (e.id) parts.push(e.id);
-    if (e.name) parts.push(e.name);
-    if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
-    let p = e.parentElement, hops = 0;
-    while (p && hops < 8) {
-      if (p.id) parts.push(p.id);
-      let h = null;
-      try {
-        h = p.querySelector(':scope > .ant-card-head, :scope > [class*="head"], :scope > [class*="title"], :scope > [class*="Title"], :scope > legend, :scope > b, :scope > strong, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
-      } catch (err) { h = null; }
-      if (h) { const t = (h.textContent || '').trim(); if (t && t.length <= 80) parts.push(t); }
-      p = p.parentElement; hops++;
-    }
-    return norm(parts.join(' '));
-  };
+  const sectionHaystack = (e) => sectionHaystackOf(e);
 
   let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
@@ -1685,9 +1671,17 @@ class PlaywrightAdapter(BaseAdapter):
         want = " ".join((value or "").split()).strip().lower()
         if not want:
             return False
+        want_tight = want.replace(" ", "")
         for t in await self._selected_texts(trigger):
             got = " ".join((t or "").split()).strip().lower()
-            if got and (got == want or want in got or got in want):
+            if not got:
+                continue
+            got_tight = got.replace(" ", "")
+            # equal / substring, and also whitespace-insensitive so "Meal Log"
+            # recognises a committed "MealLog" tag (and vice-versa).
+            if (got == want or want in got or got in want
+                    or got_tight == want_tight
+                    or want_tight in got_tight or got_tight in want_tight):
                 return True
         return False
 
@@ -1703,6 +1697,44 @@ class PlaywrightAdapter(BaseAdapter):
                     return r.width > 0 && r.height > 0;
                   });
                 }"""
+            ))
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def _mark_matching_option(self, value: str) -> bool:
+        """Mark a visible dropdown option matching ``value`` as ``[data-bg-opt=1]``.
+
+        Matches exact, then whitespace-insensitive, then substring, then (if the
+        list is filtered to a single row) that row. The whitespace-insensitive pass
+        is what lets a step written "Meal Log" select an option rendered "MealLog"
+        (and vice-versa). Returns True when one was marked.
+        """
+        try:
+            return bool(await self._page.evaluate(
+                r"""(v) => {
+                  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                  const tight = (s) => (s || '').replace(/\s+/g, '').toLowerCase();
+                  const want = norm(v), wantT = tight(v);
+                  const opts = Array.from(document.querySelectorAll(
+                    '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option,'
+                    + ' [role="listbox"]:not([aria-hidden="true"]) [role="option"],'
+                    + ' [role="menu"] [role="menuitem"]'
+                  )).filter((o) => {
+                    const r = o.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0
+                      && !/disabled/.test(o.className) && o.getAttribute('aria-disabled') !== 'true';
+                  });
+                  const textOf = (o) => norm(o.getAttribute('title') || o.textContent);
+                  const hit = opts.find((o) => textOf(o) === want)
+                    || opts.find((o) => tight(textOf(o)) === wantT)
+                    || opts.find((o) => textOf(o).includes(want) && want.length >= 2)
+                    || (opts.length === 1 ? opts[0] : null);
+                  document.querySelectorAll('[data-bg-opt]').forEach((n) => n.removeAttribute('data-bg-opt'));
+                  if (!hit) return false;
+                  hit.setAttribute('data-bg-opt', '1');
+                  return true;
+                }""",
+                value,
             ))
         except Exception:  # noqa: BLE001
             return False
@@ -1764,6 +1796,12 @@ class PlaywrightAdapter(BaseAdapter):
                 await search.fill(value, timeout=min(timeout, 2000))
                 await self._page.wait_for_timeout(200)
                 typed_filter = True
+                # If the exact text filtered the list to nothing but the value has
+                # spaces, retry with a whitespace-free filter — the option may be
+                # spelled without the space (e.g. "MealLog" vs "Meal Log").
+                if " " in value and not await self._mark_matching_option(value):
+                    await search.fill(value.replace(" ", ""), timeout=min(timeout, 2000))
+                    await self._page.wait_for_timeout(200)
         except Exception:  # noqa: BLE001 — filtering is an optimisation, not required
             search = None
 
@@ -1797,6 +1835,10 @@ class PlaywrightAdapter(BaseAdapter):
                 container.get_by_title(value, exact=True),
                 container.get_by_text(value),
             ]
+        # Whitespace/case-insensitive match as a strong fallback (handles a spacing
+        # or casing difference between the step's value and the rendered option).
+        if await self._mark_matching_option(value):
+            attempts.append(self._page.locator('[data-bg-opt="1"]'))
 
         # For Ant selects the committed choice renders as a selection item, so we
         # can confirm the click actually took. For other widgets we can't verify

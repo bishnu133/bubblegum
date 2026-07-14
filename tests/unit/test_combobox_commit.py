@@ -149,6 +149,57 @@ def test_multi_select_adds_every_comma_separated_value() -> None:
     assert "Aerobic" in sel and "Strength" in sel
 
 
+_TAGS = (
+    "<!doctype html><html><body>"
+    "<div class='ant-select ant-select-multiple ant-select-show-search' data-testid='tags' style='width:320px'>"
+    "  <div class='ant-select-selector'><span class='ant-select-selection-wrap'><div class='ant-select-selection-overflow'></div>"
+    "  <span class='ant-select-selection-search'><input class='ant-select-selection-search-input' role='combobox' type='search' id='s'></span></span></div></div>"
+    "<div id='dd' class='ant-select-dropdown ant-select-dropdown-hidden' style='position:absolute'></div>"
+    "<script>var OPTIONS=['GaqAccepted','LumiHealth','MealLog','Aerobic'];"
+    "var input=document.getElementById('s'),dd=document.getElementById('dd'),overflow=document.querySelector('.ant-select-selection-overflow');"
+    "function selected(){return Array.from(overflow.querySelectorAll('.ant-select-selection-item')).map(function(n){return n.getAttribute('title')});}"
+    "function commit(v){if(selected().indexOf(v)>=0)return;var t=document.createElement('div');t.className='ant-select-selection-overflow-item';t.innerHTML=\"<span class='ant-select-selection-item' title='\"+v+\"'>\"+v+'</span>';overflow.appendChild(t);input.value='';render();}"
+    "function items(){var q=input.value.trim().toLowerCase();return OPTIONS.filter(function(o){return o.toLowerCase().indexOf(q)>=0});}"
+    "function render(){dd.innerHTML=items().map(function(o){return \"<div class='ant-select-item ant-select-item-option' title='\"+o+\"'>\"+o+'</div>'}).join('');"
+    "dd.querySelectorAll('.ant-select-item-option').forEach(function(el){el.addEventListener('mousedown',function(){commit(el.getAttribute('title'));});});}"
+    "function open(){dd.classList.remove('ant-select-dropdown-hidden');var r=input.getBoundingClientRect();dd.style.left=r.left+'px';dd.style.top=r.bottom+'px';render();}"
+    "document.querySelector('.ant-select-selector').addEventListener('click',open);input.addEventListener('focus',open);input.addEventListener('input',render);"
+    "input.addEventListener('keydown',function(e){if(e.key==='Enter'){var it=items();if(it.length)commit(it[0]);}});</script></body></html>"
+)
+
+
+@pytest.mark.playwright
+def test_multi_select_tolerates_spacing_difference() -> None:
+    # Step says "Meal Log"; the option is rendered "MealLog". All three must land.
+    async_api = pytest.importorskip("playwright.async_api")
+    from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(_TAGS)
+                adapter = PlaywrightAdapter(page)
+                trigger = page.locator('[data-testid="tags"]')
+                await adapter._select_from_custom_combobox(trigger, "GaqAccepted, LumiHealth, Meal Log", 4000)
+                return await adapter._selected_texts(trigger)
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    sel = asyncio.run(go())
+    assert "GaqAccepted" in sel and "LumiHealth" in sel and "MealLog" in sel
+
+
 @pytest.mark.playwright
 def test_inner_combobox_input_trigger_commits_without_probe() -> None:
     # Grounding often resolves a select to its INNER <input role=combobox>. Reading
