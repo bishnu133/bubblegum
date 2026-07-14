@@ -1619,19 +1619,20 @@ async def _maybe_resolve_radio(adapter, channel: str, intent: StepIntent):
     finder = getattr(adapter, "find_radio", None)
     if finder is None:
         return None
-    text = (intent.target_phrase or "").strip()
-    if not text:
-        # `Select "NA" radio button for Recommendation Sex` — the "for …" tail
-        # defeats deterministic target extraction, so fall back to the quoted
-        # option label.
-        quoted = _quoted_segments(getattr(intent, "instruction", "") or "")
-        text = quoted[0] if quoted else ""
+    # The option to select is the QUOTED label in the instruction
+    # (`Select "Male" radio button for Eligibility Sex` -> "Male"). Prefer it over
+    # ``target_phrase``: the client sometimes passes the SECTION context
+    # ("Eligibility Sex") as the phrase, which matches no option, so option
+    # scoring collapses to 0 and DOM order picks the wrong radio (the last one).
+    instruction = getattr(intent, "instruction", "") or ""
+    quoted = _quoted_segments(instruction)
+    text = (quoted[0].strip() if quoted else (intent.target_phrase or "").strip())
     if not text:
         return None
     # The full instruction is the section context ("… for Eligibility") — two
     # sections often share option labels (Male/Female), so the resolver needs the
     # surrounding words to pin the right section, not just the option text.
-    context = getattr(intent, "instruction", "") or ""
+    context = instruction
     try:
         res = await _call_dom_finder(finder, text, context)
     except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
@@ -1670,13 +1671,13 @@ async def _maybe_resolve_checkbox(adapter, channel: str, intent: StepIntent):
     finder = getattr(adapter, "find_checkbox", None)
     if finder is None:
         return None
-    text = (intent.target_phrase or "").strip()
-    if not text:
-        quoted = _quoted_segments(getattr(intent, "instruction", "") or "")
-        text = quoted[0] if quoted else ""
+    # Prefer the quoted option label over target_phrase — see _maybe_resolve_radio.
+    instruction = getattr(intent, "instruction", "") or ""
+    quoted = _quoted_segments(instruction)
+    text = (quoted[0].strip() if quoted else (intent.target_phrase or "").strip())
     if not text:
         return None
-    context = getattr(intent, "instruction", "") or ""
+    context = instruction
     try:
         res = await _call_dom_finder(finder, text, context)
     except Exception as exc:  # noqa: BLE001 — fall through to normal grounding

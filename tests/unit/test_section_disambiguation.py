@@ -50,6 +50,42 @@ def test_call_dom_finder_omits_context_for_single_arg_finder():
     assert calls == ["Male"]                      # not called with 2 args
 
 
+def test_radio_prefers_quoted_option_over_section_target_phrase():
+    # The Node client passes the SECTION context as target_phrase ("Eligibility
+    # Sex"), which matches no option — so the resolver must use the QUOTED option
+    # ("Male") from the instruction, else option scoring collapses to 0 and DOM
+    # order picks the wrong radio. This is the exact production failure.
+    seen = {}
+
+    class _Adapter:
+        async def find_radio(self, phrase, context=""):
+            seen["phrase"] = phrase
+            return {"selector": "x", "checked": False, "name": phrase, "section": ""}
+
+    intent = StepIntent(instruction='Select "Male" radio button for Eligibility Sex',
+                        channel="web", action_type="select",
+                        target_phrase="Eligibility Sex", input_value=None, context={})
+    t = _run(sdk._maybe_resolve_radio(_Adapter(), "web", intent))
+    assert t is not None
+    assert seen["phrase"] == "Male"          # the option, NOT "Eligibility Sex"
+
+
+def test_checkbox_prefers_quoted_option_over_section_target_phrase():
+    seen = {}
+
+    class _Adapter:
+        async def find_checkbox(self, phrase, context=""):
+            seen["phrase"] = phrase
+            return {"selector": "x", "checked": False, "name": phrase, "section": ""}
+
+    intent = StepIntent(instruction='Select "Food purchase" checkbox for Metrics',
+                        channel="web", action_type="select",
+                        target_phrase="Metrics", input_value=None, context={})
+    t = _run(sdk._maybe_resolve_checkbox(_Adapter(), "web", intent))
+    assert t is not None
+    assert seen["phrase"] == "Food purchase"
+
+
 def test_radio_resolver_forwards_instruction_as_context():
     seen = {}
 
