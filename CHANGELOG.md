@@ -1,5 +1,33 @@
 # Unreleased
 
+## 0.0.6a49 — fix(web): panel-name qualifier for repeated dropdowns across accordions
+
+Follow-up to a48. On the Bonus Gamification page, `Select … from "Drink Bonus
+Type" drop down` still landed in the **Food** panel's dropdown: the "Bonus Type"
+select carries neither "bonus" nor "type" in its id, and its column header is
+shared across both panels, so Food-vs-Drink rested on one weak (0.5-weight) id
+token and Food edged ahead in the live DOM.
+
+- **Collapse/accordion panel headers are now a first-class section signal.** The
+  shared section detection also reads the header of any enclosing collapsible panel
+  (Ant `.ant-collapse`, MUI `Accordion`, any `[aria-expanded]` disclosure), so a
+  field that repeats across like-structured panels is disambiguated by the **panel
+  name** the tester writes — not by whether the panel name happens to appear in an
+  id. Fully generic: works for one panel, many panels, or none (no panel ⇒ no
+  effect), and for any labels, so it is not tied to "Food"/"Drink".
+- **Dropdown finder weights the panel name.** `Select "2" from "Drink Stamp
+  Position"` / `"Drink Bonus Type"` now resolve to the Drink panel with a
+  comfortable margin (~0.8) instead of a coin-flip (~0.17). Ordinary dropdowns not
+  inside an accordion are unaffected.
+- **Dropdown selector is now stable.** The select finder returns an id-keyed
+  selector (e.g. `.ant-select:has([id="…"])`) instead of the wipe-prone
+  `[data-bg-select]` marker, matching the radio/checkbox/input resolvers, so a
+  React re-render between resolution and the open-click can't retarget it.
+- Coverage: `tests/unit/test_sectioned_fields_rewards.py` gains a two-panel case
+  (Drink/Food qualifier lands in the right panel + column). Verified end-to-end
+  against the real captured page DOM. Engine `0.0.6a48` → `0.0.6a49`.
+
+
 ## 0.0.6a48 — fix(web): placeholder-only fields & shared column-header dropdowns
 
 Follow-up to a47 on the same Rewards/Gamification page. Two controls were still

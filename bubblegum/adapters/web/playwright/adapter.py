@@ -183,6 +183,13 @@ _SECTION_HEADING_JS = r"""
   // not depend on how deeply Ant nests the control (form-item-row > col >
   // control-input > content > radio-group > wrapper > input can be 10+ levels).
   const BG_SECTION_SEL = '.ant-card, .MuiCard-root, section, fieldset';
+  // A collapsible/accordion PANEL and its header — a second kind of "section"
+  // whose title lives in a header widget, not an <h*> (Ant collapse, MUI
+  // accordion, any [aria-expanded] disclosure). Used to tell apart a field that
+  // repeats across like-structured panels ("Bonus Type" under a Food vs a Drink
+  // panel) by the panel name the tester writes.
+  const BG_PANEL_SEL = '.ant-collapse-item, [class*="collapse-item"], [class*="AccordionItem"], [class*="MuiAccordion-root"], [class*="accordion__item"]';
+  const BG_PANEL_HEAD_SEL = '.ant-collapse-header-text, [class*="header-text"], [class*="AccordionSummary-content"], [class*="panel-title"], [class*="accordion__title"], .ant-collapse-header, [class*="collapse-header"], [class*="AccordionSummary-root"]';
   const bgHeadingOf = (container) => {
     if (!container) return '';
     const h = container.querySelector('.ant-card-head-title, .ant-card-head, legend, h1, h2, h3, h4, h5, h6, [class*="head-title"], [class*="headTitle"], [class*="card-head"]');
@@ -215,6 +222,21 @@ _SECTION_HEADING_JS = r"""
         s = s.previousElementSibling; seen++;
       }
       a = a.parentElement; up++;
+    }
+    // (c) enclosing collapsible-panel headers (Ant collapse / MUI accordion / any
+    //     [aria-expanded] toggle). A control often lives in a NAMED panel
+    //     ("Food"/"Drink") whose header is not an <h*>, so a repeated field across
+    //     panels can only be told apart by its panel name. Climb every enclosing
+    //     panel (handles nested collapses); skip a header that contains `e` itself
+    //     so resolving the header does not treat its own label as section context.
+    let ci = e.closest(BG_PANEL_SEL);
+    while (ci) {
+      const hd = ci.querySelector(BG_PANEL_HEAD_SEL);
+      if (hd && !hd.contains(e)) {
+        const t = (hd.textContent || '').trim();
+        if (t && t.length <= 40) parts.push(t);
+      }
+      ci = ci.parentElement && ci.parentElement.closest(BG_PANEL_SEL);
     }
     return norm(parts.join(' '));
   };
@@ -384,6 +406,19 @@ _FIND_SELECT_TRIGGER_JS = r"""
     while (p && hops < 20) { if (p.id) parts.push(p.id); if (card && p === card) break; p = p.parentElement; hops++; }
     return norm(parts.join(' '));
   };
+  // The name of the collapsible PANEL a select sits in ("Food"/"Drink"). When two
+  // selects share their label AND their column header across panels (a "Bonus Type"
+  // select in a Food panel and in a Drink panel — neither carries "bonus"/"type" in
+  // its id), the panel name is the ONLY thing the tester's qualifier can match. It
+  // gets a strong weight so a named-panel step lands in the right panel; empty (so
+  // no effect) for selects that are not inside a collapse/accordion — i.e. every
+  // ordinary single-panel form is untouched. Generic across any number of panels.
+  const panelName = (e) => {
+    const it = e.closest(BG_PANEL_SEL);
+    if (!it) return '';
+    const hd = it.querySelector(BG_PANEL_HEAD_SEL);
+    return (hd && !hd.contains(e)) ? norm(hd.textContent) : '';
+  };
 
   let best = null, bestScore = -1;
   els.forEach((e, i) => {
@@ -392,6 +427,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
     score += 3.0 * overlap(lbl);                 // associated label — strongest signal
     score += 2.5 * overlap(columnHeading(e));    // own column label in a shared header row (beats the concatenated group heading)
     score += 2.0 * overlap(groupHeading(e));     // preceding group heading (not a <label for>)
+    score += 2.0 * overlap(panelName(e));        // enclosing collapse/accordion panel name (Food vs Drink) — the qualifier's anchor
     score += 0.8 * overlap(ph);                  // placeholder hint
     score += 0.5 * overlap(disp);                // displayed-text hint
     score += 0.5 * overlap(sectionCtx(e));       // section/id context (Food vs Drink, Rewards vs Bonus)
@@ -407,7 +443,20 @@ _FIND_SELECT_TRIGGER_JS = r"""
 
   document.querySelectorAll('[data-bg-select]').forEach((n) => n.removeAttribute('data-bg-select'));
   best.setAttribute('data-bg-select', '1');
-  return { selector: '[data-bg-select="1"]', score: bestScore, count: els.length,
+  // Prefer a STABLE selector keyed on the control's id (or a descendant input's id
+  // — an .ant-select keeps its form id on a nested hidden input) so a React
+  // re-render between resolution and the open-click can't retarget it to a
+  // same-labelled twin. Falls back to the marker when nothing carries an id.
+  const escq = (s) => (s || '').split('"').join('\\"');
+  let selector = '[data-bg-select="1"]';
+  if (best.id) {
+    selector = best.tagName === 'SELECT' ? ('#' + (window.CSS ? CSS.escape(best.id) : best.id))
+                                         : (best.matches('.ant-select') ? '.ant-select' : best.tagName.toLowerCase()) + '[id="' + escq(best.id) + '"]';
+  } else {
+    const idNode = best.querySelector('[id]');
+    if (idNode && idNode.id) selector = (best.matches('.ant-select') ? '.ant-select' : '*') + ':has([id="' + escq(idNode.id) + '"])';
+  }
+  return { selector, score: bestScore, count: els.length,
            label: labelText(best), displayed: displayed(best) };
 }
 """.replace("__SECTION_JS", _SECTION_HEADING_JS)
