@@ -333,6 +333,11 @@ async def act(
     # Click/tap while a modal is open: prefer the button inside the dialog (the
     # page copy behind the mask can't be clicked). No-op when no dialog is open.
     pre_target = pre_target or await _maybe_resolve_dialog_click(adapter, channel, intent)
+    # Expand/collapse a named accordion panel: pin the right ".ant-collapse-header"
+    # by its label + section context (two panels can share a label — "Drink" under
+    # both "Rewards Gamification" and "Bonus Gamification"). Gated on
+    # "expand"/"collapse" so ordinary clicks are untouched; idempotent.
+    pre_target = pre_target or await _maybe_resolve_collapse(adapter, channel, intent)
     # Radio selection: pin the radio wrapper/label from the DOM and click it.
     pre_target = pre_target or await _maybe_resolve_radio(adapter, channel, intent)
     # Checkbox selection: pin the checkbox wrapper/label from the DOM and toggle it
@@ -350,6 +355,15 @@ async def act(
     # can't pick the wrong section's copy. No-op for unique/normal fields.
     pre_target = pre_target or await _maybe_resolve_sectioned_input(adapter, channel, intent)
     if pre_target is not None:
+        # A pre-resolver may report the step is already satisfied (e.g. an "expand"
+        # step whose panel is already open). Pass it without touching the page so a
+        # re-run can't toggle it back shut.
+        if pre_target.metadata.get("noop"):
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            return StepResult(
+                status="passed", action=instruction, target=pre_target,
+                confidence=pre_target.confidence, duration_ms=duration_ms, traces=[],
+            )
         target, traces = pre_target, []
     else:
         try:
@@ -1732,6 +1746,73 @@ async def _maybe_resolve_dialog_click(adapter, channel: str, intent: StepIntent)
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name="dialog_click_dom",
         metadata={"role": "button", "dialog_click_dom": True},
+    )
+
+
+async def _maybe_resolve_collapse(adapter, channel: str, intent: StepIntent):
+    """Deterministic resolver for expanding/collapsing a named accordion panel.
+
+    A "Click on \"Drink\" button to expand Drink section" step targets an Ant
+    ``.ant-collapse-header`` (or MUI ``AccordionSummary`` / any ``[aria-expanded]``
+    toggle), not a plain button. When the SAME panel label exists in two sections
+    ("Drink" under both "Rewards Gamification" and "Bonus Gamification"), the
+    generic clickable path ties on the label and picks the first in DOM order — so
+    the step meant for the second panel re-clicks the first, and expanding one
+    appears to collapse the other. This pins the right header by its label +
+    section context and returns a stable selector.
+
+    Gated on the word "expand"/"collapse"/"accordion" so ordinary click steps are
+    never hijacked. Idempotent: when the panel is already in the wanted state it
+    returns a no-op target so a second run can't toggle it shut. No-op on pages
+    without a matching collapse header.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("click", "tap", "select"):
+        return None
+    instruction = getattr(intent, "instruction", "") or ""
+    haystack = f"{instruction} {intent.target_phrase or ''}".lower()
+    if not any(w in haystack for w in ("expand", "collapse", "accordion", "unfold", "fold")):
+        return None
+    finder = getattr(adapter, "find_collapse_header", None)
+    if finder is None:
+        return None
+    # The panel label is the quoted segment (`… "Drink" …` -> "Drink"); fall back
+    # to the target phrase. The full instruction is the section context so the two
+    # like-named panels ("Bonus Gamification" vs "Rewards Gamification") disambiguate.
+    quoted = _quoted_segments(instruction)
+    text = (quoted[0].strip() if quoted else (intent.target_phrase or "").strip())
+    if not text:
+        return None
+    # "collapse/close/hide/fold" wants it shut; anything else (expand/open) wants
+    # it open. Used only to make the toggle idempotent.
+    want_open = not any(w in haystack for w in ("collapse ", "collapse\"", "close", "hide", "fold ")) or "expand" in haystack
+    try:
+        res = await finder(text, instruction)
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("collapse DOM resolution errored: %s", exc)
+        return None
+    if not res or not res.get("selector"):
+        return None
+    intent.action_type = "click"  # toggling a panel is a click on its header
+    already = bool(res.get("expanded")) == bool(want_open)
+    if already:
+        # Already in the wanted state — do NOT click (a click would toggle it the
+        # wrong way). Signal a no-op so the step passes without touching the page.
+        logger.debug(
+            "Collapse panel %r already %s -> no-op (%s)",
+            text, "open" if want_open else "closed", res["selector"],
+        )
+        return ResolvedTarget(
+            ref=res["selector"], confidence=0.9, resolver_name="collapse_dom",
+            metadata={"role": "button", "collapse_dom": True, "noop": True,
+                      "expanded": res.get("expanded")},
+        )
+    logger.debug(
+        "Resolved collapse header %r via DOM -> section=%r expanded=%s (%s)",
+        text, res.get("section"), res.get("expanded"), res["selector"],
+    )
+    return ResolvedTarget(
+        ref=res["selector"], confidence=0.9, resolver_name="collapse_dom",
+        metadata={"role": "button", "collapse_dom": True, "expanded": res.get("expanded")},
     )
 
 

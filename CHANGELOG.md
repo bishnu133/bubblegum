@@ -1,5 +1,41 @@
 # Unreleased
 
+## 0.0.6a47 — fix(web): expand the right accordion panel; section-aware dropdowns
+
+Targets a Rewards/Gamification page where the same label repeats across sections
+and inside default-collapsed accordion panels. All fixes are generic (no page- or
+label-specific hard-coding) and additive over a46.
+
+- **Expand/collapse a named panel — new resolver.** A step like
+  `Click on "Drink" button to expand Drink section` now resolves the Ant
+  `.ant-collapse-header` (MUI `AccordionSummary` / any `[aria-expanded]` toggle)
+  by its panel label **plus** the surrounding section words, instead of the
+  generic clickable path that tied on "Drink" and always clicked the first one in
+  DOM order — which made expanding the Bonus panel re-click (and collapse) the
+  Rewards one. Two like-named panels are told apart by their section heading
+  (`… in Bonus Gamification`). The selector is **stable** (pinned via a
+  panel-body element id with `:has()`, so a React re-render can't retarget it) and
+  the expand/collapse is **idempotent** — an already-open panel is a no-op, never
+  toggled shut. Gated on the word "expand"/"collapse"/"accordion" so ordinary
+  clicks are untouched.
+- **Section-aware dropdown disambiguation.** The select-trigger finder now adds a
+  bounded section/id-context tiebreak (the same pattern the radio/checkbox/input
+  resolvers use). Two identically-labelled selects in different panels
+  (`Stamp Position` under a Food vs a Drink panel) are told apart by the
+  `food`/`drink`/section word that only appears in the right control's id —
+  `Select "2" from "Drink Stamp Position" drop down` now lands on the Drink one.
+  Additive and bounded (weight 0.5), so it can't override which dropdown the label
+  points at; full suite unchanged.
+- **Section-labelled number fields & repeated checkboxes** (already handled by the
+  a44–a45 id/section machinery) now resolve correctly once the owning panel is
+  expanded: `Enter "1" into Food Stamp Position`, `Enter "2" into Rewards Drink
+  Stamp Position`, and `Select "Reset metric daily" checkbox for Food` / `… for
+  Drink` each pin the right control by its section context.
+- Coverage: `tests/unit/test_collapse_expand.py` (two like-named panels expand
+  independently; idempotent expand). Browser-verified against the real captured
+  page DOM. Engine `0.0.6a46` → `0.0.6a47`; npm client unchanged.
+
+
 ## 0.0.6a28 — feat(convert): manual test scenario → automation converter
 
 Adds the `bubblegum convert` command and `bubblegum.convert` package on top of

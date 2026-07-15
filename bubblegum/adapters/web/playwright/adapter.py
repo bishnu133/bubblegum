@@ -333,6 +333,23 @@ _FIND_SELECT_TRIGGER_JS = r"""
   const placeholder = (e) => { const inp = e.querySelector('input'); return norm((inp && inp.placeholder) || e.getAttribute('placeholder') || ''); };
 
   const overlap = (txt) => { if (!tokens.length || !txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+  __SECTION_JS
+  // Section context for a dropdown: its nearest heading PLUS every id it carries
+  // (an .ant-select keeps its form id on a nested hidden input, so descendant ids
+  // matter here where they don't for a plain <input>) and its ancestor ids. Two
+  // identically-labelled selects in different collapse panels ("Stamp Position"
+  // under a Food vs a Drink panel) are told apart by the "food"/"drink"/section
+  // word that only appears in the right control's id — a bounded tiebreak that
+  // can't override which dropdown the LABEL points at.
+  const sectionCtx = (e) => {
+    const parts = [sectionText(e)];
+    e.querySelectorAll('[id]').forEach((n) => { if (n.id) parts.push(n.id); });
+    if (e.id) parts.push(e.id);
+    const card = e.closest(BG_SECTION_SEL);
+    let p = e.parentElement, hops = 0;
+    while (p && hops < 20) { if (p.id) parts.push(p.id); if (card && p === card) break; p = p.parentElement; hops++; }
+    return norm(parts.join(' '));
+  };
 
   let best = null, bestScore = -1;
   els.forEach((e, i) => {
@@ -342,6 +359,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
     score += 2.0 * overlap(groupHeading(e));     // preceding group heading (not a <label for>)
     score += 0.8 * overlap(ph);                  // placeholder hint
     score += 0.5 * overlap(disp);                // displayed-text hint
+    score += 0.5 * overlap(sectionCtx(e));       // section/id context (Food vs Drink, Rewards vs Bonus)
     if (valN && disp === valN) score += 1.5;     // already shows the value we want
     // Tie-breaker: when a group heading (e.g. "Eligibility Tags") labels more than
     // one select — a compact qualifier ("All/Any") plus the value picker — the
@@ -357,7 +375,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
   return { selector: '[data-bg-select="1"]', score: bestScore, count: els.length,
            label: labelText(best), displayed: displayed(best) };
 }
-"""
+""".replace("__SECTION_JS", _SECTION_HEADING_JS)
 
 
 # JS: resolve a text input / textarea by its surrounding context (label,
@@ -737,6 +755,122 @@ _FIND_CHECKBOX_JS = r"""
     stable = 'label:has(input[name="' + escq(best.name) + '"][value="' + escq(best.value) + '"])';
   }
   return { selector: stable, checked, name: displayName, section: bestSection, score: bestScore };
+}
+""".replace("__SECTION_JS", _SECTION_HEADING_JS)
+
+
+# JS: resolve a collapsible/accordion section header ("Food"/"Drink" panel,
+# `.ant-collapse-header`, MUI `AccordionSummary`, or any `[aria-expanded]` toggle)
+# by its panel label + section context, and report whether it is already open.
+#
+# Two panels frequently share the same label (a "Drink" collapse under BOTH a
+# "Rewards Gamification" and a "Bonus Gamification" heading). The a11y/clickable
+# path ties on the label and picks the first in DOM order, so a step meant for the
+# second panel re-clicks the first — expanding one appears to collapse the other.
+# This scores every header by its label (dominant) and disambiguates ties by the
+# surrounding section words (heading + ancestor ids), exactly like the radio /
+# checkbox resolvers. It returns a STABLE selector (keyed on a panel-body element
+# id via `:has()`, so a React re-render can't retarget it) plus the current
+# expanded state so the caller can make "expand"/"collapse" idempotent.
+_FIND_COLLAPSE_HEADER_JS = r"""
+(args) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const phrase = norm(args && args.phrase);
+  const tokens = phrase.split(' ').filter((t) => t.length > 1);
+  if (!tokens.length) return null;
+  // Words that describe the ACTION or the widget kind, never the panel identity —
+  // dropped from the section-context tokens so only the discriminating section
+  // words ("bonus"/"rewards"/"gamification") remain.
+  const STOP = new Set(['expand','collapse','open','close','show','hide','toggle','section','panel','accordion','the','for','on','in','of','to','a','an','click','press','tap','hit','select','choose','button','option','item','its','into','and','with','so','that','fold','unfold']);
+  const ctx = norm(args && args.context);
+  const ctxTokens = ctx.split(' ')
+    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
+    .filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
+
+  // Candidate headers: Ant collapse headers, MUI accordion summaries, and the
+  // generic ARIA pattern — any element that advertises expand/collapse via
+  // aria-expanded. De-duplicate nested matches (keep the outermost).
+  let els = Array.from(document.querySelectorAll(
+    '.ant-collapse-header, [class*="collapse-header"], [class*="AccordionSummary-root"],'
+    + ' [class*="accordion__button"], [class*="accordion-button"], [role="button"][aria-expanded], [aria-expanded]'
+  ));
+  els = els.filter((e, i) => !els.some((o, j) => o !== e && j < i && o.contains(e)) && !els.some((o) => o !== e && e.contains(o) && o.hasAttribute('aria-expanded')));
+  const shown = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  els = els.filter(shown);
+  if (!els.length) return null;
+
+  // The panel's own label — the visible heading text of the header, with the
+  // expand-icon / arrow chrome stripped. Prefer a dedicated label node; fall back
+  // to the header's trimmed text.
+  const headerLabel = (e) => {
+    const lbl = e.querySelector(
+      '.ant-collapse-header-text, [class*="header-text"], [class*="AccordionSummary-content"],'
+      + ' [class*="accordion__title"], [class*="panel-title"], [class*="summary"]'
+    );
+    if (lbl && (lbl.textContent || '').trim()) return norm(lbl.textContent);
+    // No dedicated label node: use the header's own text but drop obvious chrome
+    // (icon aria-labels like "expanded"/"collapsed" live on nested spans).
+    return norm(e.textContent);
+  };
+  __SECTION_JS
+  const RE = {};
+  const hasWord = (txt, t) => {
+    if (!txt) return false;
+    let re = RE[t];
+    if (!re) re = RE[t] = new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)');
+    return re.test(txt);
+  };
+  const overlap = (txt) => { if (!txt) return 0; let n = 0; tokens.forEach((t) => { if (hasWord(txt, t)) n++; }); return n / tokens.length; };
+  const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (txt.indexOf(t) >= 0) n++; }); return n / ctxTokens.length; };
+
+  let best = null, bestScore = -1, bestSection = '';
+  els.forEach((e, i) => {
+    const lbl = headerLabel(e);
+    // The panel label dominates (weight 1.0); the section context is a bounded
+    // tiebreak (0.5) that only decides between equally-labelled panels — it can
+    // never override which panel LABEL is chosen. Earlier-in-DOM wins exact ties.
+    const score = overlap(lbl) + 0.5 * ctxOverlap(sectionHaystackOf(e)) - i * 0.0001;
+    if (score > bestScore) { bestScore = score; best = e; bestSection = sectionText(e); }
+  });
+  if (!best || bestScore <= 0) return null;
+
+  // Already-open detection: aria-expanded, or an "active"/"expanded" class on the
+  // header or its collapse-item/accordion ancestor.
+  const item = best.closest('.ant-collapse-item, [class*="collapse-item"], [class*="AccordionItem"], [class*="accordion__item"], [class*="MuiAccordion-root"]');
+  const expanded = best.getAttribute('aria-expanded') === 'true'
+    || /(^|[\s-])(active|expanded)([\s-]|$)/.test(best.className || '')
+    || !!(item && /(^|[\s-])(active|expanded)([\s-]|$)/.test(item.className || ''))
+    || !!(item && item.querySelector('[class*="content-active"], [class*="Collapse-entered"], [class*="MuiCollapse-entered"]'));
+
+  // Stable selector: pin the header via a panel-body element that carries an id
+  // (`.ant-collapse-item:has([id="…"]) > .ant-collapse-header`). A React re-render
+  // that wipes a marker attribute cannot retarget this, and it stays unique to the
+  // one panel even when a same-named panel exists elsewhere. Falls back to a
+  // marker only when nothing in the panel has an id.
+  const escq = (s) => (s || '').split('"').join('\\"');
+  let stable = null;
+  if (item) {
+    const idNode = Array.from(item.querySelectorAll('[id]'))
+      .find((n) => n.id && !best.contains(n));   // an id in the body, not the header
+    if (idNode) {
+      const itemSel = item.matches('.ant-collapse-item') ? '.ant-collapse-item'
+        : (item.className && item.className.split(/\s+/)[0] ? '.' + CSS.escape(item.className.split(/\s+/)[0]) : '*');
+      const headSel = best.matches('.ant-collapse-header') ? '.ant-collapse-header'
+        : (best.className && best.className.split(/\s+/)[0] ? '.' + CSS.escape(best.className.split(/\s+/)[0]) : '[aria-expanded]');
+      stable = itemSel + ':has([id="' + escq(idNode.id) + '"]) ' + headSel;
+    }
+  }
+  if (!stable) {
+    document.querySelectorAll('[data-bg-collapse]').forEach((n) => n.removeAttribute('data-bg-collapse'));
+    best.setAttribute('data-bg-collapse', '1');
+    stable = '[data-bg-collapse="1"]';
+  }
+  return { selector: stable, expanded, label: headerLabel(best), section: bestSection, score: bestScore };
 }
 """.replace("__SECTION_JS", _SECTION_HEADING_JS)
 
@@ -2301,6 +2435,32 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_checkbox %r -> %s", target_phrase, result)
+        return result
+
+    async def find_collapse_header(
+        self, target_phrase: str, context: str = "",
+    ) -> dict | None:
+        """Resolve a collapsible/accordion section header by its panel label.
+
+        Returns ``{selector, expanded, label, section}`` for a clickable collapse
+        header (Ant ``.ant-collapse-header``, MUI ``AccordionSummary``, or any
+        ``[aria-expanded]`` toggle), or ``None`` when the page has none. Used to
+        expand/collapse a named panel; when two panels share a label ("Drink"
+        under both "Rewards Gamification" and "Bonus Gamification"), ``context``
+        (the surrounding instruction) pins the right one by its section heading —
+        see :meth:`find_radio`. ``expanded`` lets the caller skip the click when
+        the panel is already in the wanted state (idempotent expand/collapse).
+        """
+        result = await self._page.evaluate(
+            _FIND_COLLAPSE_HEADER_JS, {"phrase": target_phrase or "", "context": context or ""}
+        )
+        if not result:
+            return None
+        logger.debug(
+            "find_collapse_header phrase=%r context=%r -> label=%r section=%r expanded=%s (%s)",
+            target_phrase, context, result.get("label"), result.get("section"),
+            result.get("expanded"), result.get("selector"),
+        )
         return result
 
     async def find_file_input(self, target_phrase: str) -> str | None:
