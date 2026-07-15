@@ -323,6 +323,40 @@ _FIND_SELECT_TRIGGER_JS = r"""
     }
     return norm(parts.join(' '));
   };
+  // Column heading: when a row of controls sits under a shared HEADER ROW of
+  // column labels (a grid/table-like form — "Stamp Position" | "Bonus Type" over
+  // two side-by-side selects), `groupHeading` grabs the whole header row and both
+  // columns tie on it. This instead picks the ONE header label whose horizontal
+  // span covers the control's centre, so each control is labelled by its own
+  // column. Generic (geometry-based): only fires when such a header row exists, so
+  // ordinary single-label forms are unaffected. Returns '' when there is none.
+  const columnHeading = (e) => {
+    const r = e.getBoundingClientRect();
+    if (!(r.width > 0)) return '';
+    const cx = r.left + r.width / 2;
+    let a = e, up = 0;
+    while (a && up < 12) {
+      let s = a.previousElementSibling, seen = 0;
+      while (s && seen < 3) {
+        // A header row: no form controls inside, but two-or-more short text cells.
+        if (!s.querySelector('input, select, textarea, button, [role="combobox"], .ant-select')) {
+          const cells = Array.from(s.querySelectorAll('span, div, label, th, td')).filter((n) => {
+            const t = (n.textContent || '').trim();
+            return t && t.length <= 40 && !n.querySelector('span, div, label, th, td');  // leaf text cells
+          });
+          if (cells.length >= 2) {
+            for (const c of cells) {
+              const cr = c.getBoundingClientRect();
+              if (cr.width > 0 && cx >= cr.left - 1 && cx <= cr.right + 1) return norm(c.textContent);
+            }
+          }
+        }
+        s = s.previousElementSibling; seen++;
+      }
+      a = a.parentElement; up++;
+    }
+    return '';
+  };
   const displayed = (e) => {
     const item = e.querySelector('.ant-select-selection-item');
     if (item) return textOf(item);
@@ -356,6 +390,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
     const lbl = labelText(e), disp = displayed(e), ph = placeholder(e);
     let score = 0;
     score += 3.0 * overlap(lbl);                 // associated label — strongest signal
+    score += 2.5 * overlap(columnHeading(e));    // own column label in a shared header row (beats the concatenated group heading)
     score += 2.0 * overlap(groupHeading(e));     // preceding group heading (not a <label for>)
     score += 0.8 * overlap(ph);                  // placeholder hint
     score += 0.5 * overlap(disp);                // displayed-text hint
@@ -440,9 +475,17 @@ _FIND_INPUT_JS = r"""
   __SECTION_JS
   const placeholder = (e) => norm(e.getAttribute('placeholder') || '');
   const overlap = (txt) => { if (!tokens.length || !txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+  // A field's ON-SCREEN identity for the collision test: its associated label, or
+  // its placeholder when it has no label. Two Ant range/number inputs with the
+  // same placeholder ("Position" on both a Food and a Drink "Stamp Position"
+  // field) collide here even though neither carries a <label> — the id/section is
+  // then what tells them apart. Without folding the placeholder in, such fields
+  // looked "unique" (empty label) and the step fell to the a11y snapshot, which
+  // has no section context and picks the first one in DOM order.
+  const identity = (e) => visibleLabel(e) || placeholder(e);
 
-  let best = null, bestScore = -1, bestVis = 0, bestSec = '';
-  const vis = els.map(visibleLabel);
+  let best = null, bestScore = -1, bestIdent = 0, bestSec = '';
+  const ids = els.map(identity);
   els.forEach((e, i) => {
     const secOv = overlap(sectionText(e));
     // Section overlap (weight 1.0 < the label weight 3.0) breaks ties between
@@ -451,20 +494,26 @@ _FIND_INPUT_JS = r"""
     let score = 3.0 * overlap(labelText(e)) + 1.2 * overlap(placeholder(e)) + 1.0 * secOv;
     if (e.disabled) score -= 5;             // strongly avoid disabled fields
     score += (els.length - i) * 0.001;      // earlier-in-DOM tie-break
-    if (score > bestScore) { bestScore = score; best = e; bestVis = overlap(vis[i]); bestSec = sectionText(e); }
+    if (score > bestScore) { bestScore = score; best = e; bestIdent = overlap(ids[i]); bestSec = sectionText(e); }
   });
   if (!best || bestScore <= 0) return null;
-  // "sectioned": the winner shares its (matched) visible label with at least one
-  // other field, and a section heading is what set it apart. This is the signal
-  // that lets the caller pre-empt grounding — without it, an ambiguous field
-  // would be resolved from the a11y snapshot (which can pick the wrong section).
+  // "sectioned": the winner shares its (matched) on-screen identity — label OR
+  // placeholder — with at least one other field, and a section heading / id is
+  // what set it apart. This is the signal that lets the caller pre-empt grounding;
+  // without it an ambiguous field would be resolved from the a11y snapshot (which
+  // can pick the wrong section).
   let tie = 0;
-  els.forEach((e, i) => { if (bestVis > 0 && overlap(vis[i]) >= bestVis) tie++; });
+  els.forEach((e, i) => { if (bestIdent > 0 && overlap(ids[i]) >= bestIdent) tie++; });
   const sectioned = overlap(bestSec) > 0 && tie >= 2;
 
+  // Prefer a STABLE selector keyed on the winner's id (like the radio/checkbox
+  // resolvers) so a React re-render between resolution and the fill can't retarget
+  // it; fall back to the marker for inputs without an id.
+  const escq = (s) => (s || '').split('"').join('\\"');
   document.querySelectorAll('[data-bg-input]').forEach((n) => n.removeAttribute('data-bg-input'));
   best.setAttribute('data-bg-input', '1');
-  return { selector: '[data-bg-input="1"]', label: labelText(best), score: bestScore,
+  const selector = best.id ? ('#' + (window.CSS ? CSS.escape(best.id) : best.id)) : '[data-bg-input="1"]';
+  return { selector, label: labelText(best), score: bestScore,
            section: bestSec, sectioned };
 }
 """.replace("__SECTION_JS", _SECTION_HEADING_JS)

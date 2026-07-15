@@ -1,5 +1,38 @@
 # Unreleased
 
+## 0.0.6a48 — fix(web): placeholder-only fields & shared column-header dropdowns
+
+Follow-up to a47 on the same Rewards/Gamification page. Two controls were still
+resolving to the wrong twin; both fixes are generic (geometry / id / placeholder,
+no page-specific strings).
+
+- **Number field with only a placeholder now disambiguates by section.** A
+  "Stamp Position" range input (visible label is a bare `<span>`, the only
+  accessible name is the placeholder "Position") exists in both a Food and a Drink
+  panel. Because it had no `<label>`, the input finder saw it as "unique", the step
+  fell to the a11y snapshot (which has no section context), and
+  `Enter "2" into Rewards Drink Stamp Position` overwrote the **Food** field. The
+  finder now folds the placeholder into its collision test, so the two like-placeholdered
+  fields register as a genuine collision, the step is flagged `sectioned`, and the
+  pre-resolver pins the right one by its id/section. The input selector is now a
+  **stable id** (`#…`) rather than a marker, matching the radio/checkbox resolvers.
+- **Dropdowns under a shared column-header row.** "Stamp Position" and "Bonus Type"
+  label two side-by-side selects through a single header row, so the finder read the
+  whole row and both columns tied — `Select … from "Bonus Type" drop down` grabbed
+  the Stamp Position select and then failed (no such option). A geometry-based
+  **column heading** now labels each select by the header cell horizontally above
+  it, so "Bonus Type" resolves to its own (basketName) select. Fires only when such
+  a header row exists; ordinary single-label dropdowns are unaffected.
+- Coverage: `tests/unit/test_sectioned_fields_rewards.py` (Drink number field
+  doesn't overwrite Food; "Bonus Type" resolves to its own column). Browser-verified
+  end-to-end against the real captured page DOM. Engine `0.0.6a47` → `0.0.6a48`.
+
+  Step-writing note: for the second Bonus row (after expanding Bonus → Drink), keep
+  the `Drink` qualifier — `Select "2" from "Drink Stamp Position" drop down` and
+  `Select "Test Basket" from "Drink Bonus Type" drop down` — since both Food and
+  Drink dropdowns are then visible and share the same column labels.
+
+
 ## 0.0.6a47 — fix(web): expand the right accordion panel; section-aware dropdowns
 
 Targets a Rewards/Gamification page where the same label repeats across sections
