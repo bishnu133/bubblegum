@@ -981,11 +981,18 @@ _FIND_DIALOG_CLICKABLE_JS = r"""
   dialogs.sort((a, b) => (zOf(a) - zOf(b)) || ((a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1));
   const dialog = dialogs[dialogs.length - 1];
 
-  // The button label is the part before a scope preposition ("Submit button on
-  // Submit Badge? dialog" -> "Submit button"); strip a trailing widget noun.
-  let main = want.split(/\s+(?:on|in|within|from|of)\s+/i)[0]
-                 .replace(/\s+(button|link|tab|option|item|menu\s*item|menuitem)$/i, '').trim();
-  const wants = [main, want].filter((v, i, a) => v && a.indexOf(v) === i);
+  // Normalise the phrase to the button label:
+  //  - strip a leading action verb ("Click on"/"Press"/"Tap"/…/"the") so
+  //    "Click on Add button" -> "Add button" (else the scope-split below turns it
+  //    into "Click");
+  //  - take the part before a scope preposition ("Submit button on Foo dialog"
+  //    -> "Submit button");
+  //  - strip a trailing widget noun and surrounding quotes.
+  const deQuote = (s) => s.replace(/^["'‘’“”]+|["'‘’“”]+$/g, '').trim();
+  let base = want.replace(/^\s*(?:please\s+)?(?:click|press|tap|hit|select|choose|open|toggle|activate)\s+(?:on\s+|the\s+)*/i, '').trim();
+  let main = deQuote(base.split(/\s+(?:on|in|within|from|of)\s+/i)[0]
+                 .replace(/\s+(button|link|tab|option|item|menu\s*item|menuitem)$/i, '').trim());
+  const wants = [main, deQuote(base), want].filter((v, i, a) => v && a.indexOf(v) === i);
 
   const SEL = 'button, [role="button"], a, [role="link"], [role="menuitem"], [role="tab"],'
             + ' input[type="submit"], input[type="button"], summary, [onclick]';
@@ -1013,7 +1020,11 @@ _FIND_DIALOG_CLICKABLE_JS = r"""
   const best = matches[0];
   document.querySelectorAll('[data-bg-dialogclick]').forEach((n) => n.removeAttribute('data-bg-dialogclick'));
   best.setAttribute('data-bg-dialogclick', '1');
-  return { selector: '[data-bg-dialogclick="1"]', name: nameOf(best), count: matches.length };
+  // Prefer a stable id selector (survives a React re-render that would wipe the
+  // temporary marker); fall back to the marker.
+  let selector = '[data-bg-dialogclick="1"]';
+  if (best.id) selector = '[id="' + best.id.split('"').join('\\"') + '"]';
+  return { selector, name: nameOf(best), count: matches.length };
 }
 """
 

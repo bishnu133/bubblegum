@@ -39,6 +39,18 @@ def test_resolves_click_in_dialog():
     assert a.calls == ["Submit button on Submit Badge? dialog"]
 
 
+def test_prefers_quoted_button_label_over_mangled_target_phrase():
+    # `Click on "Add" button`: the parser mangles target_phrase to 'on "Add', and
+    # the raw instruction trips the finder's "on" scope-split. The quoted label is
+    # authoritative — the finder must be called with "Add".
+    a = _Adapter()
+    intent = StepIntent(instruction='Click on "Add" button', channel="web",
+                        action_type="click", target_phrase='on "Add', context={})
+    t = _run(sdk._maybe_resolve_dialog_click(a, "web", intent))
+    assert t is not None and t.resolver_name == "dialog_click_dom"
+    assert a.calls == ["Add"]
+
+
 def test_tap_is_also_handled():
     a = _Adapter()
     t = _run(sdk._maybe_resolve_dialog_click(a, "web", _intent("tap", "Submit")))

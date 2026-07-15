@@ -1712,7 +1712,13 @@ async def _maybe_resolve_dialog_click(adapter, channel: str, intent: StepIntent)
     finder = getattr(adapter, "find_dialog_clickable", None)
     if finder is None:
         return None
-    text = (intent.target_phrase or intent.instruction or "").strip()
+    # Prefer the quoted label (`Click on "Add" button` -> "Add"). The deterministic
+    # parser mangles this phrasing (target_phrase becomes 'on "Add'), and the raw
+    # instruction ("Click on Add button") trips the finder's scope-preposition
+    # split on "on". The quoted segment is the button label, unambiguously.
+    instruction = getattr(intent, "instruction", "") or ""
+    quoted = _quoted_segments(instruction)
+    text = (quoted[0].strip() if quoted else (intent.target_phrase or instruction or "").strip())
     if not text:
         return None
     try:
