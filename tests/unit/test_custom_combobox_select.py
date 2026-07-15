@@ -76,6 +76,14 @@ class _FlexLocator:
     def get_by_title(self, title: str, exact: bool = False) -> "_FlexLocator":
         return self._by_title.get((title, exact), _FlexLocator(name=f"title:{title}"))
 
+    # Scoping an option search to the owned dropdown chains these off the popup
+    # locator; a bare _FlexLocator owns no options, so they resolve to no-match.
+    def get_by_role(self, role: str, name: str = "", exact: bool = False) -> "_FlexLocator":
+        return _FlexLocator(name=f"role:{role}:{name}")
+
+    def locator(self, *args: Any, **kwargs: Any) -> "_FlexLocator":
+        return _FlexLocator(name="scoped")
+
 
 class _TriggerLocator:
     def __init__(self, tag: str, attrs: dict[str, str] | None = None) -> None:

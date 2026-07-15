@@ -1,5 +1,30 @@
 # Unreleased
 
+## 0.0.6a50 — fix(web): named-panel dropdown wins over already-selected twin; option-scoping
+
+Follow-up to a49. `Select … from "Drink Bonus Type" drop down` still committed into
+the **Food** panel once the Food "Bonus Type" had already been set. Two distinct
+bugs, both fixed generically (no page-specific strings; works for any number of
+panels and other apps):
+
+- **The panel qualifier is now decisive.** Ant gives a select that already displays
+  the wanted value a large "shows the value" bonus, which was outscoring the Drink
+  panel — so the Drink step re-picked the already-set Food select. The select finder
+  now detects when the step names a panel that exists on the page and strongly
+  prefers a control in that panel while demoting controls in a *different* named
+  panel, overriding the already-shown-value bonus. No panel named ⇒ no effect, so
+  ordinary single-panel forms are untouched.
+- **Option clicks are scoped to the dropdown the trigger owns.** Even with the right
+  (Drink) trigger, the option-selection searched the whole page for an option row
+  matching the value; with "Test Basket" present in both the Food (already-selected)
+  and Drink dropdowns, the first-in-DOM (Food) row was clicked. The click is now
+  scoped first to the popup the resolved combobox owns (via `aria-controls`/`owns`
+  → its `.ant-select-dropdown`), so the value can only land in the resolved select.
+- Coverage: `tests/unit/test_sectioned_fields_rewards.py` gains an interactive
+  two-panel case (Food pre-selected with the value; the Drink step still commits to
+  Drink). Browser-verified end-to-end. Engine `0.0.6a49` → `0.0.6a50`.
+
+
 ## 0.0.6a49 — fix(web): panel-name qualifier for repeated dropdowns across accordions
 
 Follow-up to a48. On the Bonus Gamification page, `Select … from "Drink Bonus

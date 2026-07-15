@@ -419,6 +419,17 @@ _FIND_SELECT_TRIGGER_JS = r"""
     const hd = it.querySelector(BG_PANEL_HEAD_SEL);
     return (hd && !hd.contains(e)) ? norm(hd.textContent) : '';
   };
+  // When the step NAMES a panel that exists on the page ("… Drink Bonus Type …"),
+  // that qualifier is decisive: a control in the named panel must win even over a
+  // same-named control in ANOTHER panel that already displays the wanted value
+  // (Ant gives the already-selected Food select a big "shows the value" bonus, so
+  // without this the Drink step re-picks Food). Collect every panel name in play,
+  // find the qualifier token the phrase uses, then boost the matching panel and
+  // demote the others. No panel named ⇒ no effect (ordinary forms untouched).
+  const panelNames = els.map(panelName);
+  const panelWords = new Set();
+  panelNames.forEach((pn) => pn.split(' ').forEach((w) => { if (w.length > 1) panelWords.add(w); }));
+  const qualifier = tokens.find((t) => panelWords.has(t)) || '';
 
   let best = null, bestScore = -1;
   els.forEach((e, i) => {
@@ -427,11 +438,17 @@ _FIND_SELECT_TRIGGER_JS = r"""
     score += 3.0 * overlap(lbl);                 // associated label — strongest signal
     score += 2.5 * overlap(columnHeading(e));    // own column label in a shared header row (beats the concatenated group heading)
     score += 2.0 * overlap(groupHeading(e));     // preceding group heading (not a <label for>)
-    score += 2.0 * overlap(panelName(e));        // enclosing collapse/accordion panel name (Food vs Drink) — the qualifier's anchor
     score += 0.8 * overlap(ph);                  // placeholder hint
     score += 0.5 * overlap(disp);                // displayed-text hint
     score += 0.5 * overlap(sectionCtx(e));       // section/id context (Food vs Drink, Rewards vs Bonus)
     if (valN && disp === valN) score += 1.5;     // already shows the value we want
+    // Decisive panel qualifier (see above): +ve for the named panel, −ve for a
+    // different named panel, so it overrides the "already shows the value" bonus.
+    if (qualifier) {
+      const pnWords = panelNames[i] ? panelNames[i].split(' ') : [];
+      if (pnWords.indexOf(qualifier) >= 0) score += 4.0;
+      else if (pnWords.length) score -= 4.0;
+    }
     // Tie-breaker: when a group heading (e.g. "Eligibility Tags") labels more than
     // one select — a compact qualifier ("All/Any") plus the value picker — the
     // value being selected belongs in the multi-select. Nudge it ahead.
@@ -2082,7 +2099,24 @@ class PlaywrightAdapter(BaseAdapter):
             pass
 
         esc = value.replace("\\", "\\\\").replace('"', '\\"')
-        attempts: list = [
+        # Scope option clicks to the popup THIS trigger owns FIRST. Two selects can
+        # render an identically-named option ("Test Basket" in both a Food and a
+        # Drink "Bonus Type" select; the Food one is already chosen and still in the
+        # DOM), so an unscoped page-wide search clicks the first in DOM order and
+        # commits into the wrong (Food) select. The owned-dropdown scope pins the
+        # option to the combobox we resolved.
+        owned_dd = await self._owned_dropdown(trigger)
+        attempts: list = []
+        if owned_dd is not None:
+            attempts += [
+                owned_dd.locator(f'.ant-select-item-option[title="{esc}"]'),
+                owned_dd.get_by_role("option", name=value, exact=True),
+                owned_dd.get_by_role("menuitem", name=value, exact=True),
+                owned_dd.locator(".ant-select-item-option", has_text=value),
+                owned_dd.get_by_title(value, exact=True),
+                owned_dd.get_by_text(value, exact=True),
+            ]
+        attempts += [
             self._page.get_by_role("option", name=value, exact=True),
             self._page.get_by_role("option", name=value),
             self._page.get_by_role("menuitem", name=value, exact=True),
@@ -2237,6 +2271,49 @@ class PlaywrightAdapter(BaseAdapter):
         # aria-controls/owns may list several ids; the listbox is the first.
         listbox_id = owned.split()[0]
         return self._page.locator(f'[id="{listbox_id}"]')
+
+    async def _owned_listbox_id(self, trigger) -> str | None:
+        """The id of the popup a combobox owns (aria-controls / aria-owns), or None.
+
+        The resolved trigger is often the ``.ant-select`` wrapper while the
+        ``aria-controls`` lives on its inner ``role=combobox`` input, so this checks
+        the node itself and then a descendant combobox/input.
+        """
+        try:
+            owned = await trigger.first.evaluate(
+                r"""(el) => {
+                  const pick = (n) => n && (n.getAttribute('aria-controls') || n.getAttribute('aria-owns'));
+                  return pick(el)
+                    || pick(el.querySelector && el.querySelector('[aria-controls],[aria-owns]'))
+                    || '';
+                }"""
+            )
+        except Exception:  # noqa: BLE001
+            return None
+        return owned.split()[0] if owned else None
+
+    async def _owned_dropdown(self, trigger):
+        """Locator for the visible option POPUP owned by ``trigger``.
+
+        The clickable option rows (Ant ``.ant-select-item-option``) live in the
+        portalled ``.ant-select-dropdown`` that also contains the trigger's owned
+        ``role=listbox`` — so scoping option clicks to that wrapper guarantees we
+        click an option belonging to THIS combobox, never a same-named option in a
+        different (e.g. already-selected) select elsewhere on the page. Returns the
+        dropdown wrapper when found, else the owned listbox itself, else ``None``.
+        """
+        lb = await self._owned_listbox_id(trigger)
+        if not lb:
+            return None
+        # The dropdown/menu/popup wrapper that CONTAINS the owned listbox; fall back
+        # to the listbox node for widgets that don't wrap it.
+        return self._page.locator(
+            f'.ant-select-dropdown:has([id="{lb}"]),'
+            f' [class*="dropdown"]:has([id="{lb}"]),'
+            f' [class*="menu"]:has([id="{lb}"]),'
+            f' [class*="popup"]:has([id="{lb}"]),'
+            f' [id="{lb}"]'
+        ).first
 
     async def _open_combobox(self, trigger, timeout: int) -> None:
         """Click a combobox trigger open, forcing past overlay interception.

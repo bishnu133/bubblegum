@@ -234,3 +234,109 @@ def test_named_panel_qualifier_picks_the_right_panel_dropdown() -> None:
     assert drink_bonus == "bonusRewards_drink_0_basketName"
     assert drink_stamp == "bonusRewards_drink_0_stampPosition"
     assert food_bonus == "bonusRewards_food_0_basketName"
+
+
+# An interactive two-panel page: clicking a select opens its own dropdown and
+# clicking an option commits into THAT select (a faithful, minimal Ant model).
+_INTERACTIVE_DD = """<!doctype html><body>
+<style>.ant-select-dropdown-hidden{display:none}
+.ant-select-dropdown{position:absolute;top:120px;left:10px;background:#fff}
+.ant-select{border:1px solid #ccc;height:30px;display:inline-block;min-width:120px}
+.ant-select-item-option{padding:4px;cursor:pointer}</style>
+<h4>Bonus Gamification</h4>
+<div class="ant-collapse">__PANELS__</div>
+<script>
+document.querySelectorAll('.ant-select').forEach(function(sel){
+  sel.addEventListener('click',function(){
+    var id=sel.querySelector('input').id;
+    document.querySelectorAll('.ant-select-dropdown').forEach(function(d){d.classList.add('ant-select-dropdown-hidden');});
+    var dd=document.querySelector('.ant-select-dropdown[data-for="'+id+'"]');
+    dd.classList.remove('ant-select-dropdown-hidden');
+  });
+});
+document.querySelectorAll('.ant-select-dropdown').forEach(function(dd){
+  dd.querySelectorAll('.ant-select-item-option').forEach(function(op){
+    op.addEventListener('click',function(){
+      var id=dd.getAttribute('data-for');
+      document.getElementById(id).closest('.ant-select').querySelector('.ant-select-selection-item').textContent=op.getAttribute('title');
+      dd.classList.add('ant-select-dropdown-hidden');
+    });
+  });
+});
+</script></body>"""
+
+
+def _dd_panel(label: str) -> str:
+    bn = f"bonusRewards_{label.lower()}_0_basketName"
+    return (
+        f"<div class='ant-collapse-item ant-collapse-item-active'>"
+        f"  <div class='ant-collapse-header' role='button' aria-expanded='true'>"
+        f"    <span class='ant-collapse-header-text'><div>{label}</div></span></div>"
+        f"  <div class='ant-collapse-content ant-collapse-content-active'><div class='ant-collapse-content-box'>"
+        f"    <div style='display:flex;margin-bottom:8px'>"
+        f"      <span style='display:inline-block;width:155px;margin-right:16px'>Stamp Position</span>"
+        f"      <span style='display:inline-block;width:362px'>Bonus Type</span></div>"
+        f"    <div style='display:flex'>"
+        f"      <div class='ant-form-item' style='width:155px;margin-right:16px'>"
+        f"        <div class='ant-select' data-testid='{label.lower()}-0-stampPosition' style='width:155px'><div class='ant-select-selector'>"
+        f"          <span class='ant-select-selection-search'><input id='bonusRewards_{label.lower()}_0_stampPosition' role='combobox' aria-controls='bonusRewards_{label.lower()}_0_stampPosition_list' readonly style='opacity:0'></span>"
+        f"          <span class='ant-select-selection-item'></span></div></div></div>"
+        f"      <div class='ant-form-item' style='width:362px'>"
+        f"        <div class='ant-select' data-testid='{label.lower()}-0-basketName' style='width:362px'><div class='ant-select-selector'>"
+        f"          <span class='ant-select-selection-search'><input id='{bn}' role='combobox' aria-controls='{bn}_list' readonly style='opacity:0'></span>"
+        f"          <span class='ant-select-selection-item'></span></div></div></div>"
+        f"    </div>"
+        f"  </div></div>"
+        f"</div>"
+        f"<div class='ant-select-dropdown ant-select-dropdown-hidden' data-for='bonusRewards_{label.lower()}_0_basketName'>"
+        f"  <div role='listbox' id='{bn}_list' style='height:0;width:0;overflow:hidden'><div role='option'>Test Basket</div></div>"
+        f"  <div class='rc-virtual-list'><div class='ant-select-item ant-select-item-option' title='Test Basket'><div class='ant-select-item-option-content'>Test Basket</div></div></div></div>"
+    )
+
+
+@pytest.mark.playwright
+def test_named_panel_wins_even_when_other_panel_shows_the_value() -> None:
+    # The Food "Bonus Type" is ALREADY "Test Basket" (Ant gives an already-selected
+    # select a big "shows the value" bonus). The Drink step must still commit into
+    # Drink — the panel qualifier is decisive — and the option click must land in
+    # Drink's own dropdown, not Food's identically-named (already-selected) option.
+    async_api = pytest.importorskip("playwright.async_api")
+    page_html = _INTERACTIVE_DD.replace("__PANELS__", _dd_panel("Food") + _dd_panel("Drink"))
+
+    async def go():
+        try:
+            pw = await async_api.async_playwright().start()
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"Playwright unavailable: {exc}")
+        try:
+            try:
+                browser = await pw.chromium.launch()
+            except Exception as exc:  # pragma: no cover
+                pytest.skip(f"No usable browser binary: {exc}")
+            try:
+                page = await browser.new_page()
+                await page.set_content(page_html)
+                # Pre-select Food's "Bonus Type" = Test Basket.
+                await page.evaluate(
+                    "() => { document.getElementById('bonusRewards_food_0_basketName')"
+                    ".closest('.ant-select').querySelector('.ant-select-selection-item')"
+                    ".textContent = 'Test Basket'; }"
+                )
+                r = await sdk.act(
+                    'Select "Test Basket" from "Drink Bonus Type" drop down',
+                    channel="web", page=page,
+                )
+                vals = await page.evaluate(
+                    "() => ({"
+                    " food: document.getElementById('bonusRewards_food_0_basketName').closest('.ant-select').querySelector('.ant-select-selection-item').textContent,"
+                    " drink: document.getElementById('bonusRewards_drink_0_basketName').closest('.ant-select').querySelector('.ant-select-selection-item').textContent })"
+                )
+                return r.status, vals
+            finally:
+                await browser.close()
+        finally:
+            await pw.stop()
+
+    status, vals = asyncio.run(go())
+    assert status == "passed"
+    assert vals == {"food": "Test Basket", "drink": "Test Basket"}
