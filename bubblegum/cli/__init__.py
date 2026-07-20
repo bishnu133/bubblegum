@@ -31,8 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     record = sub.add_parser(
         "record",
-        help="Record a manual click-through and emit Bubblegum NL steps.",
+        help="[maintenance mode] Record a manual click-through and emit Bubblegum NL steps.",
         description=(
+            "[Maintenance mode — paused, bug fixes only] "
             "Open a browser at --url, capture your interactions, and write a "
             "runnable *_recorded.py flow of natural-language steps."
         ),
@@ -74,8 +75,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     convert = sub.add_parser(
         "convert",
-        help="Convert a spreadsheet of manual scenarios into automation scaffolds.",
+        help="[maintenance mode] Convert a spreadsheet of manual scenarios into automation scaffolds.",
         description=(
+            "[Maintenance mode — paused, bug fixes only] "
             "Read manual test scenarios (Gherkin-style steps in a designated "
             "column) from an .xlsx workbook and generate reviewable scaffolds: "
             "normalized .feature files plus pytest-bdd (Python) and "

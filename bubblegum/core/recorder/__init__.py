@@ -1,6 +1,11 @@
 """Recorder / codegen (A1) — capture a manual click-through and emit
 Bubblegum natural-language steps.
 
+NOTE: Maintenance mode (paused). This code-generator feature receives bug fixes
+only; no new feature work is planned while development focuses on web/mobile
+automation and AI grounding. It remains available and supported for existing
+users, with unchanged behaviour.
+
 Pieces:
   - ``RECORDER_JS``           in-page capture script (injected via add_init_script)
   - ``ActionRecorder``        Python side of the capture binding; produces steps

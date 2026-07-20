@@ -612,6 +612,11 @@ Because Bubblegum may send DOM text and hierarchy data to external LLM providers
 
 - Latest release: **`v0.0.6-alpha`** — first PyPI publish + JSON-RPC engine bridge (`0.1.0`).
 - In progress: the `@bubblegum-ai/node` npm client (`0.2.0`) — see `docs/distribution-npm-and-pypi.md`.
+- **Current focus:** web/mobile automation and smarter, faster, cheaper AI grounding.
+- **Paused (maintenance mode):** the code-generator features — `bubblegum record`
+  (capture → NL steps) and `bubblegum convert` (manual scenarios → scaffolds). No
+  new feature work is planned; both remain available and supported for existing
+  users with unchanged CLI/config/output. Bug fixes only.
 - Earlier planning context: `docs/phase-17a-roadmap-reset-v0.0.5-alpha.md`.
 
 Planned `v0.0.5-alpha` scope themes:
