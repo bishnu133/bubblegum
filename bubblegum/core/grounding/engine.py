@@ -217,7 +217,7 @@ class GroundingEngine:
                         ),
                     )
 
-            tier_candidates, tier_traces = self._run_tier(intent, tier_num)
+            tier_candidates, tier_traces = await self._run_tier(intent, tier_num)
             all_candidates.extend(tier_candidates)
             all_traces.extend(tier_traces)
 
@@ -332,7 +332,7 @@ class GroundingEngine:
             for r in self.registry.all()
         )
 
-    def _run_tier(
+    async def _run_tier(
         self, intent: StepIntent, tier_num: int
     ) -> tuple[list[ResolvedTarget], list[ResolverTrace]]:
         """
@@ -365,7 +365,10 @@ class GroundingEngine:
         for resolver in tier_resolvers:
             t0 = time.monotonic()
             try:
-                found = resolver.resolve(intent)
+                # Await the async entry point — deterministic resolvers delegate
+                # to their sync resolve() with zero overhead; LLM/network
+                # resolvers run natively on the event loop (no throwaway thread).
+                found = await resolver.resolve_async(intent)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Resolver %s raised an exception: %s", resolver.name, exc)
                 found = []

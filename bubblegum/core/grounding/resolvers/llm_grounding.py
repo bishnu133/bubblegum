@@ -167,8 +167,12 @@ class LLMGroundingResolver(Resolver):
 
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         """
-        Sync entry point required by the Resolver ABC.
-        Delegates to _resolve_async via a thread pool to avoid event-loop conflicts.
+        Sync entry point (Resolver ABC / external sync callers only).
+
+        The async GroundingEngine now calls ``resolve_async`` directly, so the
+        model call runs natively on the event loop. This sync shim remains only
+        for callers outside an event loop; it delegates to ``_resolve_async``
+        via a one-shot thread so it can run its own loop without conflict.
         """
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -180,8 +184,8 @@ class LLMGroundingResolver(Resolver):
 
     async def resolve_async(self, intent: StepIntent) -> list[ResolvedTarget]:
         """
-        Async variant — preferred in async GroundingEngine contexts.
-        Avoids thread-pool overhead when already inside an event loop.
+        Async entry point the GroundingEngine awaits — runs the model call on the
+        current event loop with no throwaway thread + event loop.
         """
         return await self._resolve_async(intent)
 

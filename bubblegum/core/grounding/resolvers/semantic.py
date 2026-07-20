@@ -24,6 +24,7 @@ resolver.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
@@ -71,6 +72,13 @@ class SemanticResolver(Resolver):
 
     def required_context(self) -> list[str]:
         return ["a11y_snapshot"]
+
+    async def resolve_async(self, intent: StepIntent) -> list[ResolvedTarget]:
+        # The embeddings client is a blocking (sync) HTTP call, so offload it to
+        # a worker thread instead of stalling the event loop.
+        if self._provider is None:
+            return []
+        return await asyncio.to_thread(self.resolve, intent)
 
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         if self._provider is None:
