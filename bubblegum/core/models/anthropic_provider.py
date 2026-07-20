@@ -65,6 +65,7 @@ class AnthropicProvider(ModelProvider):
         *,
         system: str | None = None,
         response_format: str | None = None,
+        json_schema: dict | None = None,
     ) -> CompletionResult:
         """
         Send a completion request to the Anthropic Messages API.
@@ -73,6 +74,11 @@ class AnthropicProvider(ModelProvider):
             prompt:          User-turn content. Never logged in raw form.
             system:          System prompt. Never logged in raw form.
             response_format: Pass "json" to request structured JSON output.
+            json_schema:     Optional normalized schema (name/description/schema).
+                             When supplied, a single tool is defined with that
+                             input_schema and tool_choice forces it, so the
+                             model returns arguments guaranteed to match the
+                             schema; the tool input is serialized into .text.
 
         Returns:
             CompletionResult with response text and safe metadata.
@@ -104,7 +110,9 @@ class AnthropicProvider(ModelProvider):
             )
 
         system_prompt = system or ""
-        if response_format == "json":
+        # With tool-use the schema is enforced by the tool, so the "reply in
+        # JSON" nudge is only needed for the plain json path.
+        if response_format == "json" and json_schema is None:
             system_prompt = (system_prompt + _JSON_SUFFIX).strip()
 
         t0 = time.monotonic()
@@ -120,6 +128,16 @@ class AnthropicProvider(ModelProvider):
             max_tokens=self._max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+        if json_schema is not None:
+            tool_name = json_schema.get("name", "response")
+            kwargs["tools"] = [
+                {
+                    "name": tool_name,
+                    "description": json_schema.get("description", "Structured response."),
+                    "input_schema": json_schema.get("schema", {}),
+                }
+            ]
+            kwargs["tool_choice"] = {"type": "tool", "name": tool_name}
         if system_prompt:
             # Prompt caching: the system prompt is stable across steps (the
             # grounding contract), so marking it cacheable lets Anthropic serve
@@ -139,10 +157,19 @@ class AnthropicProvider(ModelProvider):
         response = await client.messages.create(**kwargs)
 
         latency_ms = int((time.monotonic() - t0) * 1000)
-        raw_text = _extract_text(response)
 
-        if response_format == "json":
-            raw_text = _strip_code_fence(raw_text)
+        if json_schema is not None:
+            # Prefer the forced tool's structured input; fall back to text if the
+            # model somehow answered without calling the tool.
+            tool_input = _extract_tool_input(response)
+            if tool_input is not None:
+                raw_text = json.dumps(tool_input)
+            else:
+                raw_text = _strip_code_fence(_extract_text(response))
+        else:
+            raw_text = _extract_text(response)
+            if response_format == "json":
+                raw_text = _strip_code_fence(raw_text)
 
         usage = getattr(response, "usage", None)
         input_tokens = getattr(usage, "input_tokens", 0)
@@ -184,6 +211,22 @@ def _extract_text(response) -> str:
         if getattr(block, "type", None) == "text":
             return block.text or ""
     return ""
+
+
+def _extract_tool_input(response) -> dict | None:
+    """Return the input dict of the first tool_use block, or None if absent."""
+    content = getattr(response, "content", []) or []
+    for block in content:
+        btype = getattr(block, "type", None)
+        if btype == "tool_use":
+            data = getattr(block, "input", None)
+            if isinstance(data, dict):
+                return data
+        elif isinstance(block, dict) and block.get("type") == "tool_use":
+            data = block.get("input")
+            if isinstance(data, dict):
+                return data
+    return None
 
 
 def _strip_code_fence(raw: str) -> str:

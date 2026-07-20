@@ -146,7 +146,7 @@ class _StubProvider:
         self._confidence = confidence
         self.calls = 0
 
-    async def complete(self, prompt, *, system=None, response_format=None):
+    async def complete(self, prompt, *, system=None, response_format=None, json_schema=None):
         self.calls += 1
         # Valid JSON with a quote-free ref so parsing succeeds deterministically.
         return CompletionResult(

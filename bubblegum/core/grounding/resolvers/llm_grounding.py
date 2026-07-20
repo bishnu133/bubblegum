@@ -80,6 +80,27 @@ confidence rules:
 If no match: {"ref": "", "confidence": 0.0, "reasoning": "no match"}
 """
 
+# Guaranteed-schema contract for providers that support structured output /
+# tool-use. Mirrors the JSON shape described in _SYSTEM_PROMPT so the plain-JSON
+# path (older/local models) and the structured path produce identical results.
+_GROUNDING_SCHEMA: dict = {
+    "name": "ground_element",
+    "description": "The single best-matching UI element for the test instruction.",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "ref": {
+                "type": "string",
+                "description": "Playwright locator, e.g. role=button[name=\"Save\"] or text=Save. Empty if no match.",
+            },
+            "confidence": {"type": "number"},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["ref", "confidence", "reasoning"],
+        "additionalProperties": False,
+    },
+}
+
 
 class LLMGroundingResolver(Resolver):
     """
@@ -220,6 +241,7 @@ class LLMGroundingResolver(Resolver):
                 prompt,
                 system=_SYSTEM_PROMPT,
                 response_format="json",
+                json_schema=_GROUNDING_SCHEMA,
             )
         except Exception as exc:
             logger.error("LLMGroundingResolver provider call failed: %s", exc)

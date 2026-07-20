@@ -26,7 +26,7 @@ class _FakeProvider:
     provider_name = "fake"
     model = "fake-model"
 
-    async def complete(self, prompt, *, system=None, response_format=None):  # pragma: no cover
+    async def complete(self, prompt, *, system=None, response_format=None, json_schema=None):  # pragma: no cover
         raise NotImplementedError
 
 
