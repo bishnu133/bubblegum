@@ -38,6 +38,15 @@ class GroundingConfig(BaseModel):
     max_run_cost_usd:   float = 0.0
     enable_vision:      bool  = False
     enable_ocr:         bool  = True
+    # Semantic (embedding) Tier-2 matching (Task #4). Catches meaning-level label
+    # drift ("Submit"->"Continue") that edit-distance fuzzy matching misses,
+    # before falling to the costlier LLM tier. Gated here AND by an embedding
+    # provider being configured (ai.embedding_model) or injected — so it stays
+    # dormant (zero network/cost) until a team opts in.
+    enable_semantic:    bool  = True
+    # Minimum cosine similarity for a semantic candidate to be emitted. Higher =
+    # stricter (fewer false positives); lower = more recall.
+    semantic_min_similarity: float = 0.72
     # X3: when a vision/OCR target cannot be deterministically hydrated to a
     # DOM/hierarchy element (canvas, image-only, custom-drawn UI), fall back to
     # clicking the bounding-box center coordinate. Opt-in — a blind coordinate
@@ -180,6 +189,14 @@ class AIConfig(BaseModel):
     fast_model:   str | None = None        # e.g. claude-haiku-4-5 / gpt-4o-mini
     strong_model: str | None = None        # e.g. claude-sonnet-4-6 / gpt-4o
     escalate_on_low_confidence: bool = False
+
+    # --- Embeddings (Task #4 semantic Tier-2) --------------------------------
+    # embedding_model activates the semantic resolver. embedding_provider
+    # defaults to `provider` when unset. Only "openai" has a built-in embeddings
+    # backend; other providers require an injected provider via
+    # configure_embedding_provider() (e.g. offline sentence-transformers).
+    embedding_provider: str | None = None
+    embedding_model:    str | None = None   # e.g. text-embedding-3-small
 
     # --- Call tuning ----------------------------------------------------------
     max_tokens:     int  = 1024            # max completion tokens per grounding call
@@ -375,6 +392,8 @@ grounding:
   max_run_cost_usd: 0.0    # per-run Tier-3 cost ceiling in USD (0 = disabled)
   enable_vision: false
   enable_ocr: true
+  enable_semantic: true    # embedding-based Tier-2 match (needs ai.embedding_model to activate)
+  semantic_min_similarity: 0.72  # min cosine similarity to emit a semantic candidate
   coordinate_click_fallback: false  # click bbox-center when a vision/OCR target can't map to an element (X3)
   ai_first: false          # true = try AI (vision/LLM) before deterministic resolvers
   memory_ttl_days: 7
@@ -418,6 +437,9 @@ ai:
   # escalate_on_low_confidence: false # retry with strong_model when fast is unsure
   max_tokens: 1024             # max completion tokens per grounding call
   prompt_caching: true         # use provider-native prompt caching where supported
+  # Semantic Tier-2 embeddings (optional). Set embedding_model to activate.
+  # embedding_provider: openai            # defaults to `provider` when unset
+  # embedding_model: text-embedding-3-small
 
 privacy:
   redact_pii: true

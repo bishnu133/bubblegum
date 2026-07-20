@@ -198,7 +198,8 @@ class TestResolverRegistry:
     def test_registry_loads_9_builtins(self):
         from bubblegum.core.grounding.registry import ResolverRegistry
         reg = ResolverRegistry()
-        assert len(reg.all()) == 9
+        # 10 built-ins since the semantic (embedding) Tier-2 resolver was added.
+        assert len(reg.all()) == 10
 
     def test_registry_sorted_by_priority(self):
         from bubblegum.core.grounding.registry import ResolverRegistry
@@ -240,7 +241,7 @@ class TestResolverRegistry:
         reg = ResolverRegistry()
         reg.register(CustomResolver())
         assert reg.get("custom_test") is not None
-        assert len(reg.all()) == 10
+        assert len(reg.all()) == 11   # 10 built-ins + 1 custom
 
     def test_registry_duplicate_name_replaces(self):
         from bubblegum.core.grounding.registry import ResolverRegistry
@@ -257,7 +258,7 @@ class TestResolverRegistry:
 
         reg = ResolverRegistry()
         reg.register(CustomResolver())
-        assert len(reg.all()) == 9   # still 9 — replaced, not added
+        assert len(reg.all()) == 10   # still 10 — replaced, not added
 
     def test_registry_low_cost_policy_blocks_tier3(self):
         from bubblegum.core.grounding.registry import ResolverRegistry

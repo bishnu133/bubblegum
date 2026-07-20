@@ -115,9 +115,10 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
     )
     # X2: refresh the per-run Tier-3 cost budget from the (re)loaded config.
     _cost.configure_budget(_config.grounding.max_run_cost_usd)
-    # Re-wire the AI grounding tier from the (re)loaded config so a provider/
-    # model change takes effect without a process restart.
+    # Re-wire the AI grounding + semantic tiers from the (re)loaded config so a
+    # provider/model change takes effect without a process restart.
     _wire_llm_grounding_provider()
+    _wire_semantic_provider()
     return _config
 
 
@@ -243,9 +244,78 @@ def configure_llm_provider(provider) -> None:
     _llm_provider = provider
 
 
-# Wire the AI grounding tier at import time from the initial config. Best-effort:
-# a dormant tier (AI disabled / model unset / SDK missing) is the safe default.
+# ---------------------------------------------------------------------------
+# Semantic (embedding) Tier-2 provider wiring
+# ---------------------------------------------------------------------------
+#
+# The semantic resolver is dormant until an embedding provider is wired. We
+# build one from config (ai.embedding_model) when grounding.enable_semantic is
+# set, or callers can inject any provider/callable via
+# configure_embedding_provider(). Best-effort — a build failure leaves the
+# semantic tier dormant, never breaking deterministic resolution.
+
+_embedding_provider = None
+
+
+def _build_embedding_provider():
+    """Build the configured embedding provider, or None. Never raises."""
+    if not _config.ai_enabled or not _config.grounding.enable_semantic:
+        return None
+    try:
+        from bubblegum.core.models.embeddings import get_embedding_provider
+        return get_embedding_provider(_config)
+    except Exception as exc:  # noqa: BLE001 — dormant tier must never crash a run
+        logger.debug("Embedding provider unavailable; semantic tier stays dormant: %s", exc)
+        return None
+
+
+def _wire_semantic_provider() -> None:
+    """Inject the configured embedding provider into the semantic resolver.
+
+    Idempotent; safe to call repeatedly (e.g. after configure_runtime).
+    """
+    global _embedding_provider
+    resolver = _registry.get("semantic")
+    if resolver is None or not hasattr(resolver, "set_provider"):
+        return
+    _embedding_provider = _build_embedding_provider()
+    resolver.set_provider(
+        _embedding_provider,
+        min_similarity=_config.grounding.semantic_min_similarity,
+    )
+    if _embedding_provider is not None:
+        logger.debug(
+            "Semantic tier wired: provider=%s model=%s",
+            getattr(_embedding_provider, "provider_name", "?"),
+            getattr(_embedding_provider, "model", "?"),
+        )
+
+
+def configure_embedding_provider(provider_or_callable) -> None:
+    """Explicitly set the embedding provider for the semantic tier.
+
+    Accepts either an EmbeddingProvider (anything with ``embed(list[str])``) or
+    a plain ``callable(list[str]) -> list[vector]`` (wrapped automatically) — the
+    escape hatch for offline / self-hosted embeddings (e.g. sentence-
+    transformers) with no heavy dependency imposed on Bubblegum. Pass None to
+    return the tier to dormant mode.
+    """
+    global _embedding_provider
+    provider = provider_or_callable
+    if provider is not None and not hasattr(provider, "embed") and callable(provider):
+        from bubblegum.core.models.embeddings import CallableEmbeddingProvider
+        provider = CallableEmbeddingProvider(provider)
+    resolver = _registry.get("semantic")
+    if resolver is not None and hasattr(resolver, "set_provider"):
+        resolver.set_provider(provider, min_similarity=_config.grounding.semantic_min_similarity)
+    _embedding_provider = provider
+
+
+# Wire the AI grounding + semantic tiers at import time from the initial config.
+# Best-effort: a dormant tier (AI disabled / model unset / SDK missing) is the
+# safe default.
 _wire_llm_grounding_provider()
+_wire_semantic_provider()
 
 
 # ---------------------------------------------------------------------------
