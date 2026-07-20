@@ -28,6 +28,12 @@
 > [**User Guide**](docs/USER_GUIDE.md) is the single combined reference, and
 > [**Distribution (PyPI + npm)**](docs/distribution-npm-and-pypi.md) explains how
 > TS/JS Playwright projects consume Bubblegum.
+>
+> ✨ **New in 0.0.6a51 —** a reworked AI grounding layer (real AI fallback with a
+> learned cache, semantic matching, tiered model routing, self-hosted screenshot
+> grounding, streaming observability, and a zero-cost `replay` mode for CI).
+> Everything is opt-in. See
+> [**AI Grounding Enhancements — setup & real-app testing**](docs/ai-grounding-enhancements.md).
 
 ---
 

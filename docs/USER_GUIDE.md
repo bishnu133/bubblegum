@@ -6,6 +6,12 @@ English — `"Click Login"`, `'Enter "tom" into Username'` — and Bubblegum fin
 the element, performs the action, and heals the step when the UI drifts, so you
 write far fewer brittle selectors.
 
+> ✨ **New in 0.0.6a51:** the AI grounding layer was reworked (real AI fallback +
+> learned cache, semantic matching, tiered model routing, self-hosted screenshot
+> grounding, streaming observability, `replay` mode). All opt-in via
+> `bubblegum.yaml`. For setup and how to validate it on a real app, see
+> [AI Grounding Enhancements](ai-grounding-enhancements.md).
+
 This guide is split into:
 
 - [Shared concepts](#shared-concepts) — the four primitives, the session, config

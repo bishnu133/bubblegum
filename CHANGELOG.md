@@ -1,5 +1,52 @@
 # Unreleased
 
+## 0.0.6a51 — feat: AI grounding overhaul — accuracy, speed, cost, enterprise
+
+A focused pass to make the AI layer effective, faster, cheaper, and
+enterprise-ready. Every new capability is **dormant/off by default** and
+**backward-compatible** — existing configs behave exactly as before. Unit suite
+1913 → **1979** passing. See `docs/ai-grounding-enhancements.md` for setup and
+how to test against a real app.
+
+- **AI grounding tier is now actually wired.** The Tier-3 LLM grounding resolver
+  was registered with no provider, so the documented "AI when deterministic
+  resolvers fail" fallback never fired in production. It is now wired from
+  config (best-effort; dormant when `ai.model` is unset), and text grounding is
+  reclassified `high → medium` so it is reachable under the default cost policy.
+  A successful AI resolution is persisted as a **durable** locator to the SQLite
+  memory cache and replayed as a Tier-1 hit (zero model calls) next run.
+- **Prompt caching + tiered model routing.** `ai.fast_model` / `ai.strong_model`
+  (grounding uses fast; escalates to strong only when unsure, opt-in via
+  `escalate_on_low_confidence`), provider-native prompt caching, reused clients,
+  configurable `ai.max_tokens`.
+- **Guaranteed-schema structured output.** OpenAI Structured Outputs / Anthropic
+  tool-use replace the brittle "reply in JSON" + fence-stripping, eliminating
+  silent parse failures. Graceful fallback for models without support.
+- **Semantic (embedding) Tier-2 resolver.** Catches meaning-level label drift
+  ("Submit"→"Continue") before the LLM tier. Pluggable embeddings (OpenAI
+  built-in; offline/self-hosted via `configure_embedding_provider`), cached.
+  Activated by `ai.embedding_model`.
+- **Async resolver contract.** The engine awaits resolvers; the LLM call runs
+  natively on the event loop instead of a throwaway thread + event loop.
+- **Pluggable screenshot-grounding backend, first-class on mobile.**
+  `grounding.vision_backend` = none | anthropic | openai | http | callable. The
+  `http` backend targets a **self-hosted** grounder (OmniParser / UI-TARS) so
+  screenshots stay in-network (`privacy.vision_is_local`); it normalizes
+  candidate / set-of-mark / point responses. Coordinate refs are never cached.
+- **Resilience + config-driven pricing.** Per-call hard timeout + bounded
+  retry/backoff on transient errors (`ai.timeout_ms` / `max_retries` /
+  `retry_backoff_ms`); `ai.pricing` overrides the built-in cost table without a
+  release. Shared provider plumbing consolidated (single `strip_code_fence`).
+- **Streaming observability + replay mode.** Per-step structured observations to
+  a pluggable sink (`observability.export` = jsonl | otel | both; OTel is a
+  no-op when the SDK is absent). `grounding.ai_mode: replay` resolves only from
+  the learned cache + deterministic tiers for zero-cost, deterministic CI.
+- **Code generator paused.** `bubblegum record` and `bubblegum convert` are in
+  maintenance mode (docs + `--help` note); no code/CLI changes — bug fixes only.
+
+Engine `0.0.6a50` → `0.0.6a51`; npm client `0.0.6-alpha.5` → `0.0.6-alpha.6`.
+
+
 ## 0.0.6a50 — fix(web): named-panel dropdown wins over already-selected twin; option-scoping
 
 Follow-up to a49. `Select … from "Drink Bonus Type" drop down` still committed into
