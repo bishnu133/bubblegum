@@ -140,6 +140,13 @@ class MemoryCacheResolver(Resolver):
         if not screen_sig:
             return
 
+        # Never cache a coordinate ref: a pixel point is not a durable, replayable
+        # locator (it shifts with viewport/layout/DPI), so replaying it later
+        # would click blindly. Coordinate hits (point://) come from the opt-in
+        # vision/computer-use fallback and are recomputed each run on purpose.
+        if str(target.ref).startswith("point://"):
+            return
+
         step_h = _step_hash(intent)
         metadata = dict(target.metadata or {})
         if intent.channel == "mobile":

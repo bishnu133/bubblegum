@@ -38,6 +38,18 @@ class GroundingConfig(BaseModel):
     max_run_cost_usd:   float = 0.0
     enable_vision:      bool  = False
     enable_ocr:         bool  = True
+    # Screenshot grounding backend (Task #6). Selects the model that turns a
+    # screenshot + instruction into on-screen element candidates:
+    #   none      — dormant (default)
+    #   anthropic — Claude vision (hosted; needs ai.vision_model + send_screenshots)
+    #   openai    — GPT vision   (hosted; needs ai.vision_model + send_screenshots)
+    #   http      — self-hosted grounder (OmniParser / UI-TARS server) at
+    #               vision_endpoint; screenshots stay in your network
+    #   callable  — inject your own via configure_vision_provider()
+    vision_backend:     str   = "none"
+    # Endpoint for vision_backend=http (a self-hosted OmniParser/UI-TARS server).
+    vision_endpoint:    str | None = None
+    vision_endpoint_timeout_ms: int = 30_000
     # Semantic (embedding) Tier-2 matching (Task #4). Catches meaning-level label
     # drift ("Submit"->"Continue") that edit-distance fuzzy matching misses,
     # before falling to the costlier LLM tier. Gated here AND by an embedding
@@ -198,6 +210,11 @@ class AIConfig(BaseModel):
     embedding_provider: str | None = None
     embedding_model:    str | None = None   # e.g. text-embedding-3-small
 
+    # --- Vision / screenshot grounding (Task #6) -----------------------------
+    # Model for the hosted vision backends (grounding.vision_backend =
+    # anthropic|openai). Ignored by the self-hosted http backend.
+    vision_model:       str | None = None   # e.g. claude-haiku-4-5 / gpt-4.1-mini
+
     # --- Call tuning ----------------------------------------------------------
     max_tokens:     int  = 1024            # max completion tokens per grounding call
     prompt_caching: bool = True            # apply provider-native prompt caching where supported
@@ -213,10 +230,14 @@ class AIConfig(BaseModel):
 
 class PrivacyConfig(BaseModel):
     redact_pii:         bool = True
-    send_screenshots:   bool = False       # must be True to enable VisionModelResolver
+    send_screenshots:   bool = False       # must be True to send screenshots to a HOSTED vision model
     log_provider_calls: bool = True
     process_screenshots_for_vision: bool = False  # explicit opt-in for screenshot vision pipeline
     process_screenshots_for_ocr: bool = False  # explicit opt-in for screenshot OCR pipeline
+    # Set True when the vision backend is a self-hosted grounder inside your own
+    # network (grounding.vision_backend=http). Screenshots then never leave your
+    # infrastructure, so the vision pipeline is allowed without send_screenshots.
+    vision_is_local:    bool = False
 
 
 class DebugConfig(BaseModel):
@@ -340,7 +361,11 @@ class BubblegumConfig(BaseModel):
 
     @property
     def vision_enabled(self) -> bool:
-        return self.grounding.enable_vision and self.privacy.send_screenshots
+        # A self-hosted grounder (vision_is_local) keeps screenshots in-network,
+        # so it satisfies the privacy gate without sending to a third party.
+        return self.grounding.enable_vision and (
+            self.privacy.send_screenshots or self.privacy.vision_is_local
+        )
 
     @property
     def ocr_enabled(self) -> bool:
@@ -391,6 +416,10 @@ grounding:
   max_cost_level: medium   # low | medium | high
   max_run_cost_usd: 0.0    # per-run Tier-3 cost ceiling in USD (0 = disabled)
   enable_vision: false
+  # Screenshot grounding backend: none | anthropic | openai | http | callable.
+  vision_backend: none
+  # vision_endpoint: http://localhost:8000/ground   # for vision_backend=http (self-hosted OmniParser/UI-TARS)
+  # vision_endpoint_timeout_ms: 30000
   enable_ocr: true
   enable_semantic: true    # embedding-based Tier-2 match (needs ai.embedding_model to activate)
   semantic_min_similarity: 0.72  # min cosine similarity to emit a semantic candidate
@@ -440,10 +469,12 @@ ai:
   # Semantic Tier-2 embeddings (optional). Set embedding_model to activate.
   # embedding_provider: openai            # defaults to `provider` when unset
   # embedding_model: text-embedding-3-small
+  # vision_model: claude-haiku-4-5        # model for vision_backend=anthropic|openai
 
 privacy:
   redact_pii: true
-  send_screenshots: false      # set to true only to enable VisionModelResolver
+  send_screenshots: false      # true only to send screenshots to a HOSTED vision model
+  vision_is_local: false       # true for a self-hosted grounder (vision_backend=http) — pixels stay in-network
   log_provider_calls: true
   process_screenshots_for_vision: false  # explicit opt-in for screenshot vision pipeline
   process_screenshots_for_ocr: false  # explicit opt-in for screenshot OCR pipeline

@@ -85,6 +85,9 @@ _engine = GroundingEngine(
 )
 _memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for record_*
 _vision_provider: VisionProvider | None = None
+# True once a provider is pinned via configure_vision_provider(); blocks
+# config-driven auto-wiring from overriding an explicit choice.
+_vision_provider_manual: bool = False
 _visual_ref_hydrator = VisualRefHydrator()
 
 # X2: apply the per-run Tier-3 cost budget from config to the global tracker.
@@ -115,17 +118,23 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
     )
     # X2: refresh the per-run Tier-3 cost budget from the (re)loaded config.
     _cost.configure_budget(_config.grounding.max_run_cost_usd)
-    # Re-wire the AI grounding + semantic tiers from the (re)loaded config so a
-    # provider/model change takes effect without a process restart.
+    # Re-wire the AI grounding + semantic + vision tiers from the (re)loaded
+    # config so a provider/model/backend change takes effect without a restart.
     _wire_llm_grounding_provider()
     _wire_semantic_provider()
+    _wire_vision_provider()
     return _config
 
 
 def _set_vision_provider_for_testing(provider: VisionProvider | None) -> None:
-    """Internal test hook for wiring an optional runtime vision provider."""
-    global _vision_provider
+    """Internal test hook for wiring an optional runtime vision provider.
+
+    Pins the provider (manual flag) when set so a subsequent configure_runtime()
+    auto-wire does not clobber it; clears the pin when set to None.
+    """
+    global _vision_provider, _vision_provider_manual
     _vision_provider = provider
+    _vision_provider_manual = provider is not None
 
 
 def _validate_vision_provider(provider: VisionProvider) -> None:
@@ -147,16 +156,52 @@ def _validate_vision_provider(provider: VisionProvider) -> None:
 
 
 def configure_vision_provider(provider: VisionProvider) -> None:
-    """Register a runtime vision provider used by optional screenshot-to-vision wiring."""
+    """Register a runtime vision provider used by optional screenshot-to-vision wiring.
+
+    An explicit call pins the provider — config-driven auto-wiring won't override
+    it until clear_vision_provider() is called.
+    """
     _validate_vision_provider(provider)
-    global _vision_provider
+    global _vision_provider, _vision_provider_manual
     _vision_provider = provider
+    _vision_provider_manual = True
 
 
 def clear_vision_provider() -> None:
-    """Clear the registered runtime vision provider. Safe to call repeatedly."""
-    global _vision_provider
+    """Clear the manually-registered vision provider and fall back to config wiring."""
+    global _vision_provider, _vision_provider_manual
     _vision_provider = None
+    _vision_provider_manual = False
+    _wire_vision_provider()
+
+
+def _build_vision_provider():
+    """Build the configured screenshot-grounding backend, or None. Never raises."""
+    if not _config.grounding.enable_vision:
+        return None
+    try:
+        from bubblegum.core.vision.factory import get_vision_provider
+        return get_vision_provider(_config)
+    except Exception as exc:  # noqa: BLE001 — dormant tier must never crash a run
+        logger.debug("Vision provider unavailable; vision tier stays dormant: %s", exc)
+        return None
+
+
+def _wire_vision_provider() -> None:
+    """Auto-wire the vision provider from config unless one was set manually.
+
+    Idempotent; safe to call at import and after configure_runtime().
+    """
+    global _vision_provider
+    if _vision_provider_manual:
+        return
+    _vision_provider = _build_vision_provider()
+    if _vision_provider is not None:
+        logger.debug(
+            "Vision tier wired: backend=%s provider=%s",
+            _config.grounding.vision_backend,
+            getattr(_vision_provider, "provider_name", "?"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +361,7 @@ def configure_embedding_provider(provider_or_callable) -> None:
 # safe default.
 _wire_llm_grounding_provider()
 _wire_semantic_provider()
+_wire_vision_provider()
 
 
 # ---------------------------------------------------------------------------
@@ -2234,6 +2280,18 @@ async def _ground_with_wait(adapter, intent: StepIntent):
             )
 
 
+def _vision_privacy_ok() -> bool:
+    """Is the vision pipeline allowed to process this screenshot?
+
+    process_screenshots_for_vision is the master opt-in. Sending pixels to a
+    HOSTED model additionally requires send_screenshots; a self-hosted grounder
+    (vision_is_local) keeps them in-network and needs no third-party consent.
+    """
+    if not _config.privacy.process_screenshots_for_vision:
+        return False
+    return bool(_config.privacy.send_screenshots or _config.privacy.vision_is_local)
+
+
 def _should_request_vision_screenshot(intent: StepIntent) -> bool:
     if "vision_candidates" in intent.context:
         return False
@@ -2241,13 +2299,18 @@ def _should_request_vision_screenshot(intent: StepIntent) -> bool:
         return False
     return bool(
         _config.grounding.enable_vision
-        and _config.privacy.send_screenshots
-        and _config.privacy.process_screenshots_for_vision
+        and _vision_privacy_ok()
         and _vision_provider is not None
     )
 
 
 def _allows_provider_vision_cost(intent: StepIntent) -> bool:
+    # Hosted vision is a "high"-cost operation. A self-hosted grounder in your
+    # network is effectively free, so it is reachable under the default policy —
+    # important on mobile, where the a11y hierarchy is often too thin to resolve
+    # from and screenshot grounding is the primary path.
+    if _config.privacy.vision_is_local:
+        return True
     return str(intent.options.max_cost_level).lower() == "high"
 
 
@@ -2264,10 +2327,7 @@ def _maybe_build_vision_candidates(intent: StepIntent) -> list:
         instruction=intent.instruction,
         provider=_vision_provider,
         enabled=bool(_config.grounding.enable_vision),
-        privacy_gate=bool(
-            _config.privacy.send_screenshots
-            and _config.privacy.process_screenshots_for_vision
-        ),
+        privacy_gate=_vision_privacy_ok(),
         context={"channel": intent.channel, "platform": intent.platform},
     )
 
