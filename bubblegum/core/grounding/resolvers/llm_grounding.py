@@ -101,17 +101,40 @@ class LLMGroundingResolver(Resolver):
     cost_level: str       = "medium"
     tier:       int       = 3
 
-    def __init__(self, provider: ModelProvider | None = None) -> None:
+    def __init__(
+        self,
+        provider: ModelProvider | None = None,
+        *,
+        strong_provider: ModelProvider | None = None,
+        escalate_below: float = 0.0,
+    ) -> None:
         self._provider = provider
+        self._strong_provider = strong_provider
+        self._escalate_below = float(escalate_below)
 
-    def set_provider(self, provider: ModelProvider | None) -> None:
-        """Inject (or clear) the model provider at runtime.
+    def set_provider(
+        self,
+        provider: ModelProvider | None,
+        *,
+        strong: ModelProvider | None = None,
+        escalate_below: float = 0.0,
+    ) -> None:
+        """Inject (or clear) the model provider(s) at runtime.
 
         The registry constructs this resolver with no provider (stub mode); the
         SDK calls this once the runtime config resolves a usable provider so the
         AI grounding tier goes live. Clearing (``None``) restores stub mode.
+
+        Args:
+            provider:       the fast model used for grounding.
+            strong:         optional escalation model, tried once when the fast
+                            model resolves below ``escalate_below``.
+            escalate_below: confidence threshold under which escalation fires
+                            (0.0 disables escalation).
         """
         self._provider = provider
+        self._strong_provider = strong
+        self._escalate_below = float(escalate_below)
 
     @property
     def has_provider(self) -> bool:
@@ -165,13 +188,35 @@ class LLMGroundingResolver(Resolver):
             return cached
 
         prompt = _build_prompt(intent.instruction, filtered)
+
+        targets = await self._call_and_parse(self._provider, prompt, intent)
+
+        # Escalation: when the fast model is unsure (empty or below the
+        # escalate_below threshold) and a stronger model is wired, try once more
+        # with the stronger model and keep whichever result is more confident.
+        if self._strong_provider is not None and self._escalate_below > 0.0:
+            best = max((t.confidence for t in targets), default=0.0)
+            if best < self._escalate_below:
+                logger.debug(
+                    "LLMGroundingResolver escalating (fast best=%.2f < %.2f) to model=%s",
+                    best, self._escalate_below, self._strong_provider.model,
+                )
+                strong_targets = await self._call_and_parse(self._strong_provider, prompt, intent)
+                strong_best = max((t.confidence for t in strong_targets), default=0.0)
+                if strong_best > best:
+                    targets = strong_targets
+
+        llm_cache.put(cache_key, targets)
+        return targets
+
+    async def _call_and_parse(self, provider, prompt: str, intent: StepIntent) -> list[ResolvedTarget]:
+        """One model call → parsed targets. Records spend; never raises."""
         logger.debug(
             "LLMGroundingResolver calling provider=%s model=%s action=%s",
-            self._provider.provider_name, self._provider.model, intent.action_type,
+            provider.provider_name, provider.model, intent.action_type,
         )
-
         try:
-            result = await self._provider.complete(
+            result = await provider.complete(
                 prompt,
                 system=_SYSTEM_PROMPT,
                 response_format="json",
@@ -184,16 +229,14 @@ class LLMGroundingResolver(Resolver):
         # per-run budget can hard-stop further Tier-3 calls.
         try:
             cost.record_usage(
-                getattr(result, "model", None) or self._provider.model,
+                getattr(result, "model", None) or provider.model,
                 getattr(result, "input_tokens", 0),
                 getattr(result, "output_tokens", 0),
             )
         except Exception:  # noqa: BLE001 — accounting must never break resolution
             pass
 
-        targets = _parse_response(result.text, self.name)
-        llm_cache.put(cache_key, targets)
-        return targets
+        return _parse_response(result.text, self.name)
 
 
 # ---------------------------------------------------------------------------

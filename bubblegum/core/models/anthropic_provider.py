@@ -41,13 +41,23 @@ class AnthropicProvider(ModelProvider):
 
     provider_name: str = "anthropic"
 
-    def __init__(self, model: str, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        model: str,
+        api_key: str | None = None,
+        *,
+        max_tokens: int = 1024,
+        prompt_caching: bool = True,
+    ) -> None:
         if not model:
             raise ValueError(
                 "AnthropicProvider: 'model' must be set explicitly in bubblegum.yaml."
             )
         self.model = model
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self._max_tokens = int(max_tokens)
+        self._prompt_caching = bool(prompt_caching)
+        self._client = None  # reused across calls (built lazily)
 
     async def complete(
         self,
@@ -99,14 +109,32 @@ class AnthropicProvider(ModelProvider):
 
         t0 = time.monotonic()
 
-        client = _anthropic.AsyncAnthropic(api_key=self._api_key)
+        # Reuse a single AsyncAnthropic client across calls — avoids rebuilding
+        # the client (and its connection pool) on every grounding request.
+        if self._client is None:
+            self._client = _anthropic.AsyncAnthropic(api_key=self._api_key)
+        client = self._client
+
         kwargs: dict = dict(
             model=self.model,
-            max_tokens=1024,
+            max_tokens=self._max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
         if system_prompt:
-            kwargs["system"] = system_prompt
+            # Prompt caching: the system prompt is stable across steps (the
+            # grounding contract), so marking it cacheable lets Anthropic serve
+            # the prefix from cache — big latency/cost win on repeat calls.
+            # Falls back to a plain string when caching is disabled.
+            if self._prompt_caching:
+                kwargs["system"] = [
+                    {
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ]
+            else:
+                kwargs["system"] = system_prompt
 
         response = await client.messages.create(**kwargs)
 
@@ -116,8 +144,17 @@ class AnthropicProvider(ModelProvider):
         if response_format == "json":
             raw_text = _strip_code_fence(raw_text)
 
-        input_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0)
-        output_tokens = getattr(getattr(response, "usage", None), "output_tokens", 0)
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "input_tokens", 0)
+        output_tokens = getattr(usage, "output_tokens", 0)
+        # Cache read/creation tokens (when caching is active) are logged for
+        # observability but not billed as fresh input by the cost estimator.
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        if cache_read:
+            logger.info(
+                "provider_cache provider=%s model=%s cache_read_input_tokens=%d",
+                self.provider_name, self.model, cache_read,
+            )
 
         self._log_call(
             input_tokens=input_tokens,

@@ -40,6 +40,9 @@ class OpenAIProvider(ModelProvider):
         model: str,
         api_key: str | None = None,
         log_calls: bool = True,
+        *,
+        max_tokens: int | None = None,
+        prompt_caching: bool = True,
     ) -> None:
         if not model:
             raise ValueError(
@@ -49,6 +52,11 @@ class OpenAIProvider(ModelProvider):
         self.model = model
         self._api_key = api_key     # None → SDK reads OPENAI_API_KEY env var
         self._log_calls = log_calls
+        self._max_tokens = max_tokens
+        # OpenAI applies prompt caching automatically for long, repeated
+        # prefixes — there is no request flag to set. The parameter is accepted
+        # for provider-agnostic parity and is intentionally a no-op here.
+        self._prompt_caching = bool(prompt_caching)
         self._client: object | None = None  # lazy init to avoid import-time side effects
 
     # ------------------------------------------------------------------
@@ -84,6 +92,8 @@ class OpenAIProvider(ModelProvider):
             "model":    self.model,
             "messages": messages,
         }
+        if self._max_tokens is not None:
+            kwargs["max_tokens"] = int(self._max_tokens)
         if response_format == "json":
             kwargs["response_format"] = {"type": "json_object"}
 

@@ -171,6 +171,28 @@ class AIConfig(BaseModel):
     provider: str         = "anthropic"    # anthropic | openai | gemini | local
     model:    str | None  = None           # must be set explicitly; no surprise API costs
 
+    # --- Tiered model routing (Task #2) --------------------------------------
+    # fast_model handles the high-volume, latency-sensitive work (grounding,
+    # instruction decomposition); strong_model is an optional escalation target
+    # used only when the fast model resolves below the review threshold AND
+    # escalate_on_low_confidence is true. Both default to `model` when unset, so
+    # existing single-model configs behave exactly as before.
+    fast_model:   str | None = None        # e.g. claude-haiku-4-5 / gpt-4o-mini
+    strong_model: str | None = None        # e.g. claude-sonnet-4-6 / gpt-4o
+    escalate_on_low_confidence: bool = False
+
+    # --- Call tuning ----------------------------------------------------------
+    max_tokens:     int  = 1024            # max completion tokens per grounding call
+    prompt_caching: bool = True            # apply provider-native prompt caching where supported
+
+    def resolved_fast_model(self) -> str | None:
+        """Model used for grounding/decompose — fast_model, else the base model."""
+        return self.fast_model or self.model
+
+    def resolved_strong_model(self) -> str | None:
+        """Escalation model — strong_model, else the base model."""
+        return self.strong_model or self.model
+
 
 class PrivacyConfig(BaseModel):
     redact_pii:         bool = True
@@ -390,6 +412,12 @@ ai:
   enabled: true
   provider: anthropic          # anthropic | openai | gemini | local
   model: <your-model-name>     # e.g. claude-sonnet-latest — must be set explicitly
+  # Tiered routing (optional). Both default to `model` when unset.
+  # fast_model: claude-haiku-4-5      # cheap/fast model for grounding + decompose
+  # strong_model: claude-sonnet-4-6   # escalation model for hard cases
+  # escalate_on_low_confidence: false # retry with strong_model when fast is unsure
+  max_tokens: 1024             # max completion tokens per grounding call
+  prompt_caching: true         # use provider-native prompt caching where supported
 
 privacy:
   redact_pii: true

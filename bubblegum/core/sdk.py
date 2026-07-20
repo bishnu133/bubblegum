@@ -177,8 +177,8 @@ def clear_vision_provider() -> None:
 _llm_provider = None  # cached ModelProvider, or None when unavailable
 
 
-def _build_llm_provider():
-    """Build the configured ModelProvider, or None if it cannot be built.
+def _build_llm_provider(role: str = "fast"):
+    """Build the configured ModelProvider for a role, or None if unbuildable.
 
     Never raises — a misconfigured or unavailable provider simply leaves the AI
     grounding tier dormant instead of breaking deterministic resolution.
@@ -187,28 +187,45 @@ def _build_llm_provider():
         return None
     try:
         from bubblegum.core.models.factory import get_provider
-        return get_provider(_config)
+        return get_provider(_config, role=role)
     except Exception as exc:  # noqa: BLE001 — dormant AI tier must never crash a run
-        logger.debug("LLM grounding provider unavailable; AI tier stays dormant: %s", exc)
+        logger.debug("LLM provider (role=%s) unavailable; AI tier stays dormant: %s", role, exc)
         return None
 
 
 def _wire_llm_grounding_provider() -> None:
-    """Inject the configured provider into the registered llm_grounding resolver.
+    """Inject the configured provider(s) into the registered llm_grounding resolver.
 
+    Uses the fast model for grounding and, when ai.escalate_on_low_confidence is
+    set and a distinct strong model is configured, wires a strong model that is
+    tried once when the fast model resolves below the review threshold.
     Idempotent and safe to call repeatedly (e.g. after configure_runtime).
     """
     global _llm_provider
     resolver = _registry.get("llm_grounding")
     if resolver is None or not hasattr(resolver, "set_provider"):
         return
-    _llm_provider = _build_llm_provider()
-    resolver.set_provider(_llm_provider)
+
+    _llm_provider = _build_llm_provider(role="fast")
+
+    strong = None
+    escalate_below = 0.0
+    if (
+        _llm_provider is not None
+        and getattr(_config.ai, "escalate_on_low_confidence", False)
+        and _config.ai.resolved_strong_model() != _config.ai.resolved_fast_model()
+    ):
+        strong = _build_llm_provider(role="strong")
+        if strong is not None:
+            escalate_below = _config.grounding.review_threshold
+
+    resolver.set_provider(_llm_provider, strong=strong, escalate_below=escalate_below)
     if _llm_provider is not None:
         logger.debug(
-            "LLM grounding tier wired: provider=%s model=%s",
+            "LLM grounding tier wired: provider=%s model=%s strong=%s",
             getattr(_llm_provider, "provider_name", "?"),
             getattr(_llm_provider, "model", "?"),
+            getattr(strong, "model", None),
         )
 
 
@@ -1468,10 +1485,14 @@ def _llm_parse_allowed() -> bool:
 
 
 def _get_parse_provider():
-    """Return a configured ModelProvider, or None if AI parsing is unavailable."""
+    """Return a configured ModelProvider, or None if AI parsing is unavailable.
+
+    Uses the fast model — instruction decomposition is a cheap, high-volume call
+    that does not need the strong model.
+    """
     try:
         from bubblegum.core.models.factory import get_provider
-        return get_provider(_config)
+        return get_provider(_config, role="fast")
     except Exception as exc:  # noqa: BLE001 - parsing must degrade gracefully
         logger.warning("LLM parse provider unavailable; using deterministic parse: %s", exc)
         return None

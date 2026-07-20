@@ -51,7 +51,7 @@ def test_sdk_wiring_stays_dormant_when_provider_cannot_build(monkeypatch):
     # path is never affected.
     import bubblegum.core.sdk as sdk
 
-    monkeypatch.setattr(sdk, "_build_llm_provider", lambda: None)
+    monkeypatch.setattr(sdk, "_build_llm_provider", lambda role="fast": None)
     try:
         sdk._wire_llm_grounding_provider()  # must not raise
         resolver = sdk._registry.get("llm_grounding")
@@ -88,7 +88,7 @@ def test_configure_llm_provider_injects_and_clears():
 def test_wiring_goes_live_when_provider_builds(monkeypatch):
     import bubblegum.core.sdk as sdk
 
-    monkeypatch.setattr(sdk, "_build_llm_provider", lambda: _FakeProvider())
+    monkeypatch.setattr(sdk, "_build_llm_provider", lambda role="fast": _FakeProvider())
     try:
         sdk._wire_llm_grounding_provider()
         resolver = sdk._registry.get("llm_grounding")
