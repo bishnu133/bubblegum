@@ -1,7 +1,7 @@
 """
 bubblegum/core/grounding/resolvers/llm_grounding.py
 =====================================================
-LLMGroundingResolver — Tier 3, priority 50, web + mobile, cost_level=high.
+LLMGroundingResolver — Tier 3, priority 50, web + mobile, cost_level=medium.
 
 Sends a filtered subset of the a11y snapshot to a configured LLM text model
 and parses the JSON response into a ResolvedTarget.
@@ -93,11 +93,30 @@ class LLMGroundingResolver(Resolver):
     name:       str       = "llm_grounding"
     priority:   int       = 50
     channels:   list[str] = ["web", "mobile"]
-    cost_level: str       = "high"
+    # Text grounding sends only a *filtered* a11y subtree (not screenshots), so
+    # it is materially cheaper than vision — classified "medium" so the AI
+    # fallback is reachable under the default max_cost_level="medium" policy.
+    # Vision/OCR-image resolvers remain "high". The tier still stays dormant
+    # until a provider is wired (ai.model set), so there is no surprise spend.
+    cost_level: str       = "medium"
     tier:       int       = 3
 
     def __init__(self, provider: ModelProvider | None = None) -> None:
         self._provider = provider
+
+    def set_provider(self, provider: ModelProvider | None) -> None:
+        """Inject (or clear) the model provider at runtime.
+
+        The registry constructs this resolver with no provider (stub mode); the
+        SDK calls this once the runtime config resolves a usable provider so the
+        AI grounding tier goes live. Clearing (``None``) restores stub mode.
+        """
+        self._provider = provider
+
+    @property
+    def has_provider(self) -> bool:
+        """True when a model provider is wired — i.e. the AI tier can run."""
+        return self._provider is not None
 
     def required_context(self) -> list[str]:
         return ["a11y_snapshot"]

@@ -115,6 +115,9 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
     )
     # X2: refresh the per-run Tier-3 cost budget from the (re)loaded config.
     _cost.configure_budget(_config.grounding.max_run_cost_usd)
+    # Re-wire the AI grounding tier from the (re)loaded config so a provider/
+    # model change takes effect without a process restart.
+    _wire_llm_grounding_provider()
     return _config
 
 
@@ -153,6 +156,79 @@ def clear_vision_provider() -> None:
     """Clear the registered runtime vision provider. Safe to call repeatedly."""
     global _vision_provider
     _vision_provider = None
+
+
+# ---------------------------------------------------------------------------
+# LLM grounding provider wiring (Tier 3 text grounding)
+# ---------------------------------------------------------------------------
+#
+# The registry builds LLMGroundingResolver in "stub mode" (no provider), so the
+# AI grounding tier is dormant until a real ModelProvider is injected. We wire
+# it here from the runtime config so the documented "AI when deterministic
+# resolvers fail" behaviour actually fires. Once the tier returns a target, the
+# existing hydrate -> execute -> record_success loop persists the *durable* ref
+# to the SQLite MemoryLayer, so the next run replays it as a Tier-1 cache hit
+# with zero model calls.
+#
+# Wiring is strictly best-effort: any failure to build the provider (AI
+# disabled, ai.model unset, SDK/key missing) leaves the resolver in stub mode
+# so the deterministic path is never affected.
+
+_llm_provider = None  # cached ModelProvider, or None when unavailable
+
+
+def _build_llm_provider():
+    """Build the configured ModelProvider, or None if it cannot be built.
+
+    Never raises — a misconfigured or unavailable provider simply leaves the AI
+    grounding tier dormant instead of breaking deterministic resolution.
+    """
+    if not _config.ai_enabled:
+        return None
+    try:
+        from bubblegum.core.models.factory import get_provider
+        return get_provider(_config)
+    except Exception as exc:  # noqa: BLE001 — dormant AI tier must never crash a run
+        logger.debug("LLM grounding provider unavailable; AI tier stays dormant: %s", exc)
+        return None
+
+
+def _wire_llm_grounding_provider() -> None:
+    """Inject the configured provider into the registered llm_grounding resolver.
+
+    Idempotent and safe to call repeatedly (e.g. after configure_runtime).
+    """
+    global _llm_provider
+    resolver = _registry.get("llm_grounding")
+    if resolver is None or not hasattr(resolver, "set_provider"):
+        return
+    _llm_provider = _build_llm_provider()
+    resolver.set_provider(_llm_provider)
+    if _llm_provider is not None:
+        logger.debug(
+            "LLM grounding tier wired: provider=%s model=%s",
+            getattr(_llm_provider, "provider_name", "?"),
+            getattr(_llm_provider, "model", "?"),
+        )
+
+
+def configure_llm_provider(provider) -> None:
+    """Explicitly set the model provider for the AI grounding tier.
+
+    Parity with configure_vision_provider — lets callers inject a custom or
+    pre-authenticated provider instead of building one from config. Pass None to
+    return the tier to stub mode.
+    """
+    global _llm_provider
+    resolver = _registry.get("llm_grounding")
+    if resolver is not None and hasattr(resolver, "set_provider"):
+        resolver.set_provider(provider)
+    _llm_provider = provider
+
+
+# Wire the AI grounding tier at import time from the initial config. Best-effort:
+# a dormant tier (AI disabled / model unset / SDK missing) is the safe default.
+_wire_llm_grounding_provider()
 
 
 # ---------------------------------------------------------------------------
