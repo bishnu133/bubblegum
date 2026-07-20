@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import functools
 import inspect
 import logging
 import re
@@ -95,6 +96,38 @@ from bubblegum.core import cost as _cost  # noqa: E402
 _cost.configure_budget(_config.grounding.max_run_cost_usd)
 _cost.configure_pricing(_config.ai.pricing)
 
+from bubblegum.core import observability as _observability  # noqa: E402
+
+
+def _configure_observability_from_config() -> None:
+    """Install the observability sink described by config.observability."""
+    try:
+        _observability.configure_observability(
+            _observability.build_sink_from_config(_config)
+        )
+    except Exception as exc:  # noqa: BLE001 — observability must never break startup
+        logger.debug("observability configuration failed: %s", exc)
+
+
+_configure_observability_from_config()
+
+
+def _observed(fn):
+    """Decorator: emit a streaming observation for the StepResult a public
+    entrypoint returns. Fail-safe — observability never affects the result."""
+
+    @functools.wraps(fn)
+    async def _wrapper(*args, **kwargs):
+        result = await fn(*args, **kwargs)
+        try:
+            if isinstance(result, StepResult):
+                _observability.record(result)
+        except Exception as exc:  # noqa: BLE001 — observability must never break a run
+            logger.debug("observability emit failed: %s", exc)
+        return result
+
+    return _wrapper
+
 
 def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
     """Configure SDK runtime from BubblegumConfig and rewire thresholds.
@@ -120,6 +153,8 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
     # X2: refresh the per-run Tier-3 cost budget + pricing from the (re)loaded config.
     _cost.configure_budget(_config.grounding.max_run_cost_usd)
     _cost.configure_pricing(_config.ai.pricing)
+    # Refresh the observability sink from the (re)loaded config.
+    _configure_observability_from_config()
     # Re-wire the AI grounding + semantic + vision tiers from the (re)loaded
     # config so a provider/model/backend change takes effect without a restart.
     _wire_llm_grounding_provider()
@@ -181,6 +216,8 @@ def _build_vision_provider():
     """Build the configured screenshot-grounding backend, or None. Never raises."""
     if not _config.grounding.enable_vision:
         return None
+    if _config.grounding.ai_mode == "replay":
+        return None  # replay mode: no live vision calls
     try:
         from bubblegum.core.vision.factory import get_vision_provider
         return get_vision_provider(_config)
@@ -233,6 +270,8 @@ def _build_llm_provider(role: str = "fast"):
     """
     if not _config.ai_enabled:
         return None
+    if _config.grounding.ai_mode == "replay":
+        return None  # replay mode: resolve only from cache + deterministic tiers
     try:
         from bubblegum.core.models.factory import get_provider
         return get_provider(_config, role=role)
@@ -308,6 +347,8 @@ def _build_embedding_provider():
     """Build the configured embedding provider, or None. Never raises."""
     if not _config.ai_enabled or not _config.grounding.enable_semantic:
         return None
+    if _config.grounding.ai_mode == "replay":
+        return None  # replay mode: no live embedding calls
     try:
         from bubblegum.core.models.embeddings import get_embedding_provider
         return get_embedding_provider(_config)
@@ -470,6 +511,7 @@ def _resolve_healing_advisory(intent: StepIntent, target: ResolvedTarget) -> dic
 # Public API
 # ---------------------------------------------------------------------------
 
+@_observed
 async def act(
     instruction: str,
     channel: str = "web",
@@ -703,6 +745,7 @@ def _quoted_segments(instruction: str) -> list[str]:
     return out
 
 
+@_observed
 async def verify(
     instruction: str,
     channel: str = "web",
@@ -1295,6 +1338,7 @@ async def _maybe_hide_keyboard(adapter, channel: str, action_type: str) -> None:
         logger.debug("auto hide_keyboard skipped: %s", exc)
 
 
+@_observed
 async def extract(
     instruction: str,
     channel: str = "web",
@@ -1410,6 +1454,7 @@ async def extract(
     )
 
 
+@_observed
 async def recover(
     page=None,
     failed_selector: str | None = None,

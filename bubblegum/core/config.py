@@ -65,6 +65,12 @@ class GroundingConfig(BaseModel):
     # click is riskier than an element click, so it is OFF by default.
     coordinate_click_fallback: bool = False
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
+    # AI execution mode (Task #8):
+    #   live   — call models as needed (default)
+    #   replay — never call a model; resolve only from deterministic resolvers +
+    #            the learned memory cache. Warm the cache once in `live`, commit
+    #            it, then run CI in `replay` for deterministic, zero-cost runs.
+    ai_mode:            str   = "live"      # live | replay
     memory_ttl_days:    int   = 7
     memory_max_failures: int  = 3
     # Re-ground retries for late-rendered (SPA) elements — see ExecutionOptions.
@@ -252,6 +258,18 @@ class PrivacyConfig(BaseModel):
     vision_is_local:    bool = False
 
 
+class ObservabilityConfig(BaseModel):
+    """Streaming per-step observability (Task #8).
+
+    Emits a structured observation (winner, candidates, timing, cost, outcome)
+    per step to a pluggable sink as it happens. Off by default.
+    """
+    enabled:      bool = False
+    export:       str  = "none"   # none | jsonl | otel | both
+    file:         str  = ".bubblegum/observability.jsonl"
+    service_name: str  = "bubblegum"
+
+
 class DebugConfig(BaseModel):
     log_raw_payloads:   bool = False       # NEVER enable in CI or production
     log_resolver_traces: bool = True       # safe — logs resolver names + confidence only
@@ -320,6 +338,7 @@ class BubblegumConfig(BaseModel):
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     webview_switching: WebviewSwitchingConfig = Field(default_factory=WebviewSwitchingConfig)
 
     # ------------------------------------------------------------------
@@ -437,6 +456,7 @@ grounding:
   semantic_min_similarity: 0.72  # min cosine similarity to emit a semantic candidate
   coordinate_click_fallback: false  # click bbox-center when a vision/OCR target can't map to an element (X3)
   ai_first: false          # true = try AI (vision/LLM) before deterministic resolvers
+  ai_mode: live            # live | replay (replay = cache + deterministic only, no model calls)
   memory_ttl_days: 7
   memory_max_failures: 3
   resolve_retries: 2               # re-ground attempts for late-rendered SPA elements
@@ -501,4 +521,10 @@ privacy:
 debug:
   log_raw_payloads: false      # NEVER enable in CI or production
   log_resolver_traces: true    # safe — logs resolver names + confidence only
+
+observability:
+  enabled: false               # stream a structured observation per step
+  export: none                 # none | jsonl | otel | both
+  file: .bubblegum/observability.jsonl
+  service_name: bubblegum      # OTel service name (export: otel|both)
 """
