@@ -219,6 +219,18 @@ class AIConfig(BaseModel):
     max_tokens:     int  = 1024            # max completion tokens per grounding call
     prompt_caching: bool = True            # apply provider-native prompt caching where supported
 
+    # --- Resilience (Task #7) ------------------------------------------------
+    # Per-call hard timeout + bounded exponential backoff so a slow/overloaded
+    # model API never hangs a suite or fails a run on a transient blip.
+    timeout_ms:       int = 30_000
+    max_retries:      int = 2              # retries after the first attempt (transient errors only)
+    retry_backoff_ms: int = 500           # base backoff; grows 2^attempt with jitter
+
+    # --- Pricing overrides (Task #7) -----------------------------------------
+    # model -> [usd_per_1k_input, usd_per_1k_output]. Merged ahead of the
+    # built-in table so pricing updates need no library release.
+    pricing: dict[str, list[float]] = Field(default_factory=dict)
+
     def resolved_fast_model(self) -> str | None:
         """Model used for grounding/decompose — fast_model, else the base model."""
         return self.fast_model or self.model
@@ -466,6 +478,13 @@ ai:
   # escalate_on_low_confidence: false # retry with strong_model when fast is unsure
   max_tokens: 1024             # max completion tokens per grounding call
   prompt_caching: true         # use provider-native prompt caching where supported
+  timeout_ms: 30000            # per-call hard timeout
+  max_retries: 2               # retries on transient errors (rate-limit / 5xx / timeout)
+  retry_backoff_ms: 500        # base backoff (grows 2^attempt with jitter)
+  # Price overrides so cost accounting stays current without a release:
+  # pricing:
+  #   claude-haiku-4-5: [0.0008, 0.004]     # [usd_per_1k_input, usd_per_1k_output]
+  #   gpt-4o-mini: [0.00015, 0.0006]
   # Semantic Tier-2 embeddings (optional). Set embedding_model to activate.
   # embedding_provider: openai            # defaults to `provider` when unset
   # embedding_model: text-embedding-3-small

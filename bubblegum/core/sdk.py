@@ -93,6 +93,7 @@ _visual_ref_hydrator = VisualRefHydrator()
 # X2: apply the per-run Tier-3 cost budget from config to the global tracker.
 from bubblegum.core import cost as _cost  # noqa: E402
 _cost.configure_budget(_config.grounding.max_run_cost_usd)
+_cost.configure_pricing(_config.ai.pricing)
 
 
 def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
@@ -116,8 +117,9 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
         reject_threshold=_config.grounding.reject_threshold,
         ai_first=_config.grounding.ai_first,
     )
-    # X2: refresh the per-run Tier-3 cost budget from the (re)loaded config.
+    # X2: refresh the per-run Tier-3 cost budget + pricing from the (re)loaded config.
     _cost.configure_budget(_config.grounding.max_run_cost_usd)
+    _cost.configure_pricing(_config.ai.pricing)
     # Re-wire the AI grounding + semantic + vision tiers from the (re)loaded
     # config so a provider/model/backend change takes effect without a restart.
     _wire_llm_grounding_provider()

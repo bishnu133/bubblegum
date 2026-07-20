@@ -23,7 +23,9 @@ import logging
 import os
 import time
 
+from bubblegum.core.models._shared import strip_code_fence as _strip_code_fence
 from bubblegum.core.models.base import CompletionResult, ModelProvider
+from bubblegum.core.models.resilience import call_with_resilience
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,9 @@ class AnthropicProvider(ModelProvider):
         *,
         max_tokens: int = 1024,
         prompt_caching: bool = True,
+        timeout_ms: int = 30_000,
+        max_retries: int = 2,
+        retry_backoff_ms: int = 500,
     ) -> None:
         if not model:
             raise ValueError(
@@ -57,6 +62,9 @@ class AnthropicProvider(ModelProvider):
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self._max_tokens = int(max_tokens)
         self._prompt_caching = bool(prompt_caching)
+        self._timeout_s = max(int(timeout_ms), 0) / 1000.0
+        self._max_retries = max(int(max_retries), 0)
+        self._backoff_ms = max(int(retry_backoff_ms), 0)
         self._client = None  # reused across calls (built lazily)
 
     async def complete(
@@ -154,7 +162,12 @@ class AnthropicProvider(ModelProvider):
             else:
                 kwargs["system"] = system_prompt
 
-        response = await client.messages.create(**kwargs)
+        response = await call_with_resilience(
+            lambda: client.messages.create(**kwargs),
+            timeout_s=self._timeout_s,
+            max_retries=self._max_retries,
+            backoff_ms=self._backoff_ms,
+        )
 
         latency_ms = int((time.monotonic() - t0) * 1000)
 
@@ -229,14 +242,5 @@ def _extract_tool_input(response) -> dict | None:
     return None
 
 
-def _strip_code_fence(raw: str) -> str:
-    """Remove markdown code fences that some models wrap JSON in."""
-    stripped = raw.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        # Drop opening fence (```json or ```) and closing fence (```)
-        inner = lines[1:] if len(lines) > 1 else lines
-        if inner and inner[-1].strip() == "```":
-            inner = inner[:-1]
-        return "\n".join(inner).strip()
-    return stripped
+# strip_code_fence now lives in bubblegum.core.models._shared (single source),
+# imported above as _strip_code_fence.

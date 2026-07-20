@@ -38,16 +38,42 @@ _PRICES: dict[str, tuple[float, float]] = {
 }
 _DEFAULT_PRICE: tuple[float, float] = (0.003, 0.015)
 
+# Config-supplied price overrides (ai.pricing), merged ahead of the built-in
+# table so pricing can be updated without a library release. Populated by
+# configure_pricing() at runtime.
+_OVERRIDES: dict[str, tuple[float, float]] = {}
+
+
+def configure_pricing(mapping: dict | None) -> None:
+    """Set per-model price overrides from config (model -> [in_per_1k, out_per_1k]).
+
+    Replaces any previous overrides. Malformed entries are skipped so a bad
+    config value can never break cost accounting.
+    """
+    _OVERRIDES.clear()
+    for model, price in (mapping or {}).items():
+        try:
+            in_p, out_p = float(price[0]), float(price[1])
+        except (TypeError, ValueError, IndexError):
+            logger.warning("Ignoring malformed ai.pricing entry for %r: %r", model, price)
+            continue
+        _OVERRIDES[str(model).strip().lower()] = (in_p, out_p)
+
+
+def _lookup(table: dict[str, tuple[float, float]], key: str):
+    if key in table:
+        return table[key]
+    # Prefix match so dated/suffixed model ids still price reasonably.
+    for name, price in table.items():
+        if key.startswith(name) or name in key:
+            return price
+    return None
+
 
 def _price_for(model: str) -> tuple[float, float]:
     key = (model or "").strip().lower()
-    if key in _PRICES:
-        return _PRICES[key]
-    # Prefix match so dated/suffixed model ids still price reasonably.
-    for name, price in _PRICES.items():
-        if key.startswith(name) or name in key:
-            return price
-    return _DEFAULT_PRICE
+    # Config overrides win, then the built-in table, then a conservative default.
+    return _lookup(_OVERRIDES, key) or _lookup(_PRICES, key) or _DEFAULT_PRICE
 
 
 def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:

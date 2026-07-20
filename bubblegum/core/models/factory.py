@@ -54,10 +54,13 @@ def get_provider(config, role: str = "default") -> ModelProvider:
             f"(provider={provider_name!r}, role={role!r})."
         )
 
-    # Shared call-tuning knobs applied to every real provider.
+    # Shared call-tuning + resilience knobs applied to every real provider.
     tuning = {
         "max_tokens": config.ai.max_tokens,
         "prompt_caching": config.ai.prompt_caching,
+        "timeout_ms": config.ai.timeout_ms,
+        "max_retries": config.ai.max_retries,
+        "retry_backoff_ms": config.ai.retry_backoff_ms,
     }
 
     if provider_name == "openai":

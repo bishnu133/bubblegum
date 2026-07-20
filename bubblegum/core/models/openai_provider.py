@@ -19,6 +19,7 @@ import time
 import logging
 
 from bubblegum.core.models.base import CompletionResult, ModelProvider
+from bubblegum.core.models.resilience import call_with_resilience
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,9 @@ class OpenAIProvider(ModelProvider):
         *,
         max_tokens: int | None = None,
         prompt_caching: bool = True,
+        timeout_ms: int = 30_000,
+        max_retries: int = 2,
+        retry_backoff_ms: int = 500,
     ) -> None:
         if not model:
             raise ValueError(
@@ -66,6 +70,9 @@ class OpenAIProvider(ModelProvider):
         self._api_key = api_key     # None → SDK reads OPENAI_API_KEY env var
         self._log_calls = log_calls
         self._max_tokens = max_tokens
+        self._timeout_s = max(int(timeout_ms), 0) / 1000.0
+        self._max_retries = max(int(max_retries), 0)
+        self._backoff_ms = max(int(retry_backoff_ms), 0)
         # OpenAI applies prompt caching automatically for long, repeated
         # prefixes — there is no request flag to set. The parameter is accepted
         # for provider-agnostic parity and is intentionally a no-op here.
@@ -125,8 +132,17 @@ class OpenAIProvider(ModelProvider):
             kwargs["response_format"] = {"type": "json_object"}
 
         t0 = time.monotonic()
+
+        async def _create():
+            return await call_with_resilience(
+                lambda: client.chat.completions.create(**kwargs),
+                timeout_s=self._timeout_s,
+                max_retries=self._max_retries,
+                backoff_ms=self._backoff_ms,
+            )
+
         try:
-            response = await client.chat.completions.create(**kwargs)
+            response = await _create()
         except Exception as exc:
             # A model/endpoint that rejects strict json_schema falls back once to
             # json_object mode so structured output never hard-fails a run.
@@ -136,7 +152,7 @@ class OpenAIProvider(ModelProvider):
                     self.model,
                 )
                 kwargs["response_format"] = {"type": "json_object"}
-                response = await client.chat.completions.create(**kwargs)
+                response = await _create()
             else:
                 logger.error(
                     "OpenAI API call failed provider=%s model=%s",
