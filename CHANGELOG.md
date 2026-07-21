@@ -1,5 +1,27 @@
 # Unreleased
 
+## 0.0.6a52 — fix(web): recover custom-select steps the AI tier grounded but couldn't execute
+
+Fixes a flake introduced by wiring the AI grounding tier in a51. On custom
+`role=combobox` selects (Ant Design / MUI / CDK) whose real accessible name
+differs from their visible label, `llm_grounding` can return a confident-looking
+ref like `role=combobox[name="Recommendation Tags"]` that does not actually
+resolve on the page — so `select_option` (or the locator wait) times out. The
+deterministic DOM select-trigger handler that used to catch these only ran when
+*grounding* raised, not when grounding succeeded and *execution* failed, so the
+step failed intermittently (it passed whenever the DOM handler or memory cache
+won the race instead).
+
+- **Execution-failure recovery.** When a grounded target resolves but fails to
+  execute, the deterministic DOM handlers (select-trigger, clickable, input) are
+  retried once; if one executes, the step is **recovered** and the working ref
+  is cached, so the next run resolves it directly (killing the flake). This runs
+  **only on failure**, so every currently-passing step is untouched. Web only,
+  best-effort, never raises. New `tests/unit/test_execution_failure_recovery.py`.
+
+Engine `0.0.6a51` → `0.0.6a52`; npm client `0.0.6-alpha.6` → `0.0.6-alpha.7`.
+
+
 ## 0.0.6a51 — feat: AI grounding overhaul — accuracy, speed, cost, enterprise
 
 A focused pass to make the AI layer effective, faster, cheaper, and
