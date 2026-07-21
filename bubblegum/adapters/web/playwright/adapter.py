@@ -1574,7 +1574,13 @@ class PlaywrightAdapter(BaseAdapter):
                     await asyncio.sleep(_RETRY_DELAY_SECONDS)
                     continue
                 duration_ms = int((time.monotonic() - t0) * 1000)
-                logger.error("Execution failed for ref=%r: %s", ref, exc)
+                # Logged at DEBUG, not ERROR: the SDK may still recover this step
+                # (e.g. re-resolve a custom select / modal field via a DOM
+                # handler), in which case the step ultimately PASSES and an ERROR
+                # line here is misleading. On a genuine, unrecovered failure the
+                # SDK returns a failed StepResult carrying this same error, which
+                # the caller/report surfaces — so no detail is lost.
+                logger.debug("Execution attempt failed for ref=%r: %s", ref, exc)
                 if wait_used:
                     target.metadata["wait_used"] = True
                     target.metadata["wait_mode"] = wait_mode

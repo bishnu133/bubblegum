@@ -1,5 +1,29 @@
 # Unreleased
 
+## 0.0.6a54 — fix(log): quiet the "Execution failed" line on recovered steps; feat(report): cross-run suite summary
+
+Two reporting/observability improvements from real-app feedback.
+
+- **Recovered steps no longer log a scary "Execution failed" ERROR.** When a
+  step's first execution fails but the SDK then recovers it (custom select /
+  modal field via a DOM handler), the adapter used to log
+  `Execution failed for ref=…` at ERROR *before* the recovery decision — so a
+  step that ultimately PASSED looked failed in the log. That per-attempt line is
+  now DEBUG; the authoritative outcome is the step result (`recovered`/`failed`),
+  and a genuine, unrecovered failure still carries the full error in its
+  StepResult (surfaced by the caller/report). No detail is lost.
+- **Cross-run suite summary report.** Reports are written per session (per
+  process), so running several tests each in their own process and writing to
+  the same paths left only the last one. New `summary` report option upserts
+  each run (keyed by `suiteName`) into a sibling `*.json` manifest and renders an
+  aggregated HTML overview: every test with its pass/self-healed/fail/skip
+  counts, plus grand totals (tests run/passed/failed, total steps). Re-running a
+  test replaces its row. Available via the bridge `report.write` `summary` param
+  and the TS client `report({ summary, suiteName })`.
+
+Engine `0.0.6a53` → `0.0.6a54`; npm client `0.0.6-alpha.8` → `0.0.6-alpha.9`.
+
+
 ## 0.0.6a53 — fix(web): don't type into a disabled same-named field behind an open modal
 
 Follow-up to a52, for the popup-input flake reported on the "Add a Product"

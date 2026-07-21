@@ -338,10 +338,12 @@ export class Bubblegum {
     const json = resolve(opts.json, "bubblegum_report.json");
     const junit = resolve(opts.junit, "bubblegum_report.xml");
     const allure = resolve(opts.allure, "allure-results");
+    const summary = resolve(opts.summary, "bubblegum-summary.html");
     if (html) params.html = html;
     if (json) params.json = json;
     if (junit) params.junit = junit;
     if (allure) params.allure = allure;
+    if (summary) params.summary = summary;
     if (opts.title) params.title = opts.title;
     if (opts.suiteName) params.suite_name = opts.suiteName;
 

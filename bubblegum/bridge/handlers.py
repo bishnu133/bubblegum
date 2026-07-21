@@ -140,13 +140,21 @@ class BridgeHandlers:
             if params.get("allure"):
                 from bubblegum.reporting.allure_report import write_allure_results
                 written["allure"] = str(write_allure_results(results, params["allure"], suite_name=suite_name))
+            if params.get("summary"):
+                # Cross-run suite summary: upserts this run (keyed by suite_name)
+                # into a manifest and renders an aggregated overview, so several
+                # independently-run tests show one page instead of overwriting.
+                from bubblegum.reporting.summary_report import write_summary
+                written["summary"] = str(
+                    write_summary(results, params["summary"], suite_name=suite_name, title=title)
+                )
         except OSError as exc:
             raise p.BridgeError(p.ENGINE_ERROR, f"report.write failed: {exc}") from exc
 
         if not written:
             raise p.BridgeError(
                 p.INVALID_PARAMS,
-                "report.write: specify at least one of html / json / junit / allure",
+                "report.write: specify at least one of html / json / junit / allure / summary",
             )
         return {"written": written, "steps": len(results)}
 

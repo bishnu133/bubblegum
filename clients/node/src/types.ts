@@ -61,9 +61,16 @@ export interface ReportOptions {
   junit?: string | boolean;
   /** Allure 2 results *directory* (view with `allure serve <dir>`). */
   allure?: string | boolean;
+  /**
+   * Cross-run suite summary HTML. Each test run upserts itself (keyed by
+   * `suiteName`) into a sibling `*.json` manifest, so several independently-run
+   * tests aggregate into one overview (per-test pass/fail + grand totals)
+   * instead of overwriting each other. Pass a distinct `suiteName` per test.
+   */
+  summary?: string | boolean;
   /** Report title (HTML/JSON). */
   title?: string;
-  /** Suite name (Allure/JUnit). */
+  /** Suite / test name (Allure/JUnit, and the summary manifest key). */
   suiteName?: string;
 }
 
