@@ -44,6 +44,31 @@ def test_write_summary_aggregates_multiple_tests(tmp_path):
     assert "Tests" in text and "Self-healed" in text
 
 
+def test_combined_report_has_tabs_and_per_test_detail(tmp_path):
+    html = tmp_path / "bubblegum-summary.html"
+    write_summary(_mk("passed", "recovered"), html, suite_name="Badge Creation")
+    write_summary(_mk("passed", "passed"), html, suite_name="EDSH Challenge Creation")
+    text = html.read_text()
+
+    # Two tabs: Summary + Test details.
+    assert 'data-panel="summary"' in text and 'data-panel="details"' in text
+    assert 'id="panel-summary"' in text and 'id="panel-details"' in text
+    # One collapsible per test, each embedding its detail via an isolated iframe.
+    assert text.count("<details class='test") == 2
+    assert text.count('srcdoc="') == 2
+    # Each test's full detail report was persisted to the sidecar dir.
+    detail_dir = tmp_path / "bubblegum-summary.d"
+    assert (detail_dir / "Badge-Creation.html").exists()
+    assert (detail_dir / "EDSH-Challenge-Creation.html").exists()
+
+
+def test_manifest_records_detail_file(tmp_path):
+    html = tmp_path / "s.html"
+    write_summary(_mk("passed"), html, suite_name="My Test")
+    manifest = json.loads((tmp_path / "s.json").read_text())
+    assert manifest["runs"][0]["detail_file"] == "My-Test.html"
+
+
 def test_rerun_upserts_not_duplicates(tmp_path):
     html = tmp_path / "s.html"
     write_summary(_mk("passed"), html, suite_name="EDSH")

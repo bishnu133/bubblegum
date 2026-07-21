@@ -1,5 +1,27 @@
 # Unreleased
 
+## 0.0.6a55 — feat(report): one combined report — Summary tab + per-test collapsible details
+
+Follow-up to the a54 summary. Instead of a separate summary file plus a
+single per-session detail report (which showed only the last test), the
+``summary`` report is now ONE combined, self-contained HTML with two tabs:
+
+- **Summary** — every test with pass / self-healed / fail / skip counts + grand
+  totals (as before).
+- **Test details** — one collapsible ``<details>`` per test, each embedding that
+  test's full step-by-step report (the same content as the standalone
+  ``bubblegum-report.html``, screenshots included) inside an isolated
+  ``<iframe srcdoc>`` so each test's styling/scripts cannot collide.
+
+Each run writes its full detail HTML into a sibling ``<name>.d/`` directory and
+upserts its row in the ``<name>.json`` manifest, so the combined report is
+rebuilt from every recorded test — not just the last process's. Re-running a
+test replaces its row and detail. No new API surface: still driven by
+``report({ summary, suiteName })`` / the bridge ``report.write`` ``summary`` param.
+
+Engine `0.0.6a54` → `0.0.6a55`; npm client `0.0.6-alpha.9` → `0.0.6-alpha.10`.
+
+
 ## 0.0.6a54 — fix(log): quiet the "Execution failed" line on recovered steps; feat(report): cross-run suite summary
 
 Two reporting/observability improvements from real-app feedback.
