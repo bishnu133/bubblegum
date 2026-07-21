@@ -108,7 +108,7 @@ class _CountingProvider:
     def __init__(self):
         self.calls = 0
 
-    async def complete(self, prompt, *, system=None, response_format=None):
+    async def complete(self, prompt, *, system=None, response_format=None, json_schema=None):
         self.calls += 1
         return CompletionResult(
             text='{"ref": "role=button[name=\\"Login\\"]", "confidence": 0.91}',

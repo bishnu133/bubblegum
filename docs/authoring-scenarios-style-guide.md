@@ -1,5 +1,10 @@
 # Authoring test scenarios for `bubblegum convert`
 
+> ⏸️ **Maintenance mode (paused).** `bubblegum convert` (and `bubblegum record`)
+> are paused — no new feature work while development focuses on web/mobile
+> automation and AI grounding. Still available and supported for existing users;
+> unchanged CLI/config/output. Bug fixes only.
+
 This is the **rules layer for humans** — how to write scenarios in the
 spreadsheet so they convert into automation with the fewest TODOs. (The
 machine-readable half is the `glossary:` / `data:` sections of

@@ -452,9 +452,15 @@ class TestLLMGroundingResolver:
         targets = resolver.resolve(intent)
         assert targets == []
 
-    def test_cost_level_is_high(self):
+    def test_cost_level_is_medium(self):
+        # Text grounding sends only a filtered a11y subtree (no screenshots), so
+        # it is classified "medium" — reachable under the default
+        # max_cost_level="medium" policy, unlike the "high" vision/OCR-image
+        # resolvers. It stays dormant until a provider is wired, so there is no
+        # surprise spend. (Reclassified from "high" when the AI tier was wired
+        # live so the documented AI fallback actually fires by default.)
         resolver = LLMGroundingResolver(provider=_mock_provider("{}"))
-        assert resolver.cost_level == "high"
+        assert resolver.cost_level == "medium"
         assert resolver.tier == 3
 
     def test_blocked_by_low_cost_policy(self):

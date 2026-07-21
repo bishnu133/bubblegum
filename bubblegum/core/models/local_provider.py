@@ -46,6 +46,7 @@ class LocalProvider(ModelProvider):
         *,
         system: str | None = None,
         response_format: str | None = None,
+        json_schema: dict | None = None,
     ) -> CompletionResult:
         raise NotImplementedError(
             "LocalProvider (Ollama) is a Phase 2 stub. "

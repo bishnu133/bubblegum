@@ -61,6 +61,7 @@ class ModelProvider(ABC):
         *,
         system: str | None = None,
         response_format: str | None = None,   # "json" requests JSON-mode output
+        json_schema: dict | None = None,      # guaranteed-schema structured output
     ) -> CompletionResult:
         """
         Send a completion request to the model and return a CompletionResult.
@@ -69,6 +70,15 @@ class ModelProvider(ABC):
             prompt:          User-turn content. NEVER logged in raw form.
             system:          System prompt. NEVER logged in raw form.
             response_format: Pass "json" to request structured JSON output.
+            json_schema:     Optional normalized schema for guaranteed-schema
+                             output — a dict with keys ``name`` (str),
+                             ``description`` (str), and ``schema`` (a JSON-Schema
+                             object). When supplied, providers use their native
+                             structured-output/tool-use mode so the response is
+                             guaranteed to satisfy the schema; ``.text`` still
+                             carries a JSON string so callers parse it the same
+                             way. Providers that cannot honor it fall back to
+                             plain JSON mode.
 
         Returns:
             CompletionResult with response text and safe metadata.

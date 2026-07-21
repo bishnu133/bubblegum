@@ -231,13 +231,6 @@ def _extract_text(response: Any) -> str | None:
     return None
 
 
-def _strip_code_fence(raw: str) -> str:
-    """Remove markdown code fences that some models wrap JSON in."""
-    stripped = raw.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        inner = lines[1:] if len(lines) > 1 else lines
-        if inner and inner[-1].strip() == "```":
-            inner = inner[:-1]
-        return "\n".join(inner).strip()
-    return stripped
+# Re-export the shared implementation so this module's callers (and tests that
+# import it) keep working while there is a single source of truth.
+from bubblegum.core.models._shared import strip_code_fence as _strip_code_fence  # noqa: E402

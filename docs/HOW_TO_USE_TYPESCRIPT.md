@@ -5,6 +5,12 @@ written in TypeScript or JavaScript (e.g. a Playwright suite), you can drive the
 same AI‑powered, natural‑language, self‑healing steps from Node using the
 **`@bubblegum-ai/node`** client — `await bg.act("Click Login")`.
 
+> ✨ **New in 0.0.6-alpha.6 / engine 0.0.6a51:** the reworked AI grounding layer
+> (real AI fallback + learned cache, semantic matching, self-hosted screenshot
+> grounding, observability, `replay` mode) lives entirely in the **engine** and
+> is driven by `bubblegum.yaml` — so TS/JS projects get it with **no client code
+> change**. Setup + real-app testing: [AI Grounding Enhancements](ai-grounding-enhancements.md).
+
 > **How it works (and why you still need Python).** Bubblegum's engine — the
 > tiered resolver chain, ranking, self‑healing, memory, vision/OCR — lives in
 > **one Python package**, so it never drifts between languages. The npm client is

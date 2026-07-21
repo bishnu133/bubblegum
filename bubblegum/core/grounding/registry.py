@@ -117,6 +117,7 @@ def _register_builtins(registry: ResolverRegistry) -> None:
     from bubblegum.core.grounding.resolvers.appium_hierarchy    import AppiumHierarchyResolver
     from bubblegum.core.grounding.resolvers.exact_text          import ExactTextResolver
     from bubblegum.core.grounding.resolvers.fuzzy_text          import FuzzyTextResolver
+    from bubblegum.core.grounding.resolvers.semantic            import SemanticResolver
     from bubblegum.core.grounding.resolvers.llm_grounding       import LLMGroundingResolver
     from bubblegum.core.grounding.resolvers.ocr                 import OCRResolver
     from bubblegum.core.grounding.resolvers.vision_model        import VisionModelResolver
@@ -128,6 +129,7 @@ def _register_builtins(registry: ResolverRegistry) -> None:
         AppiumHierarchyResolver,
         ExactTextResolver,
         FuzzyTextResolver,
+        SemanticResolver,
         LLMGroundingResolver,
         OCRResolver,
         VisionModelResolver,

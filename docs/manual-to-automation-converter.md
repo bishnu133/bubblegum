@@ -1,5 +1,11 @@
 # Manual → Automation Converter (`bubblegum convert`)
 
+> ⏸️ **Maintenance mode (paused).** The code-generator features — `bubblegum
+> convert` and `bubblegum record` — are **paused**: no new feature work is
+> planned while development focuses on web/mobile automation and AI grounding.
+> They remain available and supported for existing users, and the CLI, config,
+> and output formats are unchanged. Bug fixes only.
+
 Turn a spreadsheet of manually authored test scenarios into reviewable
 automation **scaffolds**. The default output is **"smart-tests"-style
 TypeScript** — a reusable `<feature>.flow.ts` (one exported async function per

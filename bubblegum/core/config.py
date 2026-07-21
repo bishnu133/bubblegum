@@ -38,12 +38,39 @@ class GroundingConfig(BaseModel):
     max_run_cost_usd:   float = 0.0
     enable_vision:      bool  = False
     enable_ocr:         bool  = True
+    # Screenshot grounding backend (Task #6). Selects the model that turns a
+    # screenshot + instruction into on-screen element candidates:
+    #   none      — dormant (default)
+    #   anthropic — Claude vision (hosted; needs ai.vision_model + send_screenshots)
+    #   openai    — GPT vision   (hosted; needs ai.vision_model + send_screenshots)
+    #   http      — self-hosted grounder (OmniParser / UI-TARS server) at
+    #               vision_endpoint; screenshots stay in your network
+    #   callable  — inject your own via configure_vision_provider()
+    vision_backend:     str   = "none"
+    # Endpoint for vision_backend=http (a self-hosted OmniParser/UI-TARS server).
+    vision_endpoint:    str | None = None
+    vision_endpoint_timeout_ms: int = 30_000
+    # Semantic (embedding) Tier-2 matching (Task #4). Catches meaning-level label
+    # drift ("Submit"->"Continue") that edit-distance fuzzy matching misses,
+    # before falling to the costlier LLM tier. Gated here AND by an embedding
+    # provider being configured (ai.embedding_model) or injected — so it stays
+    # dormant (zero network/cost) until a team opts in.
+    enable_semantic:    bool  = True
+    # Minimum cosine similarity for a semantic candidate to be emitted. Higher =
+    # stricter (fewer false positives); lower = more recall.
+    semantic_min_similarity: float = 0.72
     # X3: when a vision/OCR target cannot be deterministically hydrated to a
     # DOM/hierarchy element (canvas, image-only, custom-drawn UI), fall back to
     # clicking the bounding-box center coordinate. Opt-in — a blind coordinate
     # click is riskier than an element click, so it is OFF by default.
     coordinate_click_fallback: bool = False
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
+    # AI execution mode (Task #8):
+    #   live   — call models as needed (default)
+    #   replay — never call a model; resolve only from deterministic resolvers +
+    #            the learned memory cache. Warm the cache once in `live`, commit
+    #            it, then run CI in `replay` for deterministic, zero-cost runs.
+    ai_mode:            str   = "live"      # live | replay
     memory_ttl_days:    int   = 7
     memory_max_failures: int  = 3
     # Re-ground retries for late-rendered (SPA) elements — see ExecutionOptions.
@@ -171,13 +198,76 @@ class AIConfig(BaseModel):
     provider: str         = "anthropic"    # anthropic | openai | gemini | local
     model:    str | None  = None           # must be set explicitly; no surprise API costs
 
+    # --- Tiered model routing (Task #2) --------------------------------------
+    # fast_model handles the high-volume, latency-sensitive work (grounding,
+    # instruction decomposition); strong_model is an optional escalation target
+    # used only when the fast model resolves below the review threshold AND
+    # escalate_on_low_confidence is true. Both default to `model` when unset, so
+    # existing single-model configs behave exactly as before.
+    fast_model:   str | None = None        # e.g. claude-haiku-4-5 / gpt-4o-mini
+    strong_model: str | None = None        # e.g. claude-sonnet-4-6 / gpt-4o
+    escalate_on_low_confidence: bool = False
+
+    # --- Embeddings (Task #4 semantic Tier-2) --------------------------------
+    # embedding_model activates the semantic resolver. embedding_provider
+    # defaults to `provider` when unset. Only "openai" has a built-in embeddings
+    # backend; other providers require an injected provider via
+    # configure_embedding_provider() (e.g. offline sentence-transformers).
+    embedding_provider: str | None = None
+    embedding_model:    str | None = None   # e.g. text-embedding-3-small
+
+    # --- Vision / screenshot grounding (Task #6) -----------------------------
+    # Model for the hosted vision backends (grounding.vision_backend =
+    # anthropic|openai). Ignored by the self-hosted http backend.
+    vision_model:       str | None = None   # e.g. claude-haiku-4-5 / gpt-4.1-mini
+
+    # --- Call tuning ----------------------------------------------------------
+    max_tokens:     int  = 1024            # max completion tokens per grounding call
+    prompt_caching: bool = True            # apply provider-native prompt caching where supported
+
+    # --- Resilience (Task #7) ------------------------------------------------
+    # Per-call hard timeout + bounded exponential backoff so a slow/overloaded
+    # model API never hangs a suite or fails a run on a transient blip.
+    timeout_ms:       int = 30_000
+    max_retries:      int = 2              # retries after the first attempt (transient errors only)
+    retry_backoff_ms: int = 500           # base backoff; grows 2^attempt with jitter
+
+    # --- Pricing overrides (Task #7) -----------------------------------------
+    # model -> [usd_per_1k_input, usd_per_1k_output]. Merged ahead of the
+    # built-in table so pricing updates need no library release.
+    pricing: dict[str, list[float]] = Field(default_factory=dict)
+
+    def resolved_fast_model(self) -> str | None:
+        """Model used for grounding/decompose — fast_model, else the base model."""
+        return self.fast_model or self.model
+
+    def resolved_strong_model(self) -> str | None:
+        """Escalation model — strong_model, else the base model."""
+        return self.strong_model or self.model
+
 
 class PrivacyConfig(BaseModel):
     redact_pii:         bool = True
-    send_screenshots:   bool = False       # must be True to enable VisionModelResolver
+    send_screenshots:   bool = False       # must be True to send screenshots to a HOSTED vision model
     log_provider_calls: bool = True
     process_screenshots_for_vision: bool = False  # explicit opt-in for screenshot vision pipeline
     process_screenshots_for_ocr: bool = False  # explicit opt-in for screenshot OCR pipeline
+    # Set True when the vision backend is a self-hosted grounder inside your own
+    # network (grounding.vision_backend=http). Screenshots then never leave your
+    # infrastructure, so the vision pipeline is allowed without send_screenshots.
+    vision_is_local:    bool = False
+
+
+class ObservabilityConfig(BaseModel):
+    """Streaming per-step observability (Task #8).
+
+    Emits a structured observation (winner, candidates, timing, cost, outcome)
+    per step to a pluggable sink as it happens. Off by default.
+    """
+    enabled:      bool = False
+    export:       str  = "none"   # none | jsonl | otel | both
+    file:         str  = ".bubblegum/observability.jsonl"
+    service_name: str  = "bubblegum"
 
 
 class DebugConfig(BaseModel):
@@ -248,6 +338,7 @@ class BubblegumConfig(BaseModel):
     ai:        AIConfig        = Field(default_factory=AIConfig)
     privacy:   PrivacyConfig   = Field(default_factory=PrivacyConfig)
     debug:     DebugConfig     = Field(default_factory=DebugConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     webview_switching: WebviewSwitchingConfig = Field(default_factory=WebviewSwitchingConfig)
 
     # ------------------------------------------------------------------
@@ -301,7 +392,11 @@ class BubblegumConfig(BaseModel):
 
     @property
     def vision_enabled(self) -> bool:
-        return self.grounding.enable_vision and self.privacy.send_screenshots
+        # A self-hosted grounder (vision_is_local) keeps screenshots in-network,
+        # so it satisfies the privacy gate without sending to a third party.
+        return self.grounding.enable_vision and (
+            self.privacy.send_screenshots or self.privacy.vision_is_local
+        )
 
     @property
     def ocr_enabled(self) -> bool:
@@ -352,9 +447,16 @@ grounding:
   max_cost_level: medium   # low | medium | high
   max_run_cost_usd: 0.0    # per-run Tier-3 cost ceiling in USD (0 = disabled)
   enable_vision: false
+  # Screenshot grounding backend: none | anthropic | openai | http | callable.
+  vision_backend: none
+  # vision_endpoint: http://localhost:8000/ground   # for vision_backend=http (self-hosted OmniParser/UI-TARS)
+  # vision_endpoint_timeout_ms: 30000
   enable_ocr: true
+  enable_semantic: true    # embedding-based Tier-2 match (needs ai.embedding_model to activate)
+  semantic_min_similarity: 0.72  # min cosine similarity to emit a semantic candidate
   coordinate_click_fallback: false  # click bbox-center when a vision/OCR target can't map to an element (X3)
   ai_first: false          # true = try AI (vision/LLM) before deterministic resolvers
+  ai_mode: live            # live | replay (replay = cache + deterministic only, no model calls)
   memory_ttl_days: 7
   memory_max_failures: 3
   resolve_retries: 2               # re-ground attempts for late-rendered SPA elements
@@ -390,10 +492,28 @@ ai:
   enabled: true
   provider: anthropic          # anthropic | openai | gemini | local
   model: <your-model-name>     # e.g. claude-sonnet-latest — must be set explicitly
+  # Tiered routing (optional). Both default to `model` when unset.
+  # fast_model: claude-haiku-4-5      # cheap/fast model for grounding + decompose
+  # strong_model: claude-sonnet-4-6   # escalation model for hard cases
+  # escalate_on_low_confidence: false # retry with strong_model when fast is unsure
+  max_tokens: 1024             # max completion tokens per grounding call
+  prompt_caching: true         # use provider-native prompt caching where supported
+  timeout_ms: 30000            # per-call hard timeout
+  max_retries: 2               # retries on transient errors (rate-limit / 5xx / timeout)
+  retry_backoff_ms: 500        # base backoff (grows 2^attempt with jitter)
+  # Price overrides so cost accounting stays current without a release:
+  # pricing:
+  #   claude-haiku-4-5: [0.0008, 0.004]     # [usd_per_1k_input, usd_per_1k_output]
+  #   gpt-4o-mini: [0.00015, 0.0006]
+  # Semantic Tier-2 embeddings (optional). Set embedding_model to activate.
+  # embedding_provider: openai            # defaults to `provider` when unset
+  # embedding_model: text-embedding-3-small
+  # vision_model: claude-haiku-4-5        # model for vision_backend=anthropic|openai
 
 privacy:
   redact_pii: true
-  send_screenshots: false      # set to true only to enable VisionModelResolver
+  send_screenshots: false      # true only to send screenshots to a HOSTED vision model
+  vision_is_local: false       # true for a self-hosted grounder (vision_backend=http) — pixels stay in-network
   log_provider_calls: true
   process_screenshots_for_vision: false  # explicit opt-in for screenshot vision pipeline
   process_screenshots_for_ocr: false  # explicit opt-in for screenshot OCR pipeline
@@ -401,4 +521,10 @@ privacy:
 debug:
   log_raw_payloads: false      # NEVER enable in CI or production
   log_resolver_traces: true    # safe — logs resolver names + confidence only
+
+observability:
+  enabled: false               # stream a structured observation per step
+  export: none                 # none | jsonl | otel | both
+  file: .bubblegum/observability.jsonl
+  service_name: bubblegum      # OTel service name (export: otel|both)
 """

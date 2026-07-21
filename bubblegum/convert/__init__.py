@@ -3,6 +3,11 @@ bubblegum.convert
 =================
 Manual-test-scenario → automated-script converter.
 
+NOTE: Maintenance mode (paused). This code-generator feature receives bug fixes
+only; no new feature work is planned while development focuses on web/mobile
+automation and AI grounding. It remains available and supported for existing
+users, with unchanged CLI/config/output.
+
 Takes a spreadsheet of manually authored test scenarios (Gherkin-style steps in
 a designated column, plus metadata columns like Feature/Epic, Test Scenario,
 User Persona, Jira story) and generates reviewable automation *scaffolds*:

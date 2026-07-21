@@ -104,3 +104,25 @@ class Resolver(ABC):
         Phase 0: subclasses return [] as a stub.
         """
         ...
+
+    # ------------------------------------------------------------------
+    # Async entry point — used by the (async) GroundingEngine
+    # ------------------------------------------------------------------
+
+    async def resolve_async(self, intent: StepIntent) -> list[ResolvedTarget]:
+        """
+        Async resolution entry point the GroundingEngine awaits.
+
+        Default: delegate to the synchronous ``resolve()``. This is correct and
+        zero-overhead for the deterministic resolvers (pure-Python, non-blocking).
+
+        Resolvers that perform I/O should override this:
+          - LLM/network resolvers implement a native coroutine so the model call
+            runs on the event loop instead of a throwaway thread + event loop.
+          - Resolvers that call a *blocking* sync API (e.g. an embeddings HTTP
+            client) should offload with ``await asyncio.to_thread(self.resolve,
+            intent)`` so they don't block the loop.
+
+        Must mirror ``resolve()``'s contract: always return a list, never raise.
+        """
+        return self.resolve(intent)

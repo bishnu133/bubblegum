@@ -1,7 +1,7 @@
 """
 bubblegum/core/grounding/resolvers/llm_grounding.py
 =====================================================
-LLMGroundingResolver — Tier 3, priority 50, web + mobile, cost_level=high.
+LLMGroundingResolver — Tier 3, priority 50, web + mobile, cost_level=medium.
 
 Sends a filtered subset of the a11y snapshot to a configured LLM text model
 and parses the JSON response into a ResolvedTarget.
@@ -80,6 +80,27 @@ confidence rules:
 If no match: {"ref": "", "confidence": 0.0, "reasoning": "no match"}
 """
 
+# Guaranteed-schema contract for providers that support structured output /
+# tool-use. Mirrors the JSON shape described in _SYSTEM_PROMPT so the plain-JSON
+# path (older/local models) and the structured path produce identical results.
+_GROUNDING_SCHEMA: dict = {
+    "name": "ground_element",
+    "description": "The single best-matching UI element for the test instruction.",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "ref": {
+                "type": "string",
+                "description": "Playwright locator, e.g. role=button[name=\"Save\"] or text=Save. Empty if no match.",
+            },
+            "confidence": {"type": "number"},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["ref", "confidence", "reasoning"],
+        "additionalProperties": False,
+    },
+}
+
 
 class LLMGroundingResolver(Resolver):
     """
@@ -93,19 +114,65 @@ class LLMGroundingResolver(Resolver):
     name:       str       = "llm_grounding"
     priority:   int       = 50
     channels:   list[str] = ["web", "mobile"]
-    cost_level: str       = "high"
+    # Text grounding sends only a *filtered* a11y subtree (not screenshots), so
+    # it is materially cheaper than vision — classified "medium" so the AI
+    # fallback is reachable under the default max_cost_level="medium" policy.
+    # Vision/OCR-image resolvers remain "high". The tier still stays dormant
+    # until a provider is wired (ai.model set), so there is no surprise spend.
+    cost_level: str       = "medium"
     tier:       int       = 3
 
-    def __init__(self, provider: ModelProvider | None = None) -> None:
+    def __init__(
+        self,
+        provider: ModelProvider | None = None,
+        *,
+        strong_provider: ModelProvider | None = None,
+        escalate_below: float = 0.0,
+    ) -> None:
         self._provider = provider
+        self._strong_provider = strong_provider
+        self._escalate_below = float(escalate_below)
+
+    def set_provider(
+        self,
+        provider: ModelProvider | None,
+        *,
+        strong: ModelProvider | None = None,
+        escalate_below: float = 0.0,
+    ) -> None:
+        """Inject (or clear) the model provider(s) at runtime.
+
+        The registry constructs this resolver with no provider (stub mode); the
+        SDK calls this once the runtime config resolves a usable provider so the
+        AI grounding tier goes live. Clearing (``None``) restores stub mode.
+
+        Args:
+            provider:       the fast model used for grounding.
+            strong:         optional escalation model, tried once when the fast
+                            model resolves below ``escalate_below``.
+            escalate_below: confidence threshold under which escalation fires
+                            (0.0 disables escalation).
+        """
+        self._provider = provider
+        self._strong_provider = strong
+        self._escalate_below = float(escalate_below)
+
+    @property
+    def has_provider(self) -> bool:
+        """True when a model provider is wired — i.e. the AI tier can run."""
+        return self._provider is not None
 
     def required_context(self) -> list[str]:
         return ["a11y_snapshot"]
 
     def resolve(self, intent: StepIntent) -> list[ResolvedTarget]:
         """
-        Sync entry point required by the Resolver ABC.
-        Delegates to _resolve_async via a thread pool to avoid event-loop conflicts.
+        Sync entry point (Resolver ABC / external sync callers only).
+
+        The async GroundingEngine now calls ``resolve_async`` directly, so the
+        model call runs natively on the event loop. This sync shim remains only
+        for callers outside an event loop; it delegates to ``_resolve_async``
+        via a one-shot thread so it can run its own loop without conflict.
         """
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -117,8 +184,8 @@ class LLMGroundingResolver(Resolver):
 
     async def resolve_async(self, intent: StepIntent) -> list[ResolvedTarget]:
         """
-        Async variant — preferred in async GroundingEngine contexts.
-        Avoids thread-pool overhead when already inside an event loop.
+        Async entry point the GroundingEngine awaits — runs the model call on the
+        current event loop with no throwaway thread + event loop.
         """
         return await self._resolve_async(intent)
 
@@ -146,16 +213,39 @@ class LLMGroundingResolver(Resolver):
             return cached
 
         prompt = _build_prompt(intent.instruction, filtered)
+
+        targets = await self._call_and_parse(self._provider, prompt, intent)
+
+        # Escalation: when the fast model is unsure (empty or below the
+        # escalate_below threshold) and a stronger model is wired, try once more
+        # with the stronger model and keep whichever result is more confident.
+        if self._strong_provider is not None and self._escalate_below > 0.0:
+            best = max((t.confidence for t in targets), default=0.0)
+            if best < self._escalate_below:
+                logger.debug(
+                    "LLMGroundingResolver escalating (fast best=%.2f < %.2f) to model=%s",
+                    best, self._escalate_below, self._strong_provider.model,
+                )
+                strong_targets = await self._call_and_parse(self._strong_provider, prompt, intent)
+                strong_best = max((t.confidence for t in strong_targets), default=0.0)
+                if strong_best > best:
+                    targets = strong_targets
+
+        llm_cache.put(cache_key, targets)
+        return targets
+
+    async def _call_and_parse(self, provider, prompt: str, intent: StepIntent) -> list[ResolvedTarget]:
+        """One model call → parsed targets. Records spend; never raises."""
         logger.debug(
             "LLMGroundingResolver calling provider=%s model=%s action=%s",
-            self._provider.provider_name, self._provider.model, intent.action_type,
+            provider.provider_name, provider.model, intent.action_type,
         )
-
         try:
-            result = await self._provider.complete(
+            result = await provider.complete(
                 prompt,
                 system=_SYSTEM_PROMPT,
                 response_format="json",
+                json_schema=_GROUNDING_SCHEMA,
             )
         except Exception as exc:
             logger.error("LLMGroundingResolver provider call failed: %s", exc)
@@ -165,16 +255,14 @@ class LLMGroundingResolver(Resolver):
         # per-run budget can hard-stop further Tier-3 calls.
         try:
             cost.record_usage(
-                getattr(result, "model", None) or self._provider.model,
+                getattr(result, "model", None) or provider.model,
                 getattr(result, "input_tokens", 0),
                 getattr(result, "output_tokens", 0),
             )
         except Exception:  # noqa: BLE001 — accounting must never break resolution
             pass
 
-        targets = _parse_response(result.text, self.name)
-        llm_cache.put(cache_key, targets)
-        return targets
+        return _parse_response(result.text, self.name)
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import functools
 import inspect
 import logging
 import re
@@ -85,11 +86,47 @@ _engine = GroundingEngine(
 )
 _memory_cache = MemoryCacheResolver()  # Phase 3: single shared instance for record_*
 _vision_provider: VisionProvider | None = None
+# True once a provider is pinned via configure_vision_provider(); blocks
+# config-driven auto-wiring from overriding an explicit choice.
+_vision_provider_manual: bool = False
 _visual_ref_hydrator = VisualRefHydrator()
 
 # X2: apply the per-run Tier-3 cost budget from config to the global tracker.
 from bubblegum.core import cost as _cost  # noqa: E402
 _cost.configure_budget(_config.grounding.max_run_cost_usd)
+_cost.configure_pricing(_config.ai.pricing)
+
+from bubblegum.core import observability as _observability  # noqa: E402
+
+
+def _configure_observability_from_config() -> None:
+    """Install the observability sink described by config.observability."""
+    try:
+        _observability.configure_observability(
+            _observability.build_sink_from_config(_config)
+        )
+    except Exception as exc:  # noqa: BLE001 — observability must never break startup
+        logger.debug("observability configuration failed: %s", exc)
+
+
+_configure_observability_from_config()
+
+
+def _observed(fn):
+    """Decorator: emit a streaming observation for the StepResult a public
+    entrypoint returns. Fail-safe — observability never affects the result."""
+
+    @functools.wraps(fn)
+    async def _wrapper(*args, **kwargs):
+        result = await fn(*args, **kwargs)
+        try:
+            if isinstance(result, StepResult):
+                _observability.record(result)
+        except Exception as exc:  # noqa: BLE001 — observability must never break a run
+            logger.debug("observability emit failed: %s", exc)
+        return result
+
+    return _wrapper
 
 
 def configure_runtime(config: BubblegumConfig | None = None, config_path: str | None = None) -> BubblegumConfig:
@@ -113,15 +150,28 @@ def configure_runtime(config: BubblegumConfig | None = None, config_path: str | 
         reject_threshold=_config.grounding.reject_threshold,
         ai_first=_config.grounding.ai_first,
     )
-    # X2: refresh the per-run Tier-3 cost budget from the (re)loaded config.
+    # X2: refresh the per-run Tier-3 cost budget + pricing from the (re)loaded config.
     _cost.configure_budget(_config.grounding.max_run_cost_usd)
+    _cost.configure_pricing(_config.ai.pricing)
+    # Refresh the observability sink from the (re)loaded config.
+    _configure_observability_from_config()
+    # Re-wire the AI grounding + semantic + vision tiers from the (re)loaded
+    # config so a provider/model/backend change takes effect without a restart.
+    _wire_llm_grounding_provider()
+    _wire_semantic_provider()
+    _wire_vision_provider()
     return _config
 
 
 def _set_vision_provider_for_testing(provider: VisionProvider | None) -> None:
-    """Internal test hook for wiring an optional runtime vision provider."""
-    global _vision_provider
+    """Internal test hook for wiring an optional runtime vision provider.
+
+    Pins the provider (manual flag) when set so a subsequent configure_runtime()
+    auto-wire does not clobber it; clears the pin when set to None.
+    """
+    global _vision_provider, _vision_provider_manual
     _vision_provider = provider
+    _vision_provider_manual = provider is not None
 
 
 def _validate_vision_provider(provider: VisionProvider) -> None:
@@ -143,16 +193,218 @@ def _validate_vision_provider(provider: VisionProvider) -> None:
 
 
 def configure_vision_provider(provider: VisionProvider) -> None:
-    """Register a runtime vision provider used by optional screenshot-to-vision wiring."""
+    """Register a runtime vision provider used by optional screenshot-to-vision wiring.
+
+    An explicit call pins the provider — config-driven auto-wiring won't override
+    it until clear_vision_provider() is called.
+    """
     _validate_vision_provider(provider)
-    global _vision_provider
+    global _vision_provider, _vision_provider_manual
     _vision_provider = provider
+    _vision_provider_manual = True
 
 
 def clear_vision_provider() -> None:
-    """Clear the registered runtime vision provider. Safe to call repeatedly."""
-    global _vision_provider
+    """Clear the manually-registered vision provider and fall back to config wiring."""
+    global _vision_provider, _vision_provider_manual
     _vision_provider = None
+    _vision_provider_manual = False
+    _wire_vision_provider()
+
+
+def _build_vision_provider():
+    """Build the configured screenshot-grounding backend, or None. Never raises."""
+    if not _config.grounding.enable_vision:
+        return None
+    if _config.grounding.ai_mode == "replay":
+        return None  # replay mode: no live vision calls
+    try:
+        from bubblegum.core.vision.factory import get_vision_provider
+        return get_vision_provider(_config)
+    except Exception as exc:  # noqa: BLE001 — dormant tier must never crash a run
+        logger.debug("Vision provider unavailable; vision tier stays dormant: %s", exc)
+        return None
+
+
+def _wire_vision_provider() -> None:
+    """Auto-wire the vision provider from config unless one was set manually.
+
+    Idempotent; safe to call at import and after configure_runtime().
+    """
+    global _vision_provider
+    if _vision_provider_manual:
+        return
+    _vision_provider = _build_vision_provider()
+    if _vision_provider is not None:
+        logger.debug(
+            "Vision tier wired: backend=%s provider=%s",
+            _config.grounding.vision_backend,
+            getattr(_vision_provider, "provider_name", "?"),
+        )
+
+
+# ---------------------------------------------------------------------------
+# LLM grounding provider wiring (Tier 3 text grounding)
+# ---------------------------------------------------------------------------
+#
+# The registry builds LLMGroundingResolver in "stub mode" (no provider), so the
+# AI grounding tier is dormant until a real ModelProvider is injected. We wire
+# it here from the runtime config so the documented "AI when deterministic
+# resolvers fail" behaviour actually fires. Once the tier returns a target, the
+# existing hydrate -> execute -> record_success loop persists the *durable* ref
+# to the SQLite MemoryLayer, so the next run replays it as a Tier-1 cache hit
+# with zero model calls.
+#
+# Wiring is strictly best-effort: any failure to build the provider (AI
+# disabled, ai.model unset, SDK/key missing) leaves the resolver in stub mode
+# so the deterministic path is never affected.
+
+_llm_provider = None  # cached ModelProvider, or None when unavailable
+
+
+def _build_llm_provider(role: str = "fast"):
+    """Build the configured ModelProvider for a role, or None if unbuildable.
+
+    Never raises — a misconfigured or unavailable provider simply leaves the AI
+    grounding tier dormant instead of breaking deterministic resolution.
+    """
+    if not _config.ai_enabled:
+        return None
+    if _config.grounding.ai_mode == "replay":
+        return None  # replay mode: resolve only from cache + deterministic tiers
+    try:
+        from bubblegum.core.models.factory import get_provider
+        return get_provider(_config, role=role)
+    except Exception as exc:  # noqa: BLE001 — dormant AI tier must never crash a run
+        logger.debug("LLM provider (role=%s) unavailable; AI tier stays dormant: %s", role, exc)
+        return None
+
+
+def _wire_llm_grounding_provider() -> None:
+    """Inject the configured provider(s) into the registered llm_grounding resolver.
+
+    Uses the fast model for grounding and, when ai.escalate_on_low_confidence is
+    set and a distinct strong model is configured, wires a strong model that is
+    tried once when the fast model resolves below the review threshold.
+    Idempotent and safe to call repeatedly (e.g. after configure_runtime).
+    """
+    global _llm_provider
+    resolver = _registry.get("llm_grounding")
+    if resolver is None or not hasattr(resolver, "set_provider"):
+        return
+
+    _llm_provider = _build_llm_provider(role="fast")
+
+    strong = None
+    escalate_below = 0.0
+    if (
+        _llm_provider is not None
+        and getattr(_config.ai, "escalate_on_low_confidence", False)
+        and _config.ai.resolved_strong_model() != _config.ai.resolved_fast_model()
+    ):
+        strong = _build_llm_provider(role="strong")
+        if strong is not None:
+            escalate_below = _config.grounding.review_threshold
+
+    resolver.set_provider(_llm_provider, strong=strong, escalate_below=escalate_below)
+    if _llm_provider is not None:
+        logger.debug(
+            "LLM grounding tier wired: provider=%s model=%s strong=%s",
+            getattr(_llm_provider, "provider_name", "?"),
+            getattr(_llm_provider, "model", "?"),
+            getattr(strong, "model", None),
+        )
+
+
+def configure_llm_provider(provider) -> None:
+    """Explicitly set the model provider for the AI grounding tier.
+
+    Parity with configure_vision_provider — lets callers inject a custom or
+    pre-authenticated provider instead of building one from config. Pass None to
+    return the tier to stub mode.
+    """
+    global _llm_provider
+    resolver = _registry.get("llm_grounding")
+    if resolver is not None and hasattr(resolver, "set_provider"):
+        resolver.set_provider(provider)
+    _llm_provider = provider
+
+
+# ---------------------------------------------------------------------------
+# Semantic (embedding) Tier-2 provider wiring
+# ---------------------------------------------------------------------------
+#
+# The semantic resolver is dormant until an embedding provider is wired. We
+# build one from config (ai.embedding_model) when grounding.enable_semantic is
+# set, or callers can inject any provider/callable via
+# configure_embedding_provider(). Best-effort — a build failure leaves the
+# semantic tier dormant, never breaking deterministic resolution.
+
+_embedding_provider = None
+
+
+def _build_embedding_provider():
+    """Build the configured embedding provider, or None. Never raises."""
+    if not _config.ai_enabled or not _config.grounding.enable_semantic:
+        return None
+    if _config.grounding.ai_mode == "replay":
+        return None  # replay mode: no live embedding calls
+    try:
+        from bubblegum.core.models.embeddings import get_embedding_provider
+        return get_embedding_provider(_config)
+    except Exception as exc:  # noqa: BLE001 — dormant tier must never crash a run
+        logger.debug("Embedding provider unavailable; semantic tier stays dormant: %s", exc)
+        return None
+
+
+def _wire_semantic_provider() -> None:
+    """Inject the configured embedding provider into the semantic resolver.
+
+    Idempotent; safe to call repeatedly (e.g. after configure_runtime).
+    """
+    global _embedding_provider
+    resolver = _registry.get("semantic")
+    if resolver is None or not hasattr(resolver, "set_provider"):
+        return
+    _embedding_provider = _build_embedding_provider()
+    resolver.set_provider(
+        _embedding_provider,
+        min_similarity=_config.grounding.semantic_min_similarity,
+    )
+    if _embedding_provider is not None:
+        logger.debug(
+            "Semantic tier wired: provider=%s model=%s",
+            getattr(_embedding_provider, "provider_name", "?"),
+            getattr(_embedding_provider, "model", "?"),
+        )
+
+
+def configure_embedding_provider(provider_or_callable) -> None:
+    """Explicitly set the embedding provider for the semantic tier.
+
+    Accepts either an EmbeddingProvider (anything with ``embed(list[str])``) or
+    a plain ``callable(list[str]) -> list[vector]`` (wrapped automatically) — the
+    escape hatch for offline / self-hosted embeddings (e.g. sentence-
+    transformers) with no heavy dependency imposed on Bubblegum. Pass None to
+    return the tier to dormant mode.
+    """
+    global _embedding_provider
+    provider = provider_or_callable
+    if provider is not None and not hasattr(provider, "embed") and callable(provider):
+        from bubblegum.core.models.embeddings import CallableEmbeddingProvider
+        provider = CallableEmbeddingProvider(provider)
+    resolver = _registry.get("semantic")
+    if resolver is not None and hasattr(resolver, "set_provider"):
+        resolver.set_provider(provider, min_similarity=_config.grounding.semantic_min_similarity)
+    _embedding_provider = provider
+
+
+# Wire the AI grounding + semantic tiers at import time from the initial config.
+# Best-effort: a dormant tier (AI disabled / model unset / SDK missing) is the
+# safe default.
+_wire_llm_grounding_provider()
+_wire_semantic_provider()
+_wire_vision_provider()
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +511,7 @@ def _resolve_healing_advisory(intent: StepIntent, target: ResolvedTarget) -> dic
 # Public API
 # ---------------------------------------------------------------------------
 
+@_observed
 async def act(
     instruction: str,
     channel: str = "web",
@@ -492,6 +745,7 @@ def _quoted_segments(instruction: str) -> list[str]:
     return out
 
 
+@_observed
 async def verify(
     instruction: str,
     channel: str = "web",
@@ -1084,6 +1338,7 @@ async def _maybe_hide_keyboard(adapter, channel: str, action_type: str) -> None:
         logger.debug("auto hide_keyboard skipped: %s", exc)
 
 
+@_observed
 async def extract(
     instruction: str,
     channel: str = "web",
@@ -1199,6 +1454,7 @@ async def extract(
     )
 
 
+@_observed
 async def recover(
     page=None,
     failed_selector: str | None = None,
@@ -1392,10 +1648,14 @@ def _llm_parse_allowed() -> bool:
 
 
 def _get_parse_provider():
-    """Return a configured ModelProvider, or None if AI parsing is unavailable."""
+    """Return a configured ModelProvider, or None if AI parsing is unavailable.
+
+    Uses the fast model — instruction decomposition is a cheap, high-volume call
+    that does not need the strong model.
+    """
     try:
         from bubblegum.core.models.factory import get_provider
-        return get_provider(_config)
+        return get_provider(_config, role="fast")
     except Exception as exc:  # noqa: BLE001 - parsing must degrade gracefully
         logger.warning("LLM parse provider unavailable; using deterministic parse: %s", exc)
         return None
@@ -2067,6 +2327,18 @@ async def _ground_with_wait(adapter, intent: StepIntent):
             )
 
 
+def _vision_privacy_ok() -> bool:
+    """Is the vision pipeline allowed to process this screenshot?
+
+    process_screenshots_for_vision is the master opt-in. Sending pixels to a
+    HOSTED model additionally requires send_screenshots; a self-hosted grounder
+    (vision_is_local) keeps them in-network and needs no third-party consent.
+    """
+    if not _config.privacy.process_screenshots_for_vision:
+        return False
+    return bool(_config.privacy.send_screenshots or _config.privacy.vision_is_local)
+
+
 def _should_request_vision_screenshot(intent: StepIntent) -> bool:
     if "vision_candidates" in intent.context:
         return False
@@ -2074,13 +2346,18 @@ def _should_request_vision_screenshot(intent: StepIntent) -> bool:
         return False
     return bool(
         _config.grounding.enable_vision
-        and _config.privacy.send_screenshots
-        and _config.privacy.process_screenshots_for_vision
+        and _vision_privacy_ok()
         and _vision_provider is not None
     )
 
 
 def _allows_provider_vision_cost(intent: StepIntent) -> bool:
+    # Hosted vision is a "high"-cost operation. A self-hosted grounder in your
+    # network is effectively free, so it is reachable under the default policy —
+    # important on mobile, where the a11y hierarchy is often too thin to resolve
+    # from and screenshot grounding is the primary path.
+    if _config.privacy.vision_is_local:
+        return True
     return str(intent.options.max_cost_level).lower() == "high"
 
 
@@ -2097,10 +2374,7 @@ def _maybe_build_vision_candidates(intent: StepIntent) -> list:
         instruction=intent.instruction,
         provider=_vision_provider,
         enabled=bool(_config.grounding.enable_vision),
-        privacy_gate=bool(
-            _config.privacy.send_screenshots
-            and _config.privacy.process_screenshots_for_vision
-        ),
+        privacy_gate=_vision_privacy_ok(),
         context={"channel": intent.channel, "platform": intent.platform},
     )
 

@@ -38,6 +38,26 @@ _SYSTEM = (
 
 _ALLOWED_ACTIONS = {"click", "tap", "type", "select", "scroll", "verify", "extract"}
 
+# Guaranteed-schema contract for providers that support structured output /
+# tool-use. Mirrors the keys described in _SYSTEM.
+_DECOMPOSE_SCHEMA: dict = {
+    "name": "decompose_step",
+    "description": "Structured form of a single plain-English UI test step.",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "action_type": {
+                "type": "string",
+                "enum": sorted(_ALLOWED_ACTIONS),
+            },
+            "target_phrase": {"type": ["string", "null"]},
+            "input_value": {"type": ["string", "null"]},
+        },
+        "required": ["action_type", "target_phrase", "input_value"],
+        "additionalProperties": False,
+    },
+}
+
 
 @dataclass
 class LLMParsedIntent:
@@ -58,7 +78,9 @@ async def llm_decompose(instruction: str, provider) -> LLMParsedIntent | None:
 
     prompt = f"Step: {instruction}\nReturn the JSON object."
     try:
-        result = await provider.complete(prompt, system=_SYSTEM, response_format="json")
+        result = await provider.complete(
+            prompt, system=_SYSTEM, response_format="json", json_schema=_DECOMPOSE_SCHEMA
+        )
     except Exception as exc:  # noqa: BLE001 - fallback must never raise
         logger.warning("llm_decompose: provider call failed, using deterministic parse: %s", exc)
         return None
