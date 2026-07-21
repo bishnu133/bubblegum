@@ -675,6 +675,21 @@ async def act(
     await _maybe_hide_keyboard(adapter, channel, intent.action_type)
 
     exec_result = await adapter.execute(plan, target)
+
+    execution_recovered = False
+    if not exec_result.success:
+        # A grounded target can resolve confidently yet fail to execute (e.g. an
+        # AI-guessed role=combobox ref for a custom Ant/MUI select whose real
+        # accessible name differs). Try the deterministic DOM handlers once
+        # before giving up — this only runs on failure, so passing steps are
+        # untouched, and the working ref is cached for next time.
+        recovered = await _recover_failed_execution(
+            adapter, channel, instruction, intent, options, target
+        )
+        if recovered is not None:
+            target, exec_result = recovered
+            execution_recovered = True
+
     duration_ms = int((time.monotonic() - t0) * 1000)
 
     if not exec_result.success:
@@ -702,6 +717,10 @@ async def act(
         target.metadata["healing"] = advisory
         if advisory["severity"] == "review":
             status = "recovered"
+    # An execution-failure recovery (the grounded target failed; a DOM handler
+    # succeeded) is a genuine self-heal — surface it as "recovered".
+    if execution_recovered:
+        status = "recovered"
 
     # Phase 3 — persist the winning resolution for self-healing replay. The
     # metadata now carries any healing advisory, so a future memory-cache replay
@@ -2290,6 +2309,72 @@ async def _maybe_resolve_select_trigger(adapter, channel: str, intent: StepInten
         resolver_name="select_trigger_dom",
         metadata={"role": "combobox", "select_trigger_dom": True},
     )
+
+
+async def _recover_failed_execution(adapter, channel: str, instruction: str, intent: StepIntent, options, failed_target):
+    """Recover a grounded target that resolved confidently but failed to execute.
+
+    The AI tiers can return a confident-looking ref that does not actually
+    resolve/execute on the page — most commonly a ``role=combobox[name="…"]``
+    for a custom Ant/MUI/CDK select whose real accessible name differs from its
+    visible label, so ``select_option`` (or the locator wait) times out. Because
+    grounding *succeeded*, the DOM fallbacks that run on grounding failure never
+    got a chance. This retries the same deterministic DOM handlers once and, if
+    one executes, returns ``(target, exec_result)`` so the step is recovered
+    (and the working ref is cached for next time). Returns None if nothing
+    recovered — the caller keeps the original failure.
+
+    Web only, and never raises: recovery is best-effort.
+    """
+    if channel != "web":
+        return None
+
+    seen = {failed_target.ref}
+    candidates = []
+    for factory in (
+        lambda: _maybe_resolve_select_trigger(adapter, channel, intent),
+        lambda: _maybe_resolve_clickable(adapter, channel, instruction, intent),
+        lambda: _maybe_resolve_input(adapter, channel, intent),
+    ):
+        try:
+            cand = await factory()
+        except Exception as exc:  # noqa: BLE001 — recovery must never raise
+            logger.debug("execution-recovery candidate errored: %s", exc)
+            cand = None
+        # Skip a candidate whose ref we already tried (it would just fail again).
+        if cand is not None and cand.ref not in seen:
+            candidates.append(cand)
+            seen.add(cand.ref)
+
+    for cand in candidates:
+        cand, hydration_error, _meta = _maybe_hydrate_visual_target(intent=intent, target=cand)
+        if hydration_error is not None:
+            continue
+        plan = ActionPlan(
+            action_type=intent.action_type,
+            target_hint=intent.target_phrase or instruction,
+            input_value=intent.input_value,
+            options=options,
+        )
+        try:
+            res = await adapter.execute(plan, cand)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("execution-recovery attempt errored: %s", exc)
+            continue
+        if res.success:
+            cand.metadata["healing"] = {
+                "severity": "info",
+                "kind": "execution_recovery",
+                "from_resolver": failed_target.resolver_name,
+                "from_ref": failed_target.ref,
+                "to_resolver": cand.resolver_name,
+            }
+            logger.debug(
+                "Recovered failed execution of %r via %s (%s)",
+                failed_target.ref, cand.resolver_name, cand.ref,
+            )
+            return cand, res
+    return None
 
 
 async def _ground_with_wait(adapter, intent: StepIntent):
