@@ -1,5 +1,29 @@
 # Unreleased
 
+## 0.0.6a53 — fix(web): don't type into a disabled same-named field behind an open modal
+
+Follow-up to a52, for the popup-input flake reported on the "Add a Product"
+modal. Typing into the modal's `HealthPoints` field filled nothing and timed
+out because grounding matched a **disabled** same-named spinbutton
+(`id="hpBudget"`) on the page *behind* the modal — Playwright's `.first` picks
+the earlier-in-DOM element, and it can never be typed into.
+
+- **`find_input` now excludes disabled/readonly inputs.** Its JS filtered by
+  visibility but not by enabled-state (contradicting its own "visible, enabled"
+  contract), so a disabled twin could win. It now skips `disabled` / `readOnly`
+  / `aria-disabled="true"` elements. Verified in a real browser against the
+  reported DOM (disabled `hpBudget` behind the modal + enabled `healthPoints`
+  inside it → the enabled modal field is chosen).
+- Combined with a52's execution-failure recovery, a `type` step that grounds to
+  a disabled twin now recovers to the modal's real field and caches it.
+
+Not changed: the ambiguous `Click "Done"` step (13 whole-page candidates) —
+that is grounding ambiguity best resolved with a more specific phrase or a
+dialog-scoped click handler; tracked separately.
+
+Engine `0.0.6a52` → `0.0.6a53`; npm client `0.0.6-alpha.7` → `0.0.6-alpha.8`.
+
+
 ## 0.0.6a52 — fix(web): recover custom-select steps the AI tier grounded but couldn't execute
 
 Fixes a flake introduced by wiring the AI grounding tier in a51. On custom

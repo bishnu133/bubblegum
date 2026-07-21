@@ -512,6 +512,11 @@ _FIND_INPUT_JS = r"""
     return s.visibility !== 'hidden' && s.display !== 'none';
   };
   els = els.filter(visible);
+  // A disabled/readonly input must never win — it can't be typed into. The most
+  // common trap is a same-named field on the page BEHIND an open modal (e.g. a
+  // disabled "HealthPoints" budget field while the modal's enabled "HealthPoints"
+  // input is the real target). Honour the documented "visible, enabled" contract.
+  els = els.filter((e) => !e.disabled && !e.readOnly && e.getAttribute('aria-disabled') !== 'true');
   if (!els.length) return null;
 
   // The VISIBLE label (associated <label>/aria/form-item label) — no name/id.
