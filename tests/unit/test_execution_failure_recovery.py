@@ -115,5 +115,35 @@ def test_returns_none_when_no_dom_candidate(monkeypatch):
     assert result is None
 
 
+def test_recovers_type_into_modal_field_via_input_dom(monkeypatch):
+    # Repro of the popup-input flake: grounding picks a disabled same-named field
+    # behind the modal (role=spinbutton[name="HealthPoints"]) which fails to fill;
+    # the DOM input finder (now enabled-only) returns the modal's real field.
+    failed = ResolvedTarget(ref='role=spinbutton[name="HealthPoints"]', confidence=0.72,
+                            resolver_name="llm_grounding", metadata={"role": "spinbutton"})
+    good = ResolvedTarget(ref='css=#healthPoints', confidence=0.7,
+                          resolver_name="input_dom", metadata={"role": "textbox"})
+
+    async def fake_input(adapter, channel, intent):
+        return good
+    monkeypatch.setattr(sdk, "_maybe_resolve_select_trigger", lambda *a, **k: _none())
+    monkeypatch.setattr(sdk, "_maybe_resolve_clickable", lambda *a, **k: _none())
+    monkeypatch.setattr(sdk, "_maybe_resolve_input", fake_input)
+
+    class _Adapter:
+        async def execute(self, plan, target):
+            return _ExecResult(target.ref == good.ref, None if target.ref == good.ref else "disabled")
+
+    result = asyncio.run(
+        sdk._recover_failed_execution(
+            _Adapter(), "web", 'Enter "150" into HealthPoints', _intent("type"), ExecutionOptions(), failed,
+        )
+    )
+    assert result is not None
+    recovered_target, exec_result = result
+    assert exec_result.success is True
+    assert recovered_target.ref == good.ref
+
+
 async def _none():
     return None
