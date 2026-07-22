@@ -1783,7 +1783,7 @@ async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, 
 
     Returns a ResolvedTarget for the cell's clickable element / matched link, or
     None when the step isn't a table/link action or nothing matches. Lets a
-    tester address an element by table coordinates ("the PPHID value in the 1st
+    tester address an element by table coordinates ("the RecordID value in the 1st
     row") or link text — robust when the visible text is dynamic.
     """
     if channel != "web":

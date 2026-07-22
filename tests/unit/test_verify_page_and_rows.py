@@ -36,9 +36,9 @@ def test_row_multi_column_parse():
 
 def test_row_single_column_still_works():
     spec = parse_table_spec(
-        'in the row where Name is "Bishnu", Account Status is "Active"'
+        'in the row where Name is "Sam", Account Status is "Active"'
     )
-    assert spec == {"row_match": {"Name": "Bishnu"}, "cell": {"Account Status": "Active"}}
+    assert spec == {"row_match": {"Name": "Sam"}, "cell": {"Account Status": "Active"}}
 
 
 def test_row_tolerates_trailing_is_visible():

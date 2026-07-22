@@ -1,5 +1,19 @@
 # Unreleased
 
+## 0.0.6a58 — chore: replace app-specific sample identifiers with generic placeholders
+
+Documentation, tests, example fixtures, and changelog history referenced
+identifiers from a specific application under test. These carried no behavior —
+they were only sample data — and have been replaced throughout with neutral
+placeholders (generic app/label names, `RecordID` table columns, `appium.example.com`
+hosts, `Continue` labels, etc.). The project-specific mobile pilot doc was
+removed and replaced by a generic guide,
+`docs/mobile-attach-existing-session.md`. No API, resolver, or runtime behavior
+changes; the full suite and the TS client tests pass unchanged.
+
+Engine `0.0.6a57` → `0.0.6a58`; npm client `0.0.6-alpha.11` → `0.0.6-alpha.12`.
+
+
 ## 0.0.6a57 — fix(mobile): exact-label preference so "Allow" wins over "Don't Allow"
 
 Follow-up to a56, for iOS system permission alerts (e.g. the notifications
@@ -34,10 +48,10 @@ only one Appium session per device is allowed.
   text, `name` → accessibility id, `value` → field value, `type` → widget type,
   and x/y/width/height → the Android-style `bounds` string used for visibility
   scoring. XPaths are built with the right per-platform attribute
-  (`//XCUIElementTypeButton[@label='View daily summary']`). This fixes the
+  (`//XCUIElementTypeButton[@label='Continue']`). This fixes the
   common React-Native-iOS case where a `testID` becomes the XCUITest `name` but
   the visible label is what a human (and Bubblegum) matches on — so a text/predicate
-  locator fails while `act("Tap View daily summary")` succeeds. Android matching
+  locator fails while `act("Tap Continue")` succeeds. Android matching
   is unchanged.
 - **Attach to an existing Appium session (`channel.mobile.attach`).** New
   `existing_session_id` on `session.open` and `Bubblegum.attachMobile({ appiumUrl,
@@ -101,16 +115,16 @@ Engine `0.0.6a53` → `0.0.6a54`; npm client `0.0.6-alpha.8` → `0.0.6-alpha.9`
 ## 0.0.6a53 — fix(web): don't type into a disabled same-named field behind an open modal
 
 Follow-up to a52, for the popup-input flake reported on the "Add a Product"
-modal. Typing into the modal's `HealthPoints` field filled nothing and timed
+modal. Typing into the modal's `Points` field filled nothing and timed
 out because grounding matched a **disabled** same-named spinbutton
-(`id="hpBudget"`) on the page *behind* the modal — Playwright's `.first` picks
+(`id="budgetField"`) on the page *behind* the modal — Playwright's `.first` picks
 the earlier-in-DOM element, and it can never be typed into.
 
 - **`find_input` now excludes disabled/readonly inputs.** Its JS filtered by
   visibility but not by enabled-state (contradicting its own "visible, enabled"
   contract), so a disabled twin could win. It now skips `disabled` / `readOnly`
   / `aria-disabled="true"` elements. Verified in a real browser against the
-  reported DOM (disabled `hpBudget` behind the modal + enabled `healthPoints`
+  reported DOM (disabled `budgetField` behind the modal + enabled `pointsField`
   inside it → the enabled modal field is chosen).
 - Combined with a52's execution-failure recovery, a `type` step that grounds to
   a disabled twin now recovers to the modal's real field and caches it.
@@ -402,7 +416,7 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
   whose label happens to contain a state word — resolved via the existing
   `input_dom` fallback once the action is correctly `type`.
 - Coverage: regression cases in `tests/unit/test_instruction_decompose.py`;
-  browser-verified against the H365 "Description shown when viewing an Earned
+  browser-verified against the Acme "Description shown when viewing an Earned
   Badge" / "… when the Badge is awarded" textareas. Engine `0.0.6a23` → `0.0.6a24`.
 
 ## 0.0.6a23 — feat(web): resolve hidden file inputs for `upload` steps (multi-section)
@@ -415,7 +429,7 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
 - Handles **multiple upload widgets on one page** with repeated labels: name the
   section in the phrase to disambiguate, e.g. `Upload "..." into Awarded Album
   View` vs `... into Upcoming Album View` (the six Album/Front/Back × Awarded/
-  Upcoming uploaders on the H365 Create-Badge page all resolve uniquely).
+  Upcoming uploaders on the Acme Create-Badge page all resolve uniquely).
 - Scoped and safe: only fires for `upload` steps that name a target, and is a
   no-op on pages with no file input. Verified end-to-end against a **real Ant v5
   `Upload`** (file registers in antd's list). Coverage:
@@ -451,7 +465,7 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
   and is a **no-op on pages without a range picker**, so ordinary text fields are
   unaffected (they keep resolving via the a11y tree / `input_dom` fallback).
 - Coverage: `tests/unit/test_date_range_fallback.py`; validated against the real
-  H365 Create-Badge "Visibility Period" range picker markup. Engine `0.0.6a20` →
+  Acme Create-Badge "Visibility Period" range picker markup. Engine `0.0.6a20` →
   `0.0.6a21`; npm client unchanged.
 
 ## 0.0.6a20 — feat: absolute time-of-day in date tokens (`@HH:MM`); consolidates a18+a19
@@ -503,12 +517,12 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
 ## 0.0.6a17 — fix(web): DOM input fallback for nameless text fields
 
 - `type`/`enter` into a field with **no accessible name** (e.g. a `<textarea>`
-  whose `<label for=...>` points at a missing id — like the H365 "Remarks"
+  whose `<label for=...>` points at a missing id — like the Acme "Remarks"
   field) now resolves via a DOM fallback that scores visible, enabled
   inputs/textareas by associated label / placeholder / nearby form-item label
   against the target phrase. Ant-select search inputs and disabled fields are
   excluded. Same proven pattern as the select / click / link / table fallbacks.
-- Coverage: `tests/unit/test_input_fallback.py`; validated against the real H365
+- Coverage: `tests/unit/test_input_fallback.py`; validated against the real Acme
   Update-Account-Status dialog markup. Engine `0.0.6a16` → `0.0.6a17`; npm
   unchanged.
 
@@ -533,7 +547,7 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
   so `Click the "Update account status" button` resolves across apps instead of
   raising AmbiguousTargetError.
 - Coverage: `tests/unit/test_clickable_fallback.py`; logic validated against the
-  real H365 button markup. Engine `0.0.6a15` → `0.0.6a16`; npm unchanged.
+  real Acme button markup. Engine `0.0.6a15` → `0.0.6a16`; npm unchanged.
 
 ## 0.0.6a15 — fix(grounding): role-aware tie-break for clicks (button vs text twin)
 
@@ -564,10 +578,10 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
 
 - Two new ways to click an element addressed by **what it is**, not its (often
   dynamic) text — e.g. a table link whose label is a UUID:
-  - **By table coordinates:** "under the PPHID column, click the 1st row value",
-    "Click the PPHID link in the first result row", "click the last row Name",
-    or 'in the row where Name is "X", click the PPHID value'. Structured form:
-    `act("…", column="PPHID", row="first")` / `row=-1` / `row_match={"Name": x}`.
+  - **By table coordinates:** "under the RecordID column, click the 1st row value",
+    "Click the RecordID link in the first result row", "click the last row Name",
+    or 'in the row where Name is "X", click the RecordID value'. Structured form:
+    `act("…", column="RecordID", row="first")` / `row=-1` / `row_match={"Name": x}`.
     Locates the table (Ant `.ant-table`, native `<table>`, ARIA grid), the column
     by header, the row by index (1-based, -1 = last) or by another column's value,
     and clicks the cell's link/button (or the cell).
@@ -578,7 +592,7 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
   `bg.clickLink(text, { exact?, timeoutMs? })`.
 - Coverage: `tests/unit/test_table_action.py`, Node forwarding tests, and
   `tests/integration/test_table_action_web.py` against the `ant_table` page
-  (PPHID cells now contain dynamic-id links). Validated against the real H365
+  (RecordID cells now contain dynamic-id links). Validated against the real Acme
   table markup. Engine `0.0.6a12` → `0.0.6a13`; `@bubblegum-ai/node`
   `0.0.6-alpha.3` → `0.0.6-alpha.4`.
 
@@ -596,7 +610,7 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
   native `<select>`.
 - Coverage: `tests/unit/test_select_trigger_fallback.py` and a new `multi_select`
   widget-lab page + `tests/integration/test_multi_select_web.py`. The scoring was
-  validated against the real captured H365 markup.
+  validated against the real captured Acme markup.
 - Engine `0.0.6a11` → `0.0.6a12`; npm client unchanged (`0.0.6-alpha.3`).
 
 ## 0.0.6a11 — fix(grounding): reliably resolve nameless/value-named selects
@@ -626,11 +640,11 @@ unchanged. Full suite 1941 passed; generated TypeScript type-checks under tsc.
     `verify("…", assertion_type="table", columns=[…])` and
     `verify("…", assertion_type="table", row_match={col: val}, cell={col: val})`.
   - **Natural language (AI-style):**
-    `verify("the table has columns PPHID, Account Status and Profile Status")`,
+    `verify("the table has columns RecordID, Account Status and Profile Status")`,
     `verify('in the row where Name is "X", Account Status is "Active"')`,
     `verify('the Account Status column shows "Active"')`.
   - Reads native `<table>`, **Ant Design `.ant-table`** (header/body split across
-    two inner tables — the exact H365 structure), and ARIA `role=table/grid`.
+    two inner tables — the exact Acme structure), and ARIA `role=table/grid`.
     Matching is whitespace-normalised, case-insensitive, and tolerates a value
     rendered inside a badge (e.g. a "✓ Active" pill). The assertion polls until
     it holds or the timeout elapses, so it waits out async-loaded rows.

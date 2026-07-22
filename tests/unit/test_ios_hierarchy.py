@@ -8,8 +8,10 @@ The resolver historically read only Android UiAutomator2 attributes
 hierarchies expose the same concepts under different names
 (``label``/``name``/``value``/``type``/``visible`` and x/y/width/height), so
 grounding by human text returned no candidate on iOS. These tests exercise the
-cross-platform attribute mapping so "View daily summary" resolves on iOS the
-same way it does on Android.
+cross-platform attribute mapping so a label like "View Summary" resolves on iOS
+the same way it does on Android.
+
+All app names / labels below are generic placeholders.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from bubblegum.core.schemas import ExecutionOptions, StepIntent
 _PERMISSION_ALERT_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <AppiumAUT>
   <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="SpringBoard">
-    <XCUIElementTypeAlert type="XCUIElementTypeAlert" name="H365+ UAT" label="H365+ UAT Would Like to Send You Notifications" enabled="true" visible="true" x="40" y="300" width="270" height="180">
+    <XCUIElementTypeAlert type="XCUIElementTypeAlert" name="Example App" label="Example App Would Like to Send You Notifications" enabled="true" visible="true" x="40" y="300" width="270" height="180">
       <XCUIElementTypeButton type="XCUIElementTypeButton" name="Don't Allow" label="Don't Allow" enabled="true" visible="true" x="45" y="440" width="130" height="40"/>
       <XCUIElementTypeButton type="XCUIElementTypeButton" name="Allow" label="Allow" enabled="true" visible="true" x="180" y="440" width="130" height="40"/>
     </XCUIElementTypeAlert>
@@ -40,16 +42,16 @@ _PERMISSION_ALERT_XML = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 # A representative React-Native-on-iOS XCUITest hierarchy. The button carries a
-# testID ("view-daily-summary-button") but, because it also has a visible label,
+# testID ("view-summary-button") but, because it also has a visible label,
 # XCUITest surfaces the human label as `name` — exactly the case that breaks a
 # testID/predicate-string locator while a text match still works.
 _IOS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <AppiumAUT>
-  <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="MealLog">
+  <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="DemoApp">
     <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="true" x="0" y="0" width="390" height="844">
-      <XCUIElementTypeButton type="XCUIElementTypeButton" name="View daily summary" label="View daily summary" value="" enabled="true" visible="true" x="20" y="600" width="350" height="44"/>
-      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" name="Total calories" label="Total calories" value="1200 kcal" enabled="true" visible="true" x="20" y="100" width="220" height="20"/>
-      <XCUIElementTypeTextField type="XCUIElementTypeTextField" name="search-field" label="" value="Search food" enabled="true" visible="true" x="20" y="50" width="350" height="40"/>
+      <XCUIElementTypeButton type="XCUIElementTypeButton" name="View Summary" label="View Summary" value="" enabled="true" visible="true" x="20" y="600" width="350" height="44"/>
+      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" name="Total Items" label="Total Items" value="42" enabled="true" visible="true" x="20" y="100" width="220" height="20"/>
+      <XCUIElementTypeTextField type="XCUIElementTypeTextField" name="search-field" label="" value="Search items" enabled="true" visible="true" x="20" y="50" width="350" height="40"/>
       <XCUIElementTypeButton type="XCUIElementTypeButton" name="hidden-btn" label="Hidden action" value="" enabled="false" visible="false" x="0" y="0" width="0" height="0"/>
     </XCUIElementTypeWindow>
   </XCUIElementTypeApplication>
@@ -70,31 +72,31 @@ def _resolve(instruction, *, xml=_IOS_XML, action_type="tap", platform="ios"):
 
 
 # ---------------------------------------------------------------------------
-# label (visible text) matching — the user's failing iOS click
+# label (visible text) matching — the iOS click that a testID locator misses
 # ---------------------------------------------------------------------------
 
 def test_label_match_resolves_button():
-    candidates = _resolve("View daily summary")
+    candidates = _resolve("View Summary")
     labels = [c for c in candidates if c.metadata.get("matched_attr") == "label"]
     assert labels, "expected a label match for the iOS button"
     assert labels[0].confidence == 0.92
 
 
 def test_label_match_builds_ios_xpath():
-    candidates = _resolve("View daily summary")
+    candidates = _resolve("View Summary")
     labels = [c for c in candidates if c.metadata.get("matched_attr") == "label"]
     ref = json.loads(labels[0].ref)
     assert ref["by"] == "xpath"
     # iOS xpath uses the element type and the @label attribute.
-    assert ref["value"] == "//XCUIElementTypeButton[@label='View daily summary']"
+    assert ref["value"] == "//XCUIElementTypeButton[@label='View Summary']"
 
 
 def test_label_match_case_insensitive():
-    assert _resolve("view daily summary"), "case-insensitive label match expected"
+    assert _resolve("view summary"), "case-insensitive label match expected"
 
 
 def test_tap_button_role_scores_full():
-    candidates = _resolve("View daily summary")
+    candidates = _resolve("View Summary")
     labels = [c for c in candidates if c.metadata.get("matched_attr") == "label"]
     role = labels[0].metadata["signals"]["role_match"]
     assert role == 1.0  # XCUIElementTypeButton -> "button" keyword
@@ -105,15 +107,15 @@ def test_tap_button_role_scores_full():
 # ---------------------------------------------------------------------------
 
 def test_value_match_on_textfield():
-    candidates = _resolve("Search food", action_type="type")
+    candidates = _resolve("Search items", action_type="type")
     values = [c for c in candidates if c.metadata.get("matched_attr") == "value"]
     assert values, "expected a value match on the iOS text field"
     ref = json.loads(values[0].ref)
-    assert ref["value"] == "//XCUIElementTypeTextField[@value='Search food']"
+    assert ref["value"] == "//XCUIElementTypeTextField[@value='Search items']"
 
 
 def test_verify_static_text_by_label():
-    candidates = _resolve("Total calories", action_type="verify")
+    candidates = _resolve("Total Items", action_type="verify")
     labels = [c for c in candidates if c.metadata.get("matched_attr") == "label"]
     assert labels, "expected the static text to match by label"
 
@@ -123,7 +125,7 @@ def test_verify_static_text_by_label():
 # ---------------------------------------------------------------------------
 
 def test_ios_bounds_synthesised_from_xywh():
-    candidates = _resolve("View daily summary")
+    candidates = _resolve("View Summary")
     labels = [c for c in candidates if c.metadata.get("matched_attr") == "label"]
     # x=20 y=600 w=350 h=44 -> [20,600][370,644]
     assert labels[0].metadata["bounds"] == "[20,600][370,644]"
@@ -149,7 +151,7 @@ def test_hidden_element_downranked_visibility():
 
 def test_ios_detected_from_xcui_tag_without_platform():
     # platform defaults to "web"; the XCUIElementType tag alone must route iOS.
-    candidates = _resolve("View daily summary", platform="web")
+    candidates = _resolve("View Summary", platform="web")
     labels = [c for c in candidates if c.metadata.get("matched_attr") == "label"]
     assert labels, "iOS attributes must be read even when platform is unset"
 

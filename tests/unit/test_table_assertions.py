@@ -23,14 +23,14 @@ from bubblegum.core.table import (
 
 def test_parse_columns_present():
     assert parse_table_spec(
-        "the search results table shows the columns PPHID, Account Status and Profile Status"
-    ) == {"columns": ["PPHID", "Account Status", "Profile Status"]}
+        "the search results table shows the columns RecordID, Account Status and Profile Status"
+    ) == {"columns": ["RecordID", "Account Status", "Profile Status"]}
 
 
 def test_parse_row_keyed_cell():
     assert parse_table_spec(
-        'in the row where Name is "Bishnu Test Account", Account Status is "Active"'
-    ) == {"row_match": {"Name": "Bishnu Test Account"}, "cell": {"Account Status": "Active"}}
+        'in the row where Name is "Test Account", Account Status is "Active"'
+    ) == {"row_match": {"Name": "Test Account"}, "cell": {"Account Status": "Active"}}
 
 
 def test_parse_column_shows_value():
@@ -56,11 +56,11 @@ def test_parse_returns_none_for_non_table_phrases():
 
 _TABLES = [
     {
-        "headers": ["PPHID", "ERID", "Name", "Account Status", "Profile Status"],
+        "headers": ["RecordID", "AltID", "Name", "Account Status", "Profile Status"],
         "rows": [
-            {"PPHID": "9ca8", "ERID": "30A", "Name": "Bishnu Test Account",
+            {"RecordID": "9ca8", "AltID": "30A", "Name": "Test Account",
              "Account Status": "Active", "Profile Status": "Verified"},
-            {"PPHID": "1111", "ERID": "22B", "Name": "Other Person",
+            {"RecordID": "1111", "AltID": "22B", "Name": "Other Person",
              "Account Status": "Withdrawn", "Profile Status": "Unverified"},
         ],
     }
@@ -68,21 +68,21 @@ _TABLES = [
 
 
 def test_eval_columns_present_pass_and_fail():
-    ok, _ = evaluate_table({"columns": ["PPHID", "Account Status", "Profile Status"]}, _TABLES)
+    ok, _ = evaluate_table({"columns": ["RecordID", "Account Status", "Profile Status"]}, _TABLES)
     assert ok is True
-    bad, detail = evaluate_table({"columns": ["PPHID", "Nope"]}, _TABLES)
+    bad, detail = evaluate_table({"columns": ["RecordID", "Nope"]}, _TABLES)
     assert bad is False and "Nope" in detail
 
 
 def test_eval_row_keyed_cell():
     ok, _ = evaluate_table(
-        {"row_match": {"Name": "Bishnu Test Account"}, "cell": {"Account Status": "Active"}},
+        {"row_match": {"Name": "Test Account"}, "cell": {"Account Status": "Active"}},
         _TABLES,
     )
     assert ok is True
 
     bad, detail = evaluate_table(
-        {"row_match": {"Name": "Bishnu Test Account"}, "cell": {"Account Status": "Withdrawn"}},
+        {"row_match": {"Name": "Test Account"}, "cell": {"Account Status": "Withdrawn"}},
         _TABLES,
     )
     assert bad is False and "did not match" in detail
@@ -108,8 +108,8 @@ def test_eval_no_tables():
 
 
 def test_build_matcher_prefers_kwargs():
-    m = build_table_matcher("ignored", {"row_match": {"PPHID": "9ca8"}, "cell": {"Account Status": "Active"}})
-    assert m == {"row_match": {"PPHID": "9ca8"}, "cell": {"Account Status": "Active"}}
+    m = build_table_matcher("ignored", {"row_match": {"RecordID": "9ca8"}, "cell": {"Account Status": "Active"}})
+    assert m == {"row_match": {"RecordID": "9ca8"}, "cell": {"Account Status": "Active"}}
     assert "Account Status" in describe_table_matcher(m)
 
 
@@ -142,7 +142,7 @@ def test_verify_structured_table_pass(monkeypatch):
     res = _verify(
         monkeypatch, "participant row", _TABLES,
         assertion_type="table",
-        row_match={"Name": "Bishnu Test Account"}, cell={"Account Status": "Active"},
+        row_match={"Name": "Test Account"}, cell={"Account Status": "Active"},
     )
     assert res.status == "passed"
     assert res.target.resolver_name == "table"
@@ -152,7 +152,7 @@ def test_verify_structured_table_fail(monkeypatch):
     res = _verify(
         monkeypatch, "participant row", _TABLES,
         assertion_type="table",
-        row_match={"Name": "Bishnu Test Account"}, cell={"Account Status": "Withdrawn"},
+        row_match={"Name": "Test Account"}, cell={"Account Status": "Withdrawn"},
         timeout_ms=0,
     )
     assert res.status == "failed"
@@ -162,7 +162,7 @@ def test_verify_structured_table_fail(monkeypatch):
 def test_verify_natural_language_columns_routes_to_table(monkeypatch):
     res = _verify(
         monkeypatch,
-        "the table has columns PPHID, Account Status and Profile Status",
+        "the table has columns RecordID, Account Status and Profile Status",
         _TABLES,
     )
     assert res.status == "passed"

@@ -29,8 +29,8 @@
         <colgroup><col><col><col><col><col></colgroup>
         <thead class="ant-table-thead">
           <tr>
-            <th class="ant-table-cell">PPHID</th>
-            <th class="ant-table-cell">ERID</th>
+            <th class="ant-table-cell">RecordID</th>
+            <th class="ant-table-cell">AltID</th>
             <th class="ant-table-cell">Name</th>
             <th class="ant-table-cell">Account Status</th>
             <th class="ant-table-cell">Profile Status</th>
@@ -46,14 +46,14 @@
             <td style="padding:0;border:0;height:0"></td>
           </tr>
           <tr class="ant-table-row" data-row-key="9ca8">
-            <td class="ant-table-cell"><a href="#participant" class="pphid-link">9ca87fc7-bacc-4458-b8ce-3ee228534382</a></td>
+            <td class="ant-table-cell"><a href="#participant" class="record-link">9ca87fc7-bacc-4458-b8ce-3ee228534382</a></td>
             <td class="ant-table-cell">30A981AB47F5</td>
-            <td class="ant-table-cell">Bishnu Test Account</td>
+            <td class="ant-table-cell">Test Account</td>
             <td class="ant-table-cell"><span class="status ok">✓ Active</span></td>
             <td class="ant-table-cell"><span class="status ok">✓ Verified</span></td>
           </tr>
           <tr class="ant-table-row" data-row-key="1111">
-            <td class="ant-table-cell"><a href="#participant" class="pphid-link">1111aaaa-bbbb-cccc-dddd-222233334444</a></td>
+            <td class="ant-table-cell"><a href="#participant" class="record-link">1111aaaa-bbbb-cccc-dddd-222233334444</a></td>
             <td class="ant-table-cell">22B770CD18E2</td>
             <td class="ant-table-cell">Other Person</td>
             <td class="ant-table-cell"><span class="status">Withdrawn</span></td>
@@ -67,7 +67,7 @@
 
 <p id="nav-result"></p>
 <script>
-  document.querySelectorAll('a.pphid-link').forEach((a) => {
+  document.querySelectorAll('a.record-link').forEach((a) => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
       document.getElementById('nav-result').textContent = 'Opened: ' + a.textContent;

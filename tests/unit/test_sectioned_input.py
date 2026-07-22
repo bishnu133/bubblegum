@@ -50,7 +50,7 @@ def test_pre_resolver_defers_when_not_sectioned():
     a = _InputAdapter({"selector": '[data-bg-input="1"]', "sectioned": False,
                        "section": "", "score": 3.0})
     t = _run(sdk._maybe_resolve_sectioned_input(a, "web", _intent(
-        'Enter "EDSH" into Challenge Tagline', "Challenge Tagline")))
+        'Enter "Demo" into Challenge Tagline', "Challenge Tagline")))
     assert t is None
 
 

@@ -25,7 +25,7 @@ _COMBO = """
 <div id="dropdown" class="ant-select-dropdown" style="display:none"></div>
 <div id="committed">none</div>
 <script>
-  const ALL=["ADBetaUser","EDSH Pilot A","FeelingHealthy","GaqAccepted","Grandparent"];
+  const ALL=["ADBetaUser","Demo Pilot A","FeelingHealthy","TagAccepted","Grandparent"];
   const inp=document.getElementById('s'), dd=document.getElementById('dropdown');
   document.querySelector('.ant-select').addEventListener('click',()=>{dd.style.display='block';render('');});
   inp.addEventListener('input',()=>render(inp.value));
@@ -64,11 +64,11 @@ async def _run(html: str, drive) -> str:
 @pytest.mark.playwright
 def test_searchable_combobox_types_to_filter_then_selects() -> None:
     async def drive(adapter, page):
-        plan = ActionPlan(action_type="select", target_hint="v", input_value="GaqAccepted",
+        plan = ActionPlan(action_type="select", target_hint="v", input_value="TagAccepted",
                           options=ExecutionOptions())
         await adapter._do_select(plan, page.locator('[data-bg-select="1"]'), 5000)
 
-    assert asyncio.run(_run(_COMBO, drive)) == "SEL:GaqAccepted"
+    assert asyncio.run(_run(_COMBO, drive)) == "SEL:TagAccepted"
 
 
 # Two functional selects: the resolved (primary) one does NOT offer the value;
@@ -77,7 +77,7 @@ def test_searchable_combobox_types_to_filter_then_selects() -> None:
 # self-corrects to the right select AND leaves the wrong one untouched.
 _TWO_SELECTS = """
 <div class="ant-select ant-select-multiple ant-select-show-search" data-testid="wrong" data-bg-select="1"
-     style="width:280px" data-opts="Test Challenge 1234|EDSH Challenge">
+     style="width:280px" data-opts="Test Challenge 1234|Demo Challenge">
   <div class="ant-select-selector"><span class="ant-select-selection-wrap">
     <div class="ant-select-selection-overflow"></div>
     <span class="ant-select-selection-search">
@@ -85,7 +85,7 @@ _TWO_SELECTS = """
 </div>
 <span>Eligibility Tags</span>
 <div class="ant-select ant-select-multiple ant-select-show-search" data-testid="right"
-     style="width:280px" data-opts="ADBetaUser|FeelingHealthy|GaqAccepted">
+     style="width:280px" data-opts="ADBetaUser|FeelingHealthy|TagAccepted">
   <div class="ant-select-selector"><span class="ant-select-selection-wrap">
     <div class="ant-select-selection-overflow"></div>
     <span class="ant-select-selection-search">
@@ -120,7 +120,7 @@ _TWO_SELECTS = """
 def test_combobox_self_corrects_and_leaves_wrong_select_untouched() -> None:
     async def drive(adapter, page):
         plan = ActionPlan(action_type="select", target_hint="Eligibility Tags",
-                          input_value="GaqAccepted", options=ExecutionOptions())
+                          input_value="TagAccepted", options=ExecutionOptions())
         await adapter._do_select(plan, page.locator('[data-bg-select="1"]'), 5000)
         wrong = await page.locator('[data-testid=wrong] .ant-select-selection-item').evaluate_all(
             "ns => ns.map(n => n.getAttribute('title'))"
@@ -128,4 +128,4 @@ def test_combobox_self_corrects_and_leaves_wrong_select_untouched() -> None:
         # The mis-scored select must end up with NO stray selection.
         assert wrong == [], f"wrong select left with stray selection: {wrong}"
 
-    assert asyncio.run(_run(_TWO_SELECTS, drive)) == "SEL:right:GaqAccepted"
+    assert asyncio.run(_run(_TWO_SELECTS, drive)) == "SEL:right:TagAccepted"

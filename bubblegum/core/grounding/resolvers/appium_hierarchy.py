@@ -24,7 +24,7 @@ unified view so matching works identically on either platform:
 
 On React-Native iOS a ``testID`` becomes the XCUITest ``name``, but when the
 element also has a visible label XCUITest often surfaces that label as ``name``
-too — so matching by human text ("View daily summary") succeeds even when a
+too — so matching by human text (e.g. "Continue") succeeds even when a
 testID-based locator would not.
 
 Matching strategy (in priority order for each candidate element):

@@ -377,8 +377,8 @@ async def run_modal_scenario(page, base_url: str, *, nl_only: bool = False) -> d
         s.push_scope("dialog", label="Settings", root_locator=dialog_locator)
 
         step_type = await s.act(
-            'Enter "Bishnu" into Name',
-            **_safety_net(nl_only, action_type="type", selector="#dialog-name", input_value="Bishnu"),
+            'Enter "Sam" into Name',
+            **_safety_net(nl_only, action_type="type", selector="#dialog-name", input_value="Sam"),
         )
         _diag(nl_only, "type-name", step_type)
 
@@ -394,13 +394,13 @@ async def run_modal_scenario(page, base_url: str, *, nl_only: bool = False) -> d
         scope_after = s.current_scope.type
 
     open_ok = step_open.status == "passed"
-    type_ok = step_type.status == "passed" and typed_value == "Bishnu"
+    type_ok = step_type.status == "passed" and typed_value == "Sam"
     close_ok = close_report["closed_by"] == "close_button"
     scope_ok = scope_after == "page" and close_report["popped_scope"] == {
         "type": "dialog",
         "label": "Settings",
     }
-    dom_ok = dialog_modal_attr is None and "Saved name: Bishnu" in result_text
+    dom_ok = dialog_modal_attr is None and "Saved name: Sam" in result_text
 
     passed = open_ok and type_ok and close_ok and scope_ok and dom_ok
     return _result(

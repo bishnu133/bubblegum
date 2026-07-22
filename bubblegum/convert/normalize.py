@@ -190,13 +190,13 @@ def _classify(
 
 def _slugify(name: str) -> str:
     """Filesystem/identifier-safe slug from a feature/scenario name."""
-    s = re.sub(r"\[[^\]]*\]", " ", name)          # drop [F][H365]-style tags
+    s = re.sub(r"\[[^\]]*\]", " ", name)          # drop [F][Acme]-style tags
     s = re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").lower()
     return s or "feature"
 
 
 def _feature_tags(name: str) -> list[str]:
-    """Extract bracket tags like [F][H365] → @f @h365."""
+    """Extract bracket tags like [F][Acme] → @f @acme."""
     tags = re.findall(r"\[([^\]]+)\]", name)
     return ["@" + re.sub(r"[^a-zA-Z0-9]+", "_", t).strip("_").lower() for t in tags if t.strip()]
 

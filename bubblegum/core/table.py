@@ -9,13 +9,13 @@ Two entry styles, both routed through ``verify``:
 
   Structured ("other way" — deterministic):
       bg.verify("participant row", assertion_type="table",
-                row_match={"PPHID": pphid}, cell={"Account Status": "Active"})
+                row_match={"RecordID": record}, cell={"Account Status": "Active"})
       bg.verify("columns", assertion_type="table",
-                columns=["PPHID", "Account Status", "Profile Status"])
+                columns=["RecordID", "Account Status", "Profile Status"])
 
   Natural language ("AI way"):
-      bg.verify("the table has columns PPHID, Account Status and Profile Status")
-      bg.verify('in the row where Name is "Bishnu Test Account", '
+      bg.verify("the table has columns RecordID, Account Status and Profile Status")
+      bg.verify('in the row where Name is "Test Account", '
                 'Account Status is "Active"')
       bg.verify('the Account Status column shows "Active"')
 

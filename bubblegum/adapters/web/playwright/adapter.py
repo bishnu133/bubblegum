@@ -514,7 +514,7 @@ _FIND_INPUT_JS = r"""
   els = els.filter(visible);
   // A disabled/readonly input must never win — it can't be typed into. The most
   // common trap is a same-named field on the page BEHIND an open modal (e.g. a
-  // disabled "HealthPoints" budget field while the modal's enabled "HealthPoints"
+  // disabled "Points" budget field while the modal's enabled "Points"
   // input is the real target). Honour the documented "visible, enabled" contract.
   els = els.filter((e) => !e.disabled && !e.readOnly && e.getAttribute('aria-disabled') !== 'true');
   if (!els.length) return null;
@@ -1822,7 +1822,7 @@ class PlaywrightAdapter(BaseAdapter):
              (listbox/menu/dropdown), then the aria-controls/aria-owns listbox.
         """
         # Multi-select support: a tags widget takes several values in one step,
-        # written comma-separated ("GaqAccepted, Aerobic, Strength"). Only split
+        # written comma-separated ("TagAccepted, Aerobic, Strength"). Only split
         # for an actual multi-select so a single value that legitimately contains
         # a comma is left intact on ordinary selects.
         values = await self._split_multi_values(trigger, value)
@@ -1856,7 +1856,7 @@ class PlaywrightAdapter(BaseAdapter):
         """Split a comma-joined value into items, but only for a multi-select.
 
         A tags widget (``ant-select-multiple``) accepts several values in one
-        step ("GaqAccepted, Aerobic"). For an ordinary single select a comma is
+        step ("TagAccepted, Aerobic"). For an ordinary single select a comma is
         part of the value and must not be split.
         """
         if not value or "," not in value:
@@ -1972,8 +1972,8 @@ class PlaywrightAdapter(BaseAdapter):
             if not got:
                 continue
             got_tight = got.replace(" ", "")
-            # equal / substring, and also whitespace-insensitive so "Meal Log"
-            # recognises a committed "MealLog" tag (and vice-versa).
+            # equal / substring, and also whitespace-insensitive so "Task Log"
+            # recognises a committed "TaskLog" tag (and vice-versa).
             if (got == want or want in got or got in want
                     or got_tight == want_tight
                     or want_tight in got_tight or got_tight in want_tight):
@@ -2001,7 +2001,7 @@ class PlaywrightAdapter(BaseAdapter):
 
         Matches exact, then whitespace-insensitive, then substring, then (if the
         list is filtered to a single row) that row. The whitespace-insensitive pass
-        is what lets a step written "Meal Log" select an option rendered "MealLog"
+        is what lets a step written "Task Log" select an option rendered "TaskLog"
         (and vice-versa). Returns True when one was marked.
         """
         try:
@@ -2093,7 +2093,7 @@ class PlaywrightAdapter(BaseAdapter):
                 typed_filter = True
                 # If the exact text filtered the list to nothing but the value has
                 # spaces, retry with a whitespace-free filter — the option may be
-                # spelled without the space (e.g. "MealLog" vs "Meal Log").
+                # spelled without the space (e.g. "TaskLog" vs "Task Log").
                 if " " in value and not await self._mark_matching_option(value):
                     await search.fill(value.replace(" ", ""), timeout=min(timeout, 2000))
                     await self._page.wait_for_timeout(200)

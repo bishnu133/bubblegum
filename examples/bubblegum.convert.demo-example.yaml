@@ -1,4 +1,4 @@
-# PPH project wiring for `bubblegum convert`
+# Demo project wiring for `bubblegum convert`
 convert:
   output:
     languages: ["typescript"]
@@ -29,6 +29,6 @@ convert:
   cleanup:
     enabled: true
   reports:
-    title_prefix: "H365"
+    title_prefix: "Acme"
   on_failure:
     screenshot: true

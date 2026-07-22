@@ -29,7 +29,7 @@ import bubblegum.adapters.web.playwright.adapter as adapter_mod
 
 def _num_panel(prefix: str, label: str) -> str:
     # A collapse panel with a "Stamp Position" range input (placeholder Position,
-    # like Ant) and a "Healthpoints" input — both nameless, ids encode food/drink.
+    # like Ant) and a "Points" input — both nameless, ids encode food/drink.
     return (
         f"<div class='ant-collapse-item ant-collapse-item-active'>"
         f"  <div class='ant-collapse-header' role='button' aria-expanded='true'>"
@@ -39,8 +39,8 @@ def _num_panel(prefix: str, label: str) -> str:
         f"      <div style='padding-bottom:8px'><span>Stamp Position</span></div>"
         f"      <input role='spinbutton' id='{prefix}_{label.lower()}_0_minRange'>"
         f"      <input role='spinbutton' id='{prefix}_{label.lower()}_0_maxRange' placeholder='Position'>"
-        f"      <div style='padding-bottom:8px'><span>Healthpoints</span></div>"
-        f"      <input role='spinbutton' id='{prefix}_{label.lower()}_0_healthPoints'>"
+        f"      <div style='padding-bottom:8px'><span>Points</span></div>"
+        f"      <input role='spinbutton' id='{prefix}_{label.lower()}_0_pointsField'>"
         f"    </div>"
         f"  </div>"
         f"</div>"

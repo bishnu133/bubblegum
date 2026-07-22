@@ -17,13 +17,13 @@ from bubblegum.core.table import parse_table_action
 # ---------------------------------------------------------------------------
 
 def test_parse_cell_under_column_click_row():
-    assert parse_table_action("under the PPHID column, click the 1st row value") == {
-        "kind": "cell", "column": "PPHID", "row_index": 1}
+    assert parse_table_action("under the RecordID column, click the 1st row value") == {
+        "kind": "cell", "column": "RecordID", "row_index": 1}
 
 
 def test_parse_cell_link_in_first_result_row():
-    assert parse_table_action("Click the PPHID link in the first result row") == {
-        "kind": "cell", "column": "PPHID", "row_index": 1}
+    assert parse_table_action("Click the RecordID link in the first result row") == {
+        "kind": "cell", "column": "RecordID", "row_index": 1}
 
 
 def test_parse_cell_last_row():
@@ -33,8 +33,8 @@ def test_parse_cell_last_row():
 
 def test_parse_cell_row_match():
     assert parse_table_action(
-        'in the row where Name is "Bishnu Test Account", click the PPHID value'
-    ) == {"kind": "cell", "column": "PPHID", "row_match": {"Name": "Bishnu Test Account"}}
+        'in the row where Name is "Test Account", click the RecordID value'
+    ) == {"kind": "cell", "column": "RecordID", "row_match": {"Name": "Test Account"}}
 
 
 def test_parse_link_with_text():
@@ -43,8 +43,8 @@ def test_parse_link_with_text():
 
 
 def test_parse_structured_kwargs():
-    assert parse_table_action("anything", {"column": "PPHID", "row": "first"}) == {
-        "kind": "cell", "column": "PPHID", "row_index": 1}
+    assert parse_table_action("anything", {"column": "RecordID", "row": "first"}) == {
+        "kind": "cell", "column": "RecordID", "row_index": 1}
     assert parse_table_action("anything", {"link_text": "9ca8"}) == {
         "kind": "link", "text": "9ca8", "exact": False}
     assert parse_table_action("x", {"column": "Status", "row_match": {"Name": "A"}}) == {
@@ -81,11 +81,11 @@ def _run(coro):
 def test_routing_resolves_cell_click():
     adapter = _Adapter()
     target = _run(sdk._maybe_resolve_table_or_link(
-        adapter, "web", "Click the PPHID link in the first result row", {}))
+        adapter, "web", "Click the RecordID link in the first result row", {}))
     assert target is not None
     assert target.ref == '[data-bg-cell="1"]'
     assert target.resolver_name == "table_cell_dom"
-    assert adapter.cell_calls == [("PPHID", 1, None)]
+    assert adapter.cell_calls == [("RecordID", 1, None)]
 
 
 def test_routing_resolves_link_click():
@@ -100,8 +100,8 @@ def test_routing_resolves_link_click():
 def test_routing_passes_structured_kwargs():
     adapter = _Adapter()
     _run(sdk._maybe_resolve_table_or_link(
-        adapter, "web", "open it", {"column": "PPHID", "row": "first"}))
-    assert adapter.cell_calls == [("PPHID", 1, None)]
+        adapter, "web", "open it", {"column": "RecordID", "row": "first"}))
+    assert adapter.cell_calls == [("RecordID", 1, None)]
 
 
 def test_routing_skips_non_table_steps():
@@ -113,4 +113,4 @@ def test_routing_skips_non_table_steps():
 def test_routing_skips_mobile():
     adapter = _Adapter()
     assert _run(sdk._maybe_resolve_table_or_link(
-        adapter, "mobile", "Click the PPHID link in the first row", {})) is None
+        adapter, "mobile", "Click the RecordID link in the first row", {})) is None
