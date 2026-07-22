@@ -6,10 +6,32 @@ AppiumHierarchyResolver — Tier 1 mobile resolver.
 Parses the Appium XML element hierarchy (driver.page_source) to find elements
 matching the step intent. Mobile equivalent of AccessibilityTreeResolver.
 
+Cross-platform attributes
+-------------------------
+Android (UiAutomator2) and iOS (XCUITest) expose different attribute names for
+the same concepts. The resolver reads BOTH schemas and maps them onto one
+unified view so matching works identically on either platform:
+
+  concept        Android              iOS (XCUIElementType…)
+  -------------  -------------------  -----------------------
+  visible text   text                 label
+  a11y / id      content-desc         name   (accessibilityIdentifier|label)
+  field value    (n/a)                value
+  widget type    class                type
+  geometry       bounds="[x,y][x,y]"  x / y / width / height
+  enabled        enabled              enabled
+  visible        visible-to-user      visible
+
+On React-Native iOS a ``testID`` becomes the XCUITest ``name``, but when the
+element also has a visible label XCUITest often surfaces that label as ``name``
+too — so matching by human text ("View daily summary") succeeds even when a
+testID-based locator would not.
+
 Matching strategy (in priority order for each candidate element):
-  1. text attribute          — element label shown to the user
-  2. content-desc attribute  — accessibility description (Android)
+  1. text / label attribute  — element label shown to the user
+  2. content-desc / name      — accessibility description / identifier
   3. resource-id attribute   — e.g. "com.example:id/login_btn"
+  4. value attribute (iOS)   — current field value
 
 Matching direction (both checked):
   - instruction contains element value  ("tap animation" contains "animation") ✅
@@ -71,6 +93,89 @@ def _text_matches(instruction_lower: str, value: str) -> bool:
     return value_lower in instruction_lower or instruction_lower in value_lower
 
 
+def _is_ios_element(element: ET.Element, platform: str) -> bool:
+    """True when the node belongs to an iOS/XCUITest hierarchy.
+
+    Detected from the intent platform, the XCUIElementType tag/type, or the
+    presence of iOS-only attributes — so a mixed or platform-less context still
+    routes each node correctly.
+    """
+    if (platform or "").lower() == "ios":
+        return True
+    tag = element.tag or ""
+    if tag.startswith("XCUIElementType"):
+        return True
+    if (element.get("type") or "").startswith("XCUIElementType"):
+        return True
+    return False
+
+
+def _ios_bounds(element: ET.Element) -> str:
+    """Render iOS x/y/width/height attributes as an Android-style bounds string.
+
+    XCUITest reports geometry as four integer attributes rather than the
+    ``[x,y][x,y]`` string Android uses. Emitting that string lets the shared
+    ``NormalizedBounds`` parser and visibility scoring treat both platforms the
+    same. Returns "" when geometry is absent or zero-sized.
+    """
+    try:
+        x = int(float(element.get("x", "0") or 0))
+        y = int(float(element.get("y", "0") or 0))
+        w = int(float(element.get("width", "0") or 0))
+        h = int(float(element.get("height", "0") or 0))
+    except (TypeError, ValueError):
+        return ""
+    if w <= 0 and h <= 0:
+        return ""
+    return f"[{x},{y}][{x + w},{y + h}]"
+
+
+def _unified_attrs(element: ET.Element, platform: str = "") -> dict:
+    """Read an element's attributes into one platform-neutral view.
+
+    Android and iOS attribute names are normalized onto the same keys
+    (``widget_type``/``text``/``content_desc``/``resource_id``/``value``/
+    ``bounds``/``enabled``/``visible``/``clickable``) so every downstream
+    consumer — matching, xpath building, the normalized graph — works from a
+    single shape regardless of platform.
+    """
+    tag = element.tag or ""
+    if _is_ios_element(element, platform):
+        widget_type = (element.get("type") or element.get("class") or tag or "").strip()
+        label = (element.get("label") or "").strip()
+        name = (element.get("name") or "").strip()
+        return {
+            "ios": True,
+            "widget_type": widget_type,
+            # Visible label is the iOS analogue of Android's `text`.
+            "text": label,
+            # `name` is the accessibility id (often the visible label on RN iOS).
+            "content_desc": name,
+            "resource_id": "",
+            "value": (element.get("value") or "").strip(),
+            "bounds": (element.get("bounds") or "").strip() or _ios_bounds(element),
+            "enabled_attr": (element.get("enabled") or "").strip().lower(),
+            "visible_attr": (element.get("visible") or "").strip().lower(),
+            "hidden_attr": (element.get("hidden") or "").strip().lower(),
+            # iOS has no `clickable`; control-ness is inferred from the type.
+            "clickable": widget_type.lower().endswith(("button", "cell", "link")),
+        }
+    widget_type = (element.get("class") or tag or "").strip()
+    return {
+        "ios": False,
+        "widget_type": widget_type,
+        "text": (element.get("text") or "").strip(),
+        "content_desc": (element.get("content-desc") or "").strip(),
+        "resource_id": (element.get("resource-id") or "").strip(),
+        "value": "",
+        "bounds": (element.get("bounds") or "").strip(),
+        "enabled_attr": (element.get("enabled") or "").strip().lower(),
+        "visible_attr": (element.get("visible-to-user") or "").strip().lower(),
+        "hidden_attr": (element.get("hidden") or "").strip().lower(),
+        "clickable": (element.get("clickable") or "").strip().lower() == "true",
+    }
+
+
 class AppiumHierarchyResolver(Resolver):
     """
     Parses Appium XML hierarchy and matches elements by text, content-desc,
@@ -124,6 +229,7 @@ class AppiumHierarchyResolver(Resolver):
             logger.warning("AppiumHierarchyResolver: XML parse error: %s", exc)
             return []
 
+        platform = intent.platform or "android"
         candidates: list[ResolvedTarget] = []
         normalized_elements = []
         elements_by_ref: dict[str, object] = {}
@@ -131,36 +237,37 @@ class AppiumHierarchyResolver(Resolver):
         children_lookup: dict[str, list[str]] = {}
         for parent in root.iter():
             pid = id(parent)
-            parent_ref = _element_xpath_ref(parent)
+            parent_ref = _element_xpath_ref(parent, platform)
             children = list(parent)
             if children:
-                children_lookup[parent_ref] = [_element_xpath_ref(ch) for ch in children]
+                children_lookup[parent_ref] = [_element_xpath_ref(ch, platform) for ch in children]
             for child in children:
                 parent_lookup[id(child)] = parent_ref
 
         for element in root.iter():
-            source_ref = _element_xpath_ref(element)
+            source_ref = _element_xpath_ref(element, platform)
+            attrs = _unified_attrs(element, platform)
             normalized = normalize_mobile_hierarchy_node(
                 {
-                    "class": (element.get("class") or element.tag or "").strip(),
-                    "text": (element.get("text") or "").strip(),
-                    "content-desc": (element.get("content-desc") or "").strip(),
-                    "resource-id": (element.get("resource-id") or "").strip(),
-                    "bounds": (element.get("bounds") or "").strip(),
-                    "enabled": (element.get("enabled") or "true").strip().lower() != "false",
-                    "displayed": (element.get("visible-to-user") or "true").strip().lower() != "false",
-                    "attributes": {"clickable": (element.get("clickable") or "").strip().lower() == "true"},
+                    "class": attrs["widget_type"] or element.tag or "",
+                    "text": attrs["text"],
+                    "content-desc": attrs["content_desc"],
+                    "resource-id": attrs["resource_id"],
+                    "bounds": attrs["bounds"],
+                    "enabled": attrs["enabled_attr"] != "false",
+                    "displayed": attrs["visible_attr"] != "false",
+                    "attributes": {"clickable": attrs["clickable"]},
                     "source_ref": source_ref,
                     "parent_id": parent_lookup.get(id(element)),
                     "children_ids": children_lookup.get(source_ref, []),
                 },
-                platform=intent.platform or "android",
+                platform=platform,
                 source_kind="appium_hierarchy",
             )
             normalized_elements.append(normalized)
             if normalized.source_ref:
                 elements_by_ref[normalized.source_ref] = normalized
-            result = self._match_element(element, instruction_lower, intent.action_type, ui_framework=ui_framework)
+            result = self._match_element(attrs, instruction_lower, intent.action_type, ui_framework=ui_framework)
             if result is not None:
                 candidates.append(result)
         graph = ElementGraph(normalized_elements) if normalized_elements else None
@@ -254,70 +361,76 @@ class AppiumHierarchyResolver(Resolver):
 
     def _match_element(
         self,
-        element: ET.Element,
+        attrs: dict,
         instruction_lower: str,
         action_type: str,
         ui_framework: str = "",
     ) -> ResolvedTarget | None:
         """
-        Attempt to match a single XML element against the instruction.
-        Checks in order: text → content-desc → resource-id.
+        Attempt to match a single element against the instruction.
+        Checks in order: text/label → content-desc/name → resource-id → value.
         Uses bidirectional substring matching via _text_matches().
+
+        ``attrs`` is the platform-neutral view from :func:`_unified_attrs`, so
+        the same matching runs against Android and iOS hierarchies.
 
         ``ui_framework`` (M4) tunes role scoring: Compose/RN render tappable
         controls as generic clickable View/ViewGroup nodes, which would
         otherwise be down-ranked for tap/click.
         """
-        tag    = element.tag or ""
-        widget_type = (element.get("class") or tag or "").strip()
-        text   = (element.get("text") or "").strip()
-        c_desc = (element.get("content-desc") or "").strip()
-        res_id = (element.get("resource-id") or "").strip()
-        bounds = element.get("bounds") or ""
-        clickable = (element.get("clickable") or "").strip().lower() == "true"
-        enabled_attr = (element.get("enabled") or "").strip().lower()
-        visible_attr = (element.get("visible-to-user") or "").strip().lower()
-        hidden_attr = (element.get("hidden") or "").strip().lower()
+        widget_type = attrs["widget_type"]
+        text   = attrs["text"]
+        c_desc = attrs["content_desc"]
+        res_id = attrs["resource_id"]
+        value  = attrs["value"]
+        bounds = attrs["bounds"]
+        clickable = attrs["clickable"]
         explicitly_hidden = (
-            enabled_attr == "false"
-            or visible_attr == "false"
-            or hidden_attr in ("true", "1")
+            attrs["enabled_attr"] == "false"
+            or attrs["visible_attr"] == "false"
+            or attrs["hidden_attr"] in ("true", "1")
         )
         visibility = 0.2 if explicitly_hidden else (1.0 if bounds else 0.8)
 
-        # text match (highest confidence)
+        ios = attrs["ios"]
+        # XPath attribute names differ per platform: iOS matches on the
+        # `label`/`name`/`value` attributes, Android on `text`/`content-desc`.
+        text_attr = "label" if ios else "text"
+        desc_attr = "name" if ios else "content-desc"
+
+        # text / label match (highest confidence)
         if text and _text_matches(instruction_lower, text):
-            xpath = _build_xpath(widget_type, "text", text)
+            xpath = _build_xpath(widget_type, text_attr, text)
             return ResolvedTarget(
                 ref=json.dumps({"by": "xpath", "value": xpath}),
                 confidence=_CONF_TEXT,
                 resolver_name=self.name,
                 metadata={
                     "signals": make_signals(text_match=0.92, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
-                    "matched_attr": "text",
+                    "matched_attr": text_attr,
                     "matched_value": text,
                     "tag": widget_type,
                     "bounds": bounds,
                 },
             )
 
-        # content-desc match
+        # content-desc / name (accessibility) match
         if c_desc and _text_matches(instruction_lower, c_desc):
-            xpath = _build_xpath(widget_type, "content-desc", c_desc)
+            xpath = _build_xpath(widget_type, desc_attr, c_desc)
             return ResolvedTarget(
                 ref=json.dumps({"by": "xpath", "value": xpath}),
                 confidence=_CONF_CONTENT_DESC,
                 resolver_name=self.name,
                 metadata={
                     "signals": make_signals(text_match=0.85, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
-                    "matched_attr": "content-desc",
+                    "matched_attr": desc_attr,
                     "matched_value": c_desc,
                     "tag": widget_type,
                     "bounds": bounds,
                 },
             )
 
-        # resource-id match (strip package prefix for matching)
+        # resource-id match (Android; strip package prefix for matching)
         if res_id:
             id_part = res_id.split("/")[-1] if "/" in res_id else res_id
             if _text_matches(instruction_lower, id_part) or _text_matches(instruction_lower, res_id):
@@ -334,6 +447,22 @@ class AppiumHierarchyResolver(Resolver):
                         "bounds": bounds,
                     },
                 )
+
+        # value match (iOS text fields / labelled controls)
+        if value and _text_matches(instruction_lower, value):
+            xpath = _build_xpath(widget_type, "value", value)
+            return ResolvedTarget(
+                ref=json.dumps({"by": "xpath", "value": xpath}),
+                confidence=_CONF_CONTENT_DESC,
+                resolver_name=self.name,
+                metadata={
+                    "signals": make_signals(text_match=0.8, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
+                    "matched_attr": "value",
+                    "matched_value": value,
+                    "tag": widget_type,
+                    "bounds": bounds,
+                },
+            )
 
         return None
 
@@ -368,8 +497,11 @@ def _role_match_for_action(
     tag: str, action_type: str, *, ui_framework: str = "", clickable: bool = False
 ) -> float:
     t = tag.lower()
+    # iOS XCUIElementType* names collapse to the same keywords Android uses:
+    #   XCUIElementTypeButton   -> "button"      XCUIElementTypeTextField -> "textfield"
+    #   XCUIElementTypeStaticText -> "statictext" (label)  XCUIElementTypeCell -> "cell"
     if action_type in ("tap", "click"):
-        if any(x in t for x in ("button", "imagebutton", "textview")):
+        if any(x in t for x in ("button", "imagebutton", "textview", "cell", "link", "statictext")):
             return 1.0
         # M4: Compose / React Native expose tappable controls as generic
         # clickable View/ViewGroup nodes (no "button"/"textview" in the class),
@@ -384,20 +516,22 @@ def _role_match_for_action(
             return 0.9
         return 0.4
     if action_type == "type":
-        return 1.0 if "edittext" in t else 0.2
+        return 1.0 if any(x in t for x in ("edittext", "textfield", "securetextfield")) else 0.2
     if action_type == "verify":
-        return 0.9 if any(x in t for x in ("textview", "edittext", "button")) else 0.5
+        return 0.9 if any(x in t for x in ("textview", "edittext", "button", "statictext", "textfield")) else 0.5
     return 0.5
 
 
-def _element_xpath_ref(element: ET.Element) -> str:
-    widget_type = (element.get("class") or element.tag or "*").strip() or "*"
-    text = (element.get("text") or "").strip()
-    c_desc = (element.get("content-desc") or "").strip()
+def _element_xpath_ref(element: ET.Element, platform: str = "") -> str:
+    attrs = _unified_attrs(element, platform)
+    widget_type = attrs["widget_type"] or element.tag or "*"
+    text = attrs["text"]
+    c_desc = attrs["content_desc"]
+    ios = attrs["ios"]
     if text:
-        xpath = _build_xpath(widget_type, "text", text)
+        xpath = _build_xpath(widget_type, "label" if ios else "text", text)
     elif c_desc:
-        xpath = _build_xpath(widget_type, "content-desc", c_desc)
+        xpath = _build_xpath(widget_type, "name" if ios else "content-desc", c_desc)
     else:
         xpath = f"//{widget_type}"
     return json.dumps({"by": "xpath", "value": xpath})

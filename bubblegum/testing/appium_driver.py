@@ -150,6 +150,79 @@ def create_appium_driver(appium_url: str, caps: dict[str, Any]):
     return appium_webdriver.Remote(appium_url, options=options)
 
 
+def attach_to_appium_session(
+    appium_url: str,
+    session_id: str,
+    caps: dict[str, Any] | None = None,
+):
+    """Attach to an Appium session that another test already created.
+
+    Cloud device farms (pCloudy, BrowserStack, …) allow only one Appium session
+    per device, so an in-test Bubblegum fallback cannot open a second session —
+    it must reuse the one the host test (e.g. WebdriverIO) is already driving.
+
+    This constructs an Appium ``webdriver.Remote`` bound to ``session_id`` without
+    issuing a ``newSession`` command: the ``newSession`` request is intercepted
+    and short-circuited to the existing id, then normal dispatch is restored. The
+    returned driver shares the live session — **the caller still owns its
+    lifecycle**; Bubblegum must never call ``driver.quit()`` on it.
+
+    ``caps`` should include ``platformName`` (\"iOS\"/\"Android\") so the correct
+    options/automation name is selected; when omitted a bare options object is
+    used and the platform is inferred from the live session.
+    """
+    try:
+        import appium.webdriver as appium_webdriver
+    except ImportError as exc:
+        raise AppiumNotInstalledError(
+            "appium-python-client is not installed. "
+            "Run: pip install Appium-Python-Client"
+        ) from exc
+
+    caps = caps or {}
+    # Build options when platformName is known; otherwise fall back to a bare
+    # AppiumOptions so Remote() still constructs.
+    if str(caps.get("platformName", "")).strip():
+        options = build_appium_options(caps)
+    else:
+        options = _bare_appium_options()
+
+    original_execute = appium_webdriver.Remote.execute
+
+    def _patched_execute(self, driver_command, params=None):  # type: ignore[no-untyped-def]
+        # Selenium/Appium name the session-creation command "newSession".
+        if driver_command == "newSession":
+            return {"success": 0, "value": dict(caps), "sessionId": session_id}
+        return original_execute(self, driver_command, params)
+
+    appium_webdriver.Remote.execute = _patched_execute  # type: ignore[assignment]
+    try:
+        driver = appium_webdriver.Remote(appium_url, options=options)
+    finally:
+        # Always restore the real dispatch so other drivers create sessions normally.
+        appium_webdriver.Remote.execute = original_execute  # type: ignore[assignment]
+    # Guarantee the id even if the stubbed newSession value wasn't threaded through.
+    driver.session_id = session_id
+    return driver
+
+
+def _bare_appium_options():
+    """A minimal Appium options object usable when platformName is unknown."""
+    for module_path, class_name in (
+        ("appium.options.common", "AppiumOptions"),
+        ("appium.options", "AppiumOptions"),
+    ):
+        try:
+            mod = importlib.import_module(module_path)
+            return getattr(mod, class_name)()
+        except (ImportError, AttributeError):
+            continue
+    raise AppiumNotInstalledError(
+        "Could not import a base Appium options class. "
+        "Run: pip install --upgrade Appium-Python-Client"
+    )
+
+
 def create_cloud_appium_driver(
     provider: str,
     caps: dict[str, Any],
