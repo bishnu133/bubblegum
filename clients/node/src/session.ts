@@ -27,11 +27,29 @@ export interface LaunchOptions extends BridgeClientOptions {
   cdpEndpoint?: string;
   /** Which existing page to attach to when using `cdpEndpoint` (default 0). */
   pageIndex?: number;
+  /**
+   * Mobile client-owned mode: attach the engine to an Appium session another
+   * test already created, by its session id (e.g. WebdriverIO's
+   * `browser.sessionId`). Cloud device farms allow only one session per device,
+   * so an in-test fallback must reuse the running session rather than open a
+   * new one. The engine reuses it and never quits it. Requires the engine to
+   * advertise the `channel.mobile.attach` capability.
+   */
+  existingSessionId?: string;
 }
 
 /** Options for {@link Bubblegum.attach} — `cdpEndpoint` is required. */
 export interface AttachOptions extends Omit<LaunchOptions, "channel"> {
   cdpEndpoint: string;
+}
+
+/**
+ * Options for {@link Bubblegum.attachMobile} — attach to an Appium session your
+ * test already drives. `appiumUrl` + `existingSessionId` are required.
+ */
+export interface MobileAttachOptions extends Omit<LaunchOptions, "channel" | "cdpEndpoint" | "pageIndex"> {
+  appiumUrl: string;
+  existingSessionId: string;
 }
 
 /** One step's outcome from {@link Bubblegum.preflight}. */
@@ -113,6 +131,13 @@ export class Bubblegum {
           "this engine does not support CDP attach (channel.web.cdp); upgrade bubblegum-ai",
         );
       }
+      if (opts.existingSessionId && !client.hasCapability("channel.mobile.attach")) {
+        throw new BridgeError(
+          ErrorCodes.Unsupported,
+          "this engine does not support attaching to an existing Appium session " +
+            "(channel.mobile.attach); upgrade bubblegum-ai",
+        );
+      }
       const { session_id } = await client.request<{ session_id: string }>("session.open", {
         channel: opts.channel ?? "web",
         url: opts.url,
@@ -122,6 +147,7 @@ export class Bubblegum {
         capabilities: opts.capabilities,
         cdp_endpoint: opts.cdpEndpoint,
         page_index: opts.pageIndex,
+        existing_session_id: opts.existingSessionId,
       });
       return new Bubblegum(client, session_id);
     } catch (err) {
@@ -143,6 +169,31 @@ export class Bubblegum {
    */
   static attach(opts: AttachOptions): Promise<Bubblegum> {
     return Bubblegum.launch({ ...opts, channel: "web" });
+  }
+
+  /**
+   * Attach the engine to a mobile (Appium) session your test already drives,
+   * by its session id. Cloud device farms (pCloudy, BrowserStack, …) allow only
+   * one Appium session per device, so an in-test Bubblegum fallback must reuse
+   * the running session instead of opening a new one. The engine shares the
+   * session and never quits it — your test keeps ownership of teardown.
+   *
+   * ```ts
+   * // Inside a WebdriverIO test, when a normal locator click fails:
+   * const bg = await Bubblegum.attachMobile({
+   *   appiumUrl: "https://ship-hats.pcloudy.com/appiumcloud/wd/hub",
+   *   existingSessionId: browser.sessionId,
+   *   capabilities: { platformName: "iOS" },
+   * });
+   * try {
+   *   await bg.act("Tap View daily summary");
+   * } finally {
+   *   await bg.close(); // closes the engine wrapper only; device session stays up
+   * }
+   * ```
+   */
+  static attachMobile(opts: MobileAttachOptions): Promise<Bubblegum> {
+    return Bubblegum.launch({ ...opts, channel: "mobile" });
   }
 
   /** The bridge client (for advanced use / capability checks). */

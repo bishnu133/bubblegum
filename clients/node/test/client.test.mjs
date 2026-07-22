@@ -156,6 +156,40 @@ test("attach() rejects when the engine lacks the channel.web.cdp capability", as
   );
 });
 
+test("attachMobile() sends existing_session_id on the mobile channel when supported", async () => {
+  let openParams;
+  const m = makeMock({
+    handshake: () => ({ engine_version: "0.0.6a0", protocol_version: 1, capabilities: ["act", "channel.mobile.attach"] }),
+    "session.open": (p) => {
+      openParams = p;
+      return { session_id: "sid-mob" };
+    },
+    act: (p) => ({ status: "passed", action: p.instruction, target: null, confidence: 1, duration_ms: 1 }),
+  });
+  const bg = await Bubblegum.attachMobile({
+    transport: m.transport,
+    appiumUrl: "http://host/wd/hub",
+    existingSessionId: "live-42",
+    capabilities: { platformName: "iOS" },
+  });
+  await bg.act("Tap View daily summary");
+  assert.equal(openParams.channel, "mobile");
+  assert.equal(openParams.appium_url, "http://host/wd/hub");
+  assert.equal(openParams.existing_session_id, "live-42");
+  assert.deepEqual(openParams.capabilities, { platformName: "iOS" });
+});
+
+test("attachMobile() rejects when the engine lacks the channel.mobile.attach capability", async () => {
+  const m = makeMock({
+    handshake: () => ({ engine_version: "0.0.5a0", protocol_version: 1, capabilities: ["act", "channel.mobile"] }), // no attach
+    "session.open": () => ({ session_id: "x" }),
+  });
+  await assert.rejects(
+    Bubblegum.attachMobile({ transport: m.transport, appiumUrl: "http://h", existingSessionId: "s" }),
+    (e) => e instanceof BridgeError && /channel\.mobile\.attach/.test(e.message),
+  );
+});
+
 test("report() maps options to report.write and resolves written paths", async () => {
   let captured;
   const m = makeMock({

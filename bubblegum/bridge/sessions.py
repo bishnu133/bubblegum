@@ -39,6 +39,10 @@ class OpenSpec:
     # "http://localhost:9222"); ``page_index`` selects which existing page.
     cdp_endpoint: str | None = None
     page_index: int = 0
+    # Mobile client-owned mode: attach to an Appium session another test already
+    # created (e.g. a WebdriverIO run on a cloud device) instead of opening a new
+    # one. When set, the engine reuses this session and never quits it.
+    existing_session_id: str | None = None
 
     @classmethod
     def from_params(cls, params: dict[str, Any]) -> "OpenSpec":
@@ -48,6 +52,11 @@ class OpenSpec:
         cdp_endpoint = params.get("cdp_endpoint")
         if cdp_endpoint is not None and channel != "web":
             raise p.BridgeError(p.INVALID_PARAMS, "cdp_endpoint is only valid for the web channel")
+        existing_session_id = params.get("existing_session_id")
+        if existing_session_id is not None and channel != "mobile":
+            raise p.BridgeError(
+                p.INVALID_PARAMS, "existing_session_id is only valid for the mobile channel"
+            )
         page_index = params.get("page_index", 0)
         if not isinstance(page_index, int) or isinstance(page_index, bool) or page_index < 0:
             raise p.BridgeError(p.INVALID_PARAMS, "page_index must be a non-negative integer")
@@ -60,6 +69,7 @@ class OpenSpec:
             capabilities=params.get("capabilities"),
             cdp_endpoint=cdp_endpoint,
             page_index=page_index,
+            existing_session_id=existing_session_id,
         )
 
 
@@ -179,7 +189,10 @@ async def default_session_factory(spec: OpenSpec) -> OpenedSession:
 
     # mobile
     try:
-        from bubblegum.testing.appium_driver import create_appium_driver
+        from bubblegum.testing.appium_driver import (
+            attach_to_appium_session,
+            create_appium_driver,
+        )
     except ImportError as exc:  # pragma: no cover - depends on optional extra
         raise p.BridgeError(
             p.UNSUPPORTED,
@@ -188,16 +201,29 @@ async def default_session_factory(spec: OpenSpec) -> OpenedSession:
 
     if not spec.appium_url:
         raise p.BridgeError(p.INVALID_PARAMS, "mobile session needs 'appium_url'")
-    driver = create_appium_driver(spec.appium_url, spec.capabilities or {})
+
+    # Client-owned mode: attach to the Appium session the caller already drives
+    # (e.g. a WebdriverIO run on a cloud device where only one session per device
+    # is allowed). We reuse it and never quit it on close.
+    attached = bool(spec.existing_session_id)
+    if attached:
+        driver = attach_to_appium_session(
+            spec.appium_url, spec.existing_session_id, spec.capabilities or {}
+        )
+    else:
+        driver = create_appium_driver(spec.appium_url, spec.capabilities or {})
     session = await BubblegumSession.mobile(driver, dry_run=spec.dry_run).__aenter__()
 
     async def aclose() -> None:
         try:
             await session.__aexit__(None, None, None)
         finally:
-            try:
-                driver.quit()
-            except Exception:  # noqa: BLE001
-                pass
+            # For an attached session the caller owns the lifecycle — closing our
+            # engine wrapper must not tear down their live device session.
+            if not attached:
+                try:
+                    driver.quit()
+                except Exception:  # noqa: BLE001
+                    pass
 
     return OpenedSession(session=session, aclose=aclose)

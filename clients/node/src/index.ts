@@ -8,7 +8,7 @@
  */
 
 export { Bubblegum } from "./session.js";
-export type { Channel, LaunchOptions, AttachOptions, RecoverArgs } from "./session.js";
+export type { Channel, LaunchOptions, AttachOptions, MobileAttachOptions, RecoverArgs } from "./session.js";
 
 export { BridgeClient, spawnBridgeTransport } from "./client.js";
 export type { Transport, SpawnOptions, BridgeClientOptions } from "./client.js";

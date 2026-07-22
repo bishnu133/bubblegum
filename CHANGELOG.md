@@ -1,5 +1,37 @@
 # Unreleased
 
+## 0.0.6a56 — feat(mobile): iOS (XCUITest) grounding + attach to an existing Appium session
+
+Enables the mobile pilot: resolving iOS elements by human text, and running an
+in-test Bubblegum fallback against a cloud device (pCloudy / BrowserStack) where
+only one Appium session per device is allowed.
+
+- **iOS attribute matching in `AppiumHierarchyResolver`.** The mobile Tier-1
+  resolver previously read only Android UiAutomator2 attributes
+  (`text` / `content-desc` / `resource-id` / `bounds` / `visible-to-user`), so
+  grounding by text returned no candidate on iOS. It now reads XCUITest
+  attributes too and maps both platforms onto one view: iOS `label` → visible
+  text, `name` → accessibility id, `value` → field value, `type` → widget type,
+  and x/y/width/height → the Android-style `bounds` string used for visibility
+  scoring. XPaths are built with the right per-platform attribute
+  (`//XCUIElementTypeButton[@label='View daily summary']`). This fixes the
+  common React-Native-iOS case where a `testID` becomes the XCUITest `name` but
+  the visible label is what a human (and Bubblegum) matches on — so a text/predicate
+  locator fails while `act("Tap View daily summary")` succeeds. Android matching
+  is unchanged.
+- **Attach to an existing Appium session (`channel.mobile.attach`).** New
+  `existing_session_id` on `session.open` and `Bubblegum.attachMobile({ appiumUrl,
+  existingSessionId, capabilities })` in the TS client let the engine reuse the
+  Appium session another test (e.g. WebdriverIO) already drives, by its
+  `browser.sessionId`, instead of opening a second one. The engine shares the
+  live session and **never quits it** — the host test keeps ownership of
+  teardown, so `bg.close()` tears down only the engine wrapper. Backed by
+  `attach_to_appium_session()`, which binds an Appium `Remote` to the existing
+  id by intercepting the `newSession` command.
+
+Engine `0.0.6a55` → `0.0.6a56`; npm client `0.0.6-alpha.10` → `0.0.6-alpha.11`.
+
+
 ## 0.0.6a55 — feat(report): one combined report — Summary tab + per-test collapsible details
 
 Follow-up to the a54 summary. Instead of a separate summary file plus a
