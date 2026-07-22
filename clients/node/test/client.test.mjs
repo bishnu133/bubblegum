@@ -300,6 +300,80 @@ test("clickLink() forwards link_text", async () => {
   assert.equal(req.params.options.exact, true);
 });
 
+test("dismissIfPresent() taps only present phrases via a resolve-first check", async () => {
+  // "Allow" is on screen; "Skip" is not. Both are asked, only "Allow" is tapped.
+  const onScreen = new Set(["Tap Allow"]);
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-d" }),
+    act: (p) => {
+      const present = onScreen.has(p.instruction);
+      if (p.options?.dry_run) {
+        return present
+          ? { status: "dry_run", action: p.instruction,
+              target: { ref: "//X[@label]", confidence: 0.92, resolver_name: "appium_hierarchy" },
+              confidence: 0.92, duration_ms: 1 }
+          : { status: "failed", action: p.instruction, target: null, confidence: 0,
+              duration_ms: 1, error: { error_type: "LowConfidenceError", message: "no match" } };
+      }
+      // Real tap: once tapped, it leaves the screen (so the next round finds nothing).
+      onScreen.delete(p.instruction);
+      return { status: "passed", action: p.instruction, target: null, confidence: 0.92, duration_ms: 1 };
+    },
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport });
+  const r = await bg.dismissIfPresent(["Allow", "Skip"], { pauseMs: 0 });
+  assert.equal(r.dismissed, true);
+  assert.deepEqual(r.tapped, ["Allow"]);
+  // A real tap for "Allow" happened; no real tap for the absent "Skip".
+  const realTaps = m.methods().filter((x) => x.method === "act" && !x.params.options?.dry_run);
+  assert.equal(realTaps.length, 1);
+  assert.equal(realTaps[0].params.instruction, "Tap Allow");
+});
+
+test("dismissIfPresent() returns dismissed=false and never taps when nothing is present", async () => {
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-d2" }),
+    act: (p) => ({ status: "failed", action: p.instruction, target: null, confidence: 0,
+                   duration_ms: 1, error: { error_type: "LowConfidenceError", message: "no match" } }),
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport });
+  const r = await bg.dismissIfPresent("Allow", { pauseMs: 0 });
+  assert.equal(r.dismissed, false);
+  assert.deepEqual(r.tapped, []);
+  assert.equal(r.rounds, 1); // stops after the first empty sweep
+  const realTaps = m.methods().filter((x) => x.method === "act" && !x.params.options?.dry_run);
+  assert.equal(realTaps.length, 0); // resolve-only; nothing executed
+});
+
+test("dismissIfPresent() sweeps repeatedly to clear a chain of queued prompts", async () => {
+  // Two prompts queued: "Allow" shows first; tapping it reveals "OK".
+  let stage = 0; // 0: Allow visible; 1: OK visible; 2: nothing
+  const visible = () => (stage === 0 ? "Tap Allow" : stage === 1 ? "Tap OK" : null);
+  const m = makeMock({
+    handshake: HANDSHAKE,
+    "session.open": () => ({ session_id: "sid-d3" }),
+    act: (p) => {
+      const present = p.instruction === visible();
+      if (p.options?.dry_run) {
+        return present
+          ? { status: "dry_run", action: p.instruction, target: { ref: "x", confidence: 0.9, resolver_name: "appium_hierarchy" }, confidence: 0.9, duration_ms: 1 }
+          : { status: "failed", action: p.instruction, target: null, confidence: 0, duration_ms: 1, error: { error_type: "LowConfidenceError", message: "no match" } };
+      }
+      if (present) stage += 1; // tapping the visible prompt advances to the next
+      return { status: "passed", action: p.instruction, target: null, confidence: 0.9, duration_ms: 1 };
+    },
+  });
+  const bg = await Bubblegum.launch({ transport: m.transport });
+  const r = await bg.dismissIfPresent(["Allow", "OK"], { pauseMs: 0 });
+  assert.equal(r.dismissed, true);
+  assert.deepEqual(r.tapped, ["Allow", "OK"]);
+  // Round 1 taps Allow, which reveals OK; OK is later in the same phrase list so
+  // it's tapped in the same sweep. Round 2 finds nothing and stops.
+  assert.equal(r.rounds, 2);
+});
+
 test("preflight() dry-runs each step and reports ok/failed without executing", async () => {
   const m = makeMock({
     handshake: HANDSHAKE,

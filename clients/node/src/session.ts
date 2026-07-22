@@ -65,6 +65,30 @@ export interface PreflightResult {
   error: string | null;
 }
 
+/** Options for {@link Bubblegum.dismissIfPresent}. */
+export interface DismissOptions {
+  /**
+   * How many sweep rounds to perform. Each round taps every phrase currently on
+   * screen; if anything was tapped, the sweep repeats to catch a follow-up
+   * prompt (permission chains queue one after another). Default 3.
+   */
+  maxRounds?: number;
+  /** Pause between rounds (ms) so the next queued dialog can render. Default 400. */
+  pauseMs?: number;
+  /** Per-resolve/act timeout forwarded to the engine. */
+  timeoutMs?: number;
+}
+
+/** Result of {@link Bubblegum.dismissIfPresent}. */
+export interface DismissResult {
+  /** True if at least one popup was tapped. */
+  dismissed: boolean;
+  /** The visible phrases that were tapped, in tap order (may repeat across rounds). */
+  tapped: string[];
+  /** Number of sweep rounds actually performed. */
+  rounds: number;
+}
+
 /** Arguments for {@link Bubblegum.clickInTable}. */
 export interface TableCellTarget {
   /** Column header that identifies the cell. */
@@ -248,6 +272,76 @@ export class Bubblegum {
       });
     }
     return out;
+  }
+
+  /**
+   * Tap an optional popup **by its visible text, only if it's on screen** — the
+   * safe way to clear a blocking confirmation/permission dialog that may or may
+   * not appear (e.g. an iOS "Allow notifications?" alert after login).
+   *
+   * This is the correct pattern for optional dialogs. A dialog that is *absent*
+   * must not fail the flow, so you cannot key it off a locator that throws when
+   * missing (WebdriverIO's `isElementPresent` returns `false` rather than
+   * throwing, so a `try/catch` around it never runs your fallback). Instead this
+   * helper does a resolve-only {@link preflight} first (executes nothing) and
+   * taps **only** when the element is actually present.
+   *
+   * Pass several candidate labels to clear a *chain* of prompts in one call
+   * (e.g. `["Allow", "OK", "Continue"]`). Each round taps every phrase currently
+   * visible; if anything was tapped it sweeps again — because OS permission
+   * prompts appear one at a time — until a round finds nothing or `maxRounds` is
+   * hit. Exact labels are preferred by the engine, so `"Allow"` never taps a
+   * neighbouring `"Don't Allow"`.
+   *
+   * It never throws for a missing dialog and never quits your session; call it
+   * unconditionally right after the step the popup interrupts.
+   *
+   * ```ts
+   * const bg = await Bubblegum.attachMobile({
+   *   appiumUrl, existingSessionId: browser.sessionId,
+   *   capabilities: { platformName: "iOS" },
+   * });
+   * try {
+   *   // ...your login step ran; a permission popup may now be blocking the app.
+   *   const r = await bg.dismissIfPresent(["Allow", "OK", "Continue"]);
+   *   if (r.dismissed) console.log("cleared popup(s):", r.tapped.join(", "));
+   *   // ...continue the flow; the app is unblocked whether or not the popup showed.
+   * } finally {
+   *   await bg.close();
+   * }
+   * ```
+   */
+  async dismissIfPresent(
+    phrases: string | string[],
+    options?: DismissOptions,
+  ): Promise<DismissResult> {
+    const list = typeof phrases === "string" ? [phrases] : phrases;
+    const maxRounds = options?.maxRounds ?? 3;
+    const pauseMs = options?.pauseMs ?? 400;
+    const stepOpts: StepOptions | undefined =
+      options?.timeoutMs !== undefined ? { timeout_ms: options.timeoutMs } : undefined;
+
+    const tapped: string[] = [];
+    let rounds = 0;
+    for (let round = 0; round < maxRounds; round++) {
+      rounds = round + 1;
+      let tappedThisRound = false;
+      for (const phrase of list) {
+        const instruction = `Tap ${phrase}`;
+        const [pf] = await this.preflight([instruction], stepOpts); // resolve-only; no tap
+        if (!pf.ok) continue; // not on screen — leave it, don't fail
+        const r = await this.act(instruction, stepOpts);
+        if (r.status === "passed" || r.status === "recovered") {
+          tapped.push(phrase);
+          tappedThisRound = true;
+        }
+      }
+      if (!tappedThisRound) break; // nothing left to clear
+      if (round < maxRounds - 1 && pauseMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, pauseMs));
+      }
+    }
+    return { dismissed: tapped.length > 0, tapped, rounds };
   }
 
   verify(instruction: string, options?: StepOptions): Promise<StepResult> {

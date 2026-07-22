@@ -1,5 +1,31 @@
 # Unreleased
 
+## npm `0.0.6-alpha.13` — feat(mobile): `dismissIfPresent()` for optional confirmation popups
+
+A first-class TS-client helper for the recurring mobile case where an *optional*
+confirmation/permission popup (e.g. an iOS "Allow notifications?" alert) appears
+after login and blocks the rest of the flow — but may not appear on every run.
+
+`bg.dismissIfPresent(phrases, options?)` does a resolve-only `preflight()` first
+(executes nothing) and taps a phrase **only when it's actually on screen**, so a
+missing popup never fails the flow. Pass several candidate labels
+(`["Allow", "OK", "Continue"]`) to clear a *chain* of queued prompts in one call;
+it sweeps until nothing remains or `maxRounds` (default 3) is hit. Exact-label
+preference (engine a57) means `"Allow"` never taps a neighbouring `"Don't Allow"`.
+It never throws for an absent popup and never quits your attached session, so it
+is called **unconditionally** at the point the popup could interrupt.
+
+This replaces the hand-rolled `tapIfPresent` snippet in
+`docs/mobile-attach-existing-session.md` (Pattern 2) and documents the pitfall
+that motivated it: gating the fallback on WebdriverIO's `isElementPresent()` —
+which returns `false` rather than throwing — inside a `try/catch` means the
+`catch` never runs when the popup is absent, so the fallback never fires.
+
+Engine unchanged (`0.0.6a58`); npm client `0.0.6-alpha.12` → `0.0.6-alpha.13`.
+`dismissIfPresent` / `preflight` / their result types are now exported from the
+package. TS client tests: 23/23.
+
+
 ## 0.0.6a58 — chore: replace app-specific sample identifiers with generic placeholders
 
 Documentation, tests, example fixtures, and changelog history referenced

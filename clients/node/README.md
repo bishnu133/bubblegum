@@ -148,6 +148,8 @@ otherwise. CDP attach is Chromium-only.
 | --- | --- | --- |
 | `Bubblegum.launch(opts)` | `Promise<Bubblegum>` | spawn + handshake + `session.open` |
 | `bg.act(instruction, options?)` | `Promise<StepResult>` | |
+| `bg.preflight(steps, options?)` | `Promise<PreflightResult[]>` | resolve-only dry run; executes nothing |
+| `bg.dismissIfPresent(phrases, options?)` | `Promise<DismissResult>` | tap an optional popup **only if on screen** (permission/confirmation dialogs) |
 | `bg.verify(instruction, options?)` | `Promise<StepResult>` | |
 | `bg.extract(instruction, options?)` | `Promise<StepResult>` | value in `target.metadata.extracted_value` |
 | `bg.recover({ failedSelector, intent, options? })` | `Promise<StepResult>` | |

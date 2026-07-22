@@ -6,7 +6,9 @@ Bubblegum finds the element by its visible text and taps it — no locator
 maintenance. This works on iOS as well as Android.
 
 Requires **bubblegum-ai `0.0.6a56`+** (engine) and **`@bubblegum-ai/node`
-`0.0.6-alpha.11`+** (TS client).
+`0.0.6-alpha.11`+** (TS client). The `dismissIfPresent()` helper in Pattern 2
+needs client **`0.0.6-alpha.13`+** and engine **`0.0.6a57`+** (exact-label
+preference).
 
 > All values below (hosts, labels, file names) are **placeholders** — replace
 > them with your own. Nothing here is app-specific.
@@ -88,44 +90,50 @@ Notes:
 
 ## Pattern 2 — optional dialogs (e.g. an OS permission "Allow" popup)
 
-System permission alerts are *optional* (may not appear) and often have a
-lookalike button next to the one you want (e.g. "Allow" beside "Don't Allow", both
-containing "allow"). Two things make this safe:
+System permission alerts (and app confirmation popups) are *optional* — they may
+or may not appear, and often have a lookalike button next to the one you want
+(e.g. "Allow" beside "Don't Allow", both containing "allow"). Three things make
+this safe:
 
-- **Only act if it's on screen.** `preflight()` is a dry-run resolve that executes
-  nothing.
+- **Only act if it's on screen.** `dismissIfPresent(...)` does a dry-run resolve
+  first (executes nothing) and taps **only** when the element is actually there.
 - **Exact label wins.** As of engine `0.0.6a57`, an exact "Allow" outranks a
-  partial "Don't Allow", so `act("Tap Allow")` never taps deny.
+  partial "Don't Allow", so it never taps deny.
+- **Clears a chain in one call.** Pass several labels and it sweeps until no
+  more prompts remain (OS permission dialogs queue one after another).
+
+As of client `0.0.6-alpha.13`, this is a first-class method — you don't hand-roll
+it:
+
+```ts
+const bg = await Bubblegum.attachMobile({
+  appiumUrl: "https://appium.example.com/wd/hub",
+  existingSessionId: browser.sessionId,
+  capabilities: { platformName: "iOS" },
+});
+try {
+  // Right after login, clear whatever confirmation popup may be blocking the app.
+  const r = await bg.dismissIfPresent(["Allow", "OK", "Continue"]);
+  if (r.dismissed) console.log("cleared popup(s):", r.tapped.join(", "));
+  // ...continue the flow; the app is unblocked whether or not the popup showed.
+} finally {
+  await bg.close(); // closes the engine wrapper only — your session stays up
+}
+```
+
+> **Common pitfall — call it unconditionally, not from a `catch`.**
+> WebdriverIO's `driver.isElementPresent(...)` returns `false` when the element
+> is absent; it does **not throw**. So a `try { if (isElementPresent(...)) ... }
+> catch { /* Bubblegum here */ }` never enters the `catch` when the popup is
+> missing — and your fallback never runs. Because the popup is *optional*, gate
+> it on presence, not on an exception. `dismissIfPresent` already does exactly
+> that (resolve-first, tap-only-if-present), so just call it every time at the
+> point the popup could interrupt — no `if`/`try`/`catch` around it.
 
 Because a permission alert is a **system (springboard) alert**, make sure your
 WDA session surfaces it in the page source (the XCUITest default). If your caps
 set `autoAcceptAlerts` / `autoDismissAlerts`, the OS handles the alert before any
 locator can see it — turn those off for this to apply.
-
-```ts
-// Tap by visible text only if present. Returns whether it tapped.
-async function tapIfPresent(bg: Bubblegum, phrase: string): Promise<boolean> {
-  const [pf] = await bg.preflight([`Tap ${phrase}`]); // resolve-only, no tap
-  if (!pf.ok) return false;                            // not on screen
-  const r = await bg.act(`Tap ${phrase}`);
-  return r.status === "passed" || r.status === "recovered";
-}
-
-async function handlePermissions(browser) {
-  if (!browser.isIOS) return;
-  const bg = await Bubblegum.attachMobile({
-    appiumUrl: "https://appium.example.com/wd/hub",
-    existingSessionId: browser.sessionId,
-    capabilities: { platformName: "iOS" },
-  });
-  try {
-    while (await tapIfPresent(bg, "Allow")) { await browser.pause(300); } // repeat prompts
-    await tapIfPresent(bg, "OK");
-  } finally {
-    await bg.close();
-  }
-}
-```
 
 ---
 
