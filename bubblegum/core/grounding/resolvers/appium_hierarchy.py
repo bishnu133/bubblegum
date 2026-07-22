@@ -93,6 +93,57 @@ def _text_matches(instruction_lower: str, value: str) -> bool:
     return value_lower in instruction_lower or instruction_lower in value_lower
 
 
+# Leading action verbs stripped before scoring exactness, so a verb-prefixed
+# instruction ("Tap Login") still counts as an exact match of the label
+# ("Login") — mirroring the parser's target_phrase decomposition for the cases
+# where the raw instruction reaches the resolver undecomposed.
+_ACTION_VERBS = frozenset({
+    "tap", "click", "press", "select", "choose", "type", "enter", "set",
+    "open", "toggle", "check", "uncheck", "hit", "touch", "on",
+})
+
+
+def _strip_leading_verb(instruction_lower: str) -> str:
+    parts = instruction_lower.split()
+    if len(parts) > 1 and parts[0] in _ACTION_VERBS:
+        return " ".join(parts[1:]).strip()
+    return instruction_lower
+
+
+def _match_quality(instruction_lower: str, value: str) -> float:
+    """Rate how tight a text match is, in (0, 1] — 1.0 for an exact match.
+
+    A bare substring match is not enough to disambiguate lookalikes: the
+    instruction "Allow" matches BOTH an "Allow" button and a "Don't Allow"
+    button (both contain "allow"). Scoring exactness lets the exact label win.
+    Longer partial overlaps (value nearly equals the instruction) score higher
+    than short fragments buried in a long label. A leading action verb is
+    stripped first so "Tap Login" scores as an exact match of "Login".
+    """
+    v = value.lower().strip()
+    if not v:
+        return 0.0
+    for candidate in (instruction_lower, _strip_leading_verb(instruction_lower)):
+        if v == candidate:
+            return 1.0
+    best = 0.0
+    for candidate in (instruction_lower, _strip_leading_verb(instruction_lower)):
+        if v in candidate or candidate in v:
+            longer = max(len(v), len(candidate))
+            shorter = min(len(v), len(candidate))
+            best = max(best, shorter / longer if longer else 0.0)
+    return best
+
+
+def _scale_by_quality(base: float, quality: float) -> float:
+    """Scale a confidence/signal by match quality, leaving exact matches (q=1.0)
+    at ``base`` and easing partial matches down enough to rank below an exact
+    match without dropping them below resolution thresholds."""
+    if quality >= 1.0:
+        return base
+    return round(base * (0.7 + 0.3 * quality), 4)
+
+
 def _is_ios_element(element: ET.Element, platform: str) -> bool:
     """True when the node belongs to an iOS/XCUITest hierarchy.
 
@@ -400,15 +451,17 @@ class AppiumHierarchyResolver(Resolver):
 
         # text / label match (highest confidence)
         if text and _text_matches(instruction_lower, text):
+            q = _match_quality(instruction_lower, text)
             xpath = _build_xpath(widget_type, text_attr, text)
             return ResolvedTarget(
                 ref=json.dumps({"by": "xpath", "value": xpath}),
-                confidence=_CONF_TEXT,
+                confidence=_scale_by_quality(_CONF_TEXT, q),
                 resolver_name=self.name,
                 metadata={
-                    "signals": make_signals(text_match=0.92, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=_scale_by_quality(0.92, q), role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
                     "matched_attr": text_attr,
                     "matched_value": text,
+                    "match_quality": q,
                     "tag": widget_type,
                     "bounds": bounds,
                 },
@@ -416,15 +469,17 @@ class AppiumHierarchyResolver(Resolver):
 
         # content-desc / name (accessibility) match
         if c_desc and _text_matches(instruction_lower, c_desc):
+            q = _match_quality(instruction_lower, c_desc)
             xpath = _build_xpath(widget_type, desc_attr, c_desc)
             return ResolvedTarget(
                 ref=json.dumps({"by": "xpath", "value": xpath}),
-                confidence=_CONF_CONTENT_DESC,
+                confidence=_scale_by_quality(_CONF_CONTENT_DESC, q),
                 resolver_name=self.name,
                 metadata={
-                    "signals": make_signals(text_match=0.85, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=_scale_by_quality(0.85, q), role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
                     "matched_attr": desc_attr,
                     "matched_value": c_desc,
+                    "match_quality": q,
                     "tag": widget_type,
                     "bounds": bounds,
                 },
@@ -450,15 +505,17 @@ class AppiumHierarchyResolver(Resolver):
 
         # value match (iOS text fields / labelled controls)
         if value and _text_matches(instruction_lower, value):
+            q = _match_quality(instruction_lower, value)
             xpath = _build_xpath(widget_type, "value", value)
             return ResolvedTarget(
                 ref=json.dumps({"by": "xpath", "value": xpath}),
-                confidence=_CONF_CONTENT_DESC,
+                confidence=_scale_by_quality(_CONF_CONTENT_DESC, q),
                 resolver_name=self.name,
                 metadata={
-                    "signals": make_signals(text_match=0.8, role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
+                    "signals": make_signals(text_match=_scale_by_quality(0.8, q), role_match=_role_match_for_action(widget_type, action_type, ui_framework=ui_framework, clickable=clickable), visibility=visibility, uniqueness=0.8, memory=0.0),
                     "matched_attr": "value",
                     "matched_value": value,
+                    "match_quality": q,
                     "tag": widget_type,
                     "bounds": bounds,
                 },

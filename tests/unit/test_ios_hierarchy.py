@@ -19,9 +19,24 @@ import json
 from bubblegum.core.grounding.resolvers.appium_hierarchy import (
     AppiumHierarchyResolver,
     _ios_bounds,
+    _match_quality,
     _unified_attrs,
 )
 from bubblegum.core.schemas import ExecutionOptions, StepIntent
+
+
+# An iOS system permission alert (springboard). Both "Allow" and "Don't Allow"
+# contain the substring "allow", so a naive text match is ambiguous — the exact
+# label must win.
+_PERMISSION_ALERT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<AppiumAUT>
+  <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="SpringBoard">
+    <XCUIElementTypeAlert type="XCUIElementTypeAlert" name="H365+ UAT" label="H365+ UAT Would Like to Send You Notifications" enabled="true" visible="true" x="40" y="300" width="270" height="180">
+      <XCUIElementTypeButton type="XCUIElementTypeButton" name="Don't Allow" label="Don't Allow" enabled="true" visible="true" x="45" y="440" width="130" height="40"/>
+      <XCUIElementTypeButton type="XCUIElementTypeButton" name="Allow" label="Allow" enabled="true" visible="true" x="180" y="440" width="130" height="40"/>
+    </XCUIElementTypeAlert>
+  </XCUIElementTypeApplication>
+</AppiumAUT>"""
 
 
 # A representative React-Native-on-iOS XCUITest hierarchy. The button carries a
@@ -154,6 +169,46 @@ def test_unified_attrs_maps_ios_fields():
     assert attrs["content_desc"] == "acc-id"  # name -> content_desc
     assert attrs["value"] == "v"
     assert attrs["bounds"] == "[1,2][4,6]"
+
+
+# ---------------------------------------------------------------------------
+# exact-match disambiguation — the "Allow" vs "Don't Allow" permission alert
+# ---------------------------------------------------------------------------
+
+def _top_candidate(candidates):
+    return max(candidates, key=lambda c: c.confidence) if candidates else None
+
+
+def test_allow_beats_dont_allow_on_permission_alert():
+    candidates = _resolve("Allow", xml=_PERMISSION_ALERT_XML)
+    # Both buttons match the substring, but the exact "Allow" must rank highest.
+    assert len(candidates) >= 2
+    top = _top_candidate(candidates)
+    assert top.metadata["matched_value"] == "Allow"
+    assert top.confidence == 0.92          # exact match keeps full confidence
+
+
+def test_dont_allow_is_downranked_not_dropped():
+    candidates = _resolve("Allow", xml=_PERMISSION_ALERT_XML)
+    dont = [c for c in candidates if c.metadata["matched_value"] == "Don't Allow"]
+    allow = [c for c in candidates if c.metadata["matched_value"] == "Allow"]
+    assert dont and allow
+    # Present as a candidate, but strictly below the exact match.
+    assert dont[0].confidence < allow[0].confidence
+
+
+def test_tap_dont_allow_still_selectable_exactly():
+    # Asking for the deny button by its exact label must pick it, not "Allow".
+    candidates = _resolve("Don't Allow", xml=_PERMISSION_ALERT_XML)
+    top = _top_candidate(candidates)
+    assert top.metadata["matched_value"] == "Don't Allow"
+    assert top.confidence == 0.92
+
+
+def test_match_quality_exact_vs_partial():
+    assert _match_quality("allow", "Allow") == 1.0
+    assert _match_quality("allow", "Don't Allow") < 1.0
+    assert _match_quality("allow", "Allow") > _match_quality("allow", "Don't Allow")
 
 
 def test_unified_attrs_android_unchanged():
