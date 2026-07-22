@@ -104,7 +104,7 @@ _SINGLE = (
     "    <span class='ant-select-selection-search'><input class='ant-select-selection-search-input' role='combobox' type='search' id='s'></span>"
     "    <span class='ant-select-selection-item' title=''></span></span></div></div>"
     "<div id='dd' class='ant-select-dropdown ant-select-dropdown-hidden' style='position:absolute'></div>"
-    "<script>window.__commits=0;var OPTIONS=['HPB Healthy Food & Dining','HPB Sports'];"
+    "<script>window.__commits=0;var OPTIONS=['Fresh Fruits & Vegetables','Team Sports'];"
     "var input=document.getElementById('s'),dd=document.getElementById('dd'),item=document.querySelector('.ant-select-selection-item');"
     "function commit(v){window.__commits++;item.setAttribute('title',v+' (active)');item.textContent=v+' (active)';input.value='';dd.classList.add('ant-select-dropdown-hidden');}"
     "function items(){var q=input.value.trim().toLowerCase();return OPTIONS.filter(function(o){return o.toLowerCase().indexOf(q)>=0});}"
@@ -155,7 +155,7 @@ _TAGS = (
     "  <div class='ant-select-selector'><span class='ant-select-selection-wrap'><div class='ant-select-selection-overflow'></div>"
     "  <span class='ant-select-selection-search'><input class='ant-select-selection-search-input' role='combobox' type='search' id='s'></span></span></div></div>"
     "<div id='dd' class='ant-select-dropdown ant-select-dropdown-hidden' style='position:absolute'></div>"
-    "<script>var OPTIONS=['GaqAccepted','LumiHealth','MealLog','Aerobic'];"
+    "<script>var OPTIONS=['TagAccepted','BetaApp','TaskLog','Aerobic'];"
     "var input=document.getElementById('s'),dd=document.getElementById('dd'),overflow=document.querySelector('.ant-select-selection-overflow');"
     "function selected(){return Array.from(overflow.querySelectorAll('.ant-select-selection-item')).map(function(n){return n.getAttribute('title')});}"
     "function commit(v){if(selected().indexOf(v)>=0)return;var t=document.createElement('div');t.className='ant-select-selection-overflow-item';t.innerHTML=\"<span class='ant-select-selection-item' title='\"+v+\"'>\"+v+'</span>';overflow.appendChild(t);input.value='';render();}"
@@ -170,7 +170,7 @@ _TAGS = (
 
 @pytest.mark.playwright
 def test_multi_select_tolerates_spacing_difference() -> None:
-    # Step says "Meal Log"; the option is rendered "MealLog". All three must land.
+    # Step says "Task Log"; the option is rendered "TaskLog". All three must land.
     async_api = pytest.importorskip("playwright.async_api")
     from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
 
@@ -189,7 +189,7 @@ def test_multi_select_tolerates_spacing_difference() -> None:
                 await page.set_content(_TAGS)
                 adapter = PlaywrightAdapter(page)
                 trigger = page.locator('[data-testid="tags"]')
-                await adapter._select_from_custom_combobox(trigger, "GaqAccepted, LumiHealth, Meal Log", 4000)
+                await adapter._select_from_custom_combobox(trigger, "TagAccepted, BetaApp, Task Log", 4000)
                 return await adapter._selected_texts(trigger)
             finally:
                 await browser.close()
@@ -197,7 +197,7 @@ def test_multi_select_tolerates_spacing_difference() -> None:
             await pw.stop()
 
     sel = asyncio.run(go())
-    assert "GaqAccepted" in sel and "LumiHealth" in sel and "MealLog" in sel
+    assert "TagAccepted" in sel and "BetaApp" in sel and "TaskLog" in sel
 
 
 @pytest.mark.playwright
@@ -225,7 +225,7 @@ def test_inner_combobox_input_trigger_commits_without_probe() -> None:
                 inner = page.locator("#s")   # the <input>, as a11y resolves it
                 import time as _t
                 t0 = _t.time()
-                await adapter._select_from_custom_combobox(inner, "HPB Healthy Food & Dining", 4000)
+                await adapter._select_from_custom_combobox(inner, "Fresh Fruits & Vegetables", 4000)
                 elapsed = _t.time() - t0
                 return await page.evaluate("window.__commits"), elapsed
             finally:
@@ -258,7 +258,7 @@ def test_single_select_commits_once_when_label_has_affix() -> None:
                 await page.set_content(_SINGLE)
                 adapter = PlaywrightAdapter(page)
                 trigger = page.locator('[data-testid="d"]')
-                await adapter._select_from_custom_combobox(trigger, "HPB Healthy Food & Dining", 4000)
+                await adapter._select_from_custom_combobox(trigger, "Fresh Fruits & Vegetables", 4000)
                 commits = await page.evaluate("window.__commits")
                 sel = await adapter._selected_texts(trigger)
                 return commits, sel
@@ -269,4 +269,4 @@ def test_single_select_commits_once_when_label_has_affix() -> None:
 
     commits, sel = asyncio.run(go())
     assert commits == 1, f"expected a single commit, got {commits} (double-run regression)"
-    assert sel and "HPB Healthy Food & Dining" in sel[0]
+    assert sel and "Fresh Fruits & Vegetables" in sel[0]

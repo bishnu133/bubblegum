@@ -33,21 +33,21 @@ def test_run_status_failed_when_any_step_failed():
 def test_write_summary_aggregates_multiple_tests(tmp_path):
     html = tmp_path / "bubblegum-summary.html"
     write_summary(_mk("passed", "recovered"), html, suite_name="Badge Creation")
-    write_summary(_mk("passed", "passed", "skipped"), html, suite_name="EDSH Challenge Creation")
+    write_summary(_mk("passed", "passed", "skipped"), html, suite_name="Demo Challenge Creation")
 
     manifest = json.loads((tmp_path / "bubblegum-summary.json").read_text())
     names = {r["name"] for r in manifest["runs"]}
-    assert names == {"Badge Creation", "EDSH Challenge Creation"}
+    assert names == {"Badge Creation", "Demo Challenge Creation"}
 
     text = html.read_text()
-    assert "Badge Creation" in text and "EDSH Challenge Creation" in text
+    assert "Badge Creation" in text and "Demo Challenge Creation" in text
     assert "Tests" in text and "Self-healed" in text
 
 
 def test_combined_report_has_tabs_and_per_test_detail(tmp_path):
     html = tmp_path / "bubblegum-summary.html"
     write_summary(_mk("passed", "recovered"), html, suite_name="Badge Creation")
-    write_summary(_mk("passed", "passed"), html, suite_name="EDSH Challenge Creation")
+    write_summary(_mk("passed", "passed"), html, suite_name="Demo Challenge Creation")
     text = html.read_text()
 
     # Two tabs: Summary + Test details.
@@ -59,7 +59,7 @@ def test_combined_report_has_tabs_and_per_test_detail(tmp_path):
     # Each test's full detail report was persisted to the sidecar dir.
     detail_dir = tmp_path / "bubblegum-summary.d"
     assert (detail_dir / "Badge-Creation.html").exists()
-    assert (detail_dir / "EDSH-Challenge-Creation.html").exists()
+    assert (detail_dir / "Demo-Challenge-Creation.html").exists()
 
 
 def test_manifest_records_detail_file(tmp_path):
@@ -71,8 +71,8 @@ def test_manifest_records_detail_file(tmp_path):
 
 def test_rerun_upserts_not_duplicates(tmp_path):
     html = tmp_path / "s.html"
-    write_summary(_mk("passed"), html, suite_name="EDSH")
-    write_summary(_mk("passed", "failed"), html, suite_name="EDSH")   # re-run, now fails
+    write_summary(_mk("passed"), html, suite_name="Demo")
+    write_summary(_mk("passed", "failed"), html, suite_name="Demo")   # re-run, now fails
 
     manifest = json.loads((tmp_path / "s.json").read_text())
     assert len(manifest["runs"]) == 1

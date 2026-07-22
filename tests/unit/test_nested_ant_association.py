@@ -140,7 +140,7 @@ def test_group_heading_select_not_hijacked_by_neighbour() -> None:
                 "e => (e.closest('.ant-select') || e).getAttribute('data-testid')"
             )
 
-        tags = testid("Eligibility Tags", "GaqAccepted")
+        tags = testid("Eligibility Tags", "TagAccepted")
         joined = testid("Challenges Joined", "")
     finally:
         browser.close()

@@ -181,12 +181,12 @@ export class Bubblegum {
    * ```ts
    * // Inside a WebdriverIO test, when a normal locator click fails:
    * const bg = await Bubblegum.attachMobile({
-   *   appiumUrl: "https://ship-hats.pcloudy.com/appiumcloud/wd/hub",
+   *   appiumUrl: "https://appium.example.com/wd/hub",
    *   existingSessionId: browser.sessionId,
    *   capabilities: { platformName: "iOS" },
    * });
    * try {
-   *   await bg.act("Tap View daily summary");
+   *   await bg.act("Tap Continue");
    * } finally {
    *   await bg.close(); // closes the engine wrapper only; device session stays up
    * }
@@ -273,8 +273,8 @@ export class Bubblegum {
    * when the visible text is dynamic (a UUID, a DB id) and so can't be named.
    *
    * @example
-   * await bg.clickInTable({ column: "PPHID", row: "first" });
-   * await bg.clickInTable({ column: "PPHID", rowMatch: { Name: dbName } });
+   * await bg.clickInTable({ column: "RecordID", row: "first" });
+   * await bg.clickInTable({ column: "RecordID", rowMatch: { Name: dbName } });
    */
   clickInTable(spec: TableCellTarget): Promise<StepResult> {
     const { column, row, rowMatch, timeoutMs } = spec;
@@ -308,7 +308,7 @@ export class Bubblegum {
    * inside a badge (expected is matched as a substring of the cell).
    *
    * @example
-   * await bg.verifyTable({ columns: ["PPHID", "Account Status", "Profile Status"] });
+   * await bg.verifyTable({ columns: ["RecordID", "Account Status", "Profile Status"] });
    * await bg.verifyTable({ row: { Name: dbName }, cell: { "Account Status": dbStatus } });
    */
   verifyTable(spec: TableAssertion): Promise<StepResult> {

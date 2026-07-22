@@ -167,8 +167,8 @@ async def run_dialog_scenario(page, base_url: str, *, nl_only: bool = False) -> 
         )
 
         step_type = await s.act(
-            'Enter "Bishnu" into Name',
-            **_safety_net(nl_only, action_type="type", selector="#edit-name", input_value="Bishnu"),
+            'Enter "Sam" into Name',
+            **_safety_net(nl_only, action_type="type", selector="#edit-name", input_value="Sam"),
         )
         _diag(nl_only, "type-name", step_type)
         typed_value = await page.locator("#edit-name").input_value()
@@ -182,9 +182,9 @@ async def run_dialog_scenario(page, base_url: str, *, nl_only: bool = False) -> 
         result_text = await page.locator("#result").inner_text()
 
     open_ok = step_open.status == "passed"
-    type_ok = step_type.status == "passed" and typed_value == "Bishnu"
+    type_ok = step_type.status == "passed" and typed_value == "Sam"
     save_ok = step_save.status == "passed"
-    text_ok = "Saved name: Bishnu" in result_text
+    text_ok = "Saved name: Sam" in result_text
 
     passed = open_ok and type_ok and save_ok and text_ok
     return _result(

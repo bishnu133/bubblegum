@@ -304,7 +304,7 @@ def test_radio_section_works_at_realistic_ant_nesting_depth() -> None:
 
 @pytest.mark.playwright
 def test_radio_section_from_ant_card_title_with_generic_ids() -> None:
-    # The real EDSH form: generic radio ids (rc_radio_*), a shared "Sex" label,
+    # The real Demo form: generic radio ids (rc_radio_*), a shared "Sex" label,
     # and the ONLY discriminating word in the Ant card head-title ("Eligibility
     # Criteria #1"). Section detection must read that title, else DOM order picks
     # the later (Recommendation) Male — the a41 failure.

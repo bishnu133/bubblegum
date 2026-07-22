@@ -117,11 +117,11 @@ def test_returns_none_when_no_dom_candidate(monkeypatch):
 
 def test_recovers_type_into_modal_field_via_input_dom(monkeypatch):
     # Repro of the popup-input flake: grounding picks a disabled same-named field
-    # behind the modal (role=spinbutton[name="HealthPoints"]) which fails to fill;
+    # behind the modal (role=spinbutton[name="Points"]) which fails to fill;
     # the DOM input finder (now enabled-only) returns the modal's real field.
-    failed = ResolvedTarget(ref='role=spinbutton[name="HealthPoints"]', confidence=0.72,
+    failed = ResolvedTarget(ref='role=spinbutton[name="Points"]', confidence=0.72,
                             resolver_name="llm_grounding", metadata={"role": "spinbutton"})
-    good = ResolvedTarget(ref='css=#healthPoints', confidence=0.7,
+    good = ResolvedTarget(ref='css=#pointsField', confidence=0.7,
                           resolver_name="input_dom", metadata={"role": "textbox"})
 
     async def fake_input(adapter, channel, intent):
@@ -136,7 +136,7 @@ def test_recovers_type_into_modal_field_via_input_dom(monkeypatch):
 
     result = asyncio.run(
         sdk._recover_failed_execution(
-            _Adapter(), "web", 'Enter "150" into HealthPoints', _intent("type"), ExecutionOptions(), failed,
+            _Adapter(), "web", 'Enter "150" into Points', _intent("type"), ExecutionOptions(), failed,
         )
     )
     assert result is not None

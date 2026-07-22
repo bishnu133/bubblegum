@@ -227,9 +227,9 @@ def test_test_file_wires_persona_credentials_and_base_url():
 
 def test_report_title_prefix_applied():
     feat = _feature()
-    profile = _profile(reports={"title_prefix": "H365"})
+    profile = _profile(reports={"title_prefix": "Acme"})
     text = emit_test_file(feat, _fns(feat), profile)
-    assert "title: 'H365 [F][Web] Checkout'" in text
+    assert "title: 'Acme [F][Web] Checkout'" in text
 
 
 def test_dependency_note_for_session_variable():

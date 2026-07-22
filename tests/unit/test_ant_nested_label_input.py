@@ -98,7 +98,7 @@ def test_find_input_disambiguates_ant_nested_labels() -> None:
 
 
 # Two Quill rich-text editors, plus a tagline input pre-filled so its value leaks
-# into the a11y tree as `- textbox: EDSH Auto Challenge` — the exact state that
+# into the a11y tree as `- textbox: Demo Auto Challenge` — the exact state that
 # made "About this Challenge" mis-ground onto the tagline input.
 _ANT_RTE_FORM = """
 <form>
@@ -107,7 +107,7 @@ _ANT_RTE_FORM = """
       <label for="tagline" title="Challenge Tagline">Challenge Tagline</label></div>
     <div class="ant-col ant-form-item-control"><div class="ant-form-item-control-input">
       <div class="ant-form-item-control-input-content"><span class="ant-input-affix-wrapper">
-        <input data-testid="tagline" class="ant-input" type="text" value="EDSH Auto Challenge">
+        <input data-testid="tagline" class="ant-input" type="text" value="Demo Auto Challenge">
       </span></div></div></div>
   </div></div>
   <div class="ant-form-item"><div class="ant-row ant-form-item-row">

@@ -59,8 +59,8 @@ ROWS = [
      "When an order of 100 dollars is completed\n"
      "Then the user has 100 reward points"),
     (7, "[F][Web] Badge album", "Verify the badge album shows earned badges",
-     "H365 user", "DEMO-500",
-     "Given a H365 user viewing their badge album page\n"
+     "Acme user", "DEMO-500",
+     "Given a Acme user viewing their badge album page\n"
      "When there is at least 1 earned badge\n"
      "Then the user will be able to see their badges correctly"),
 ]

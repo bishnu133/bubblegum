@@ -61,7 +61,7 @@ Then I see the "Special Edition" badge group
 ### 3. Given = precondition, When = action, Then = checkable result
 
 ```gherkin
-Given I am logged in as a "H365" user     # precondition → fixture
+Given I am logged in as a "Acme" user     # precondition → fixture
 And I open the Badge Album page           # navigation → AUTO
 When I click the "View All" button        # action → AUTO
 Then I see the Badge Group detail view    # assertion → AUTO

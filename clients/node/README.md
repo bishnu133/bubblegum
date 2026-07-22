@@ -179,7 +179,7 @@ try {
     junit: "reports/junit.xml",    // CI ingestion
     json: "reports/run.json",      // machine-readable
     title: "Smoke run",
-    suiteName: "h365-portal",
+    suiteName: "demo-portal",
   });
   await bg.close();
 }

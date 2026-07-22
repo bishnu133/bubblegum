@@ -172,7 +172,7 @@ test("attachMobile() sends existing_session_id on the mobile channel when suppor
     existingSessionId: "live-42",
     capabilities: { platformName: "iOS" },
   });
-  await bg.act("Tap View daily summary");
+  await bg.act("Tap Continue");
   assert.equal(openParams.channel, "mobile");
   assert.equal(openParams.appium_url, "http://host/wd/hub");
   assert.equal(openParams.existing_session_id, "live-42");
@@ -201,14 +201,14 @@ test("report() maps options to report.write and resolves written paths", async (
     },
   });
   const bg = await Bubblegum.launch({ transport: m.transport });
-  const r = await bg.report({ html: "run.html", allure: true, title: "My Run", suiteName: "h365" });
+  const r = await bg.report({ html: "run.html", allure: true, title: "My Run", suiteName: "demo-suite" });
   assert.equal(r.steps, 3);
   assert.equal(r.written.html, "/abs/run.html");
   // string path passes through; `true` becomes the default dir name; camelCase -> snake_case.
   assert.equal(captured.html, "run.html");
   assert.equal(captured.allure, "allure-results");
   assert.equal(captured.title, "My Run");
-  assert.equal(captured.suite_name, "h365");
+  assert.equal(captured.suite_name, "demo-suite");
   assert.equal(captured.session_id, "s");
 });
 
@@ -246,15 +246,15 @@ test("verifyTable() forwards assertion_type=table with columns/row/cell", async 
   });
   const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
   await bg.verifyTable({
-    columns: ["PPHID", "Account Status"],
-    row: { Name: "Bishnu Test Account" },
+    columns: ["RecordID", "Account Status"],
+    row: { Name: "Test Account" },
     cell: { "Account Status": "Active" },
     timeoutMs: 2000,
   });
   const req = m.methods().find((x) => x.method === "verify");
   assert.equal(req.params.options.assertion_type, "table");
-  assert.deepEqual(req.params.options.columns, ["PPHID", "Account Status"]);
-  assert.deepEqual(req.params.options.row, { Name: "Bishnu Test Account" });
+  assert.deepEqual(req.params.options.columns, ["RecordID", "Account Status"]);
+  assert.deepEqual(req.params.options.row, { Name: "Test Account" });
   assert.deepEqual(req.params.options.cell, { "Account Status": "Active" });
   assert.equal(req.params.options.timeout_ms, 2000);
 });
@@ -266,10 +266,10 @@ test("clickInTable() forwards column + row (index word) for a cell click", async
     act: (p) => ({ status: "passed", action: p.instruction, target: null, confidence: 1, duration_ms: 1 }),
   });
   const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
-  await bg.clickInTable({ column: "PPHID", row: "first" });
+  await bg.clickInTable({ column: "RecordID", row: "first" });
   const req = m.methods().find((x) => x.method === "act");
   assert.equal(req.params.options.action_type, "click");
-  assert.equal(req.params.options.column, "PPHID");
+  assert.equal(req.params.options.column, "RecordID");
   assert.equal(req.params.options.row, "first");
 });
 
@@ -280,9 +280,9 @@ test("clickInTable() forwards rowMatch as row_match", async () => {
     act: (p) => ({ status: "passed", action: p.instruction, target: null, confidence: 1, duration_ms: 1 }),
   });
   const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
-  await bg.clickInTable({ column: "PPHID", rowMatch: { Name: "Bishnu Test Account" } });
+  await bg.clickInTable({ column: "RecordID", rowMatch: { Name: "Test Account" } });
   const req = m.methods().find((x) => x.method === "act");
-  assert.deepEqual(req.params.options.row_match, { Name: "Bishnu Test Account" });
+  assert.deepEqual(req.params.options.row_match, { Name: "Test Account" });
   assert.equal(req.params.options.row, undefined);
 });
 
@@ -318,7 +318,7 @@ test("preflight() dry-runs each step and reports ok/failed without executing", a
   const bg = await Bubblegum.launch({ transport: m.transport, url: "http://x" });
   const report = await bg.preflight([
     'Click the "Update account status" button',
-    { instruction: "click cell", options: { column: "PPHID", row: "first" } },
+    { instruction: "click cell", options: { column: "RecordID", row: "first" } },
     "Click the Bad thing",
   ]);
   assert.equal(report.length, 3);
@@ -329,6 +329,6 @@ test("preflight() dry-runs each step and reports ok/failed without executing", a
   assert.equal(report[2].status, "failed");
   assert.match(report[2].error, /no match/);
   // The table step forwarded its structured options alongside dry_run.
-  const cellReq = m.methods().find((x) => x.method === "act" && x.params.options.column === "PPHID");
+  const cellReq = m.methods().find((x) => x.method === "act" && x.params.options.column === "RecordID");
   assert.equal(cellReq.params.options.dry_run, true);
 });

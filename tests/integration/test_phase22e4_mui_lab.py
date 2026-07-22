@@ -69,14 +69,14 @@ async def test_mui_dialog_save_round_trip(bubblegum_web, mui_lab):
         "#edit-dialog[aria-modal='true']", state="visible", timeout=3000
     )
 
-    await bubblegum_web.act('Enter "Bishnu" into Name')
+    await bubblegum_web.act('Enter "Sam" into Name')
     await bubblegum_web.act("Click Save")
 
     await bubblegum_web.page.wait_for_selector(
         "#edit-backdrop", state="detached", timeout=3000
     )
     result_text = await bubblegum_web.page.locator("#result").inner_text()
-    assert "Saved name: Bishnu" in result_text
+    assert "Saved name: Sam" in result_text
     bubblegum_web.assert_all_passed()
 
 

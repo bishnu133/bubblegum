@@ -59,7 +59,7 @@ without aborting the rest) and all steps land in one aggregated report:
 
 ```
 Challenge Creation.xlsx  →  tests/challenge_creation.test.mts
-                            ├─ test: EDSH Challenge Creation
+                            ├─ test: Demo Challenge Creation
                             ├─ test: NSC Challenge Creation
                             └─ test: Challenge update flow
 Badge Validation.xlsx    →  tests/badge_validation.test.mts
@@ -206,7 +206,7 @@ convert:
   custom_patterns:
     - pattern: "I wait for the page to load"
       code: "await page.waitForLoadState('domcontentloaded');\nawait page.waitForTimeout(3000);"
-  reports: { title_prefix: "H365" }
+  reports: { title_prefix: "Acme" }
 ```
 
 With that config, `Given I am logged in as a "Retail customer"` +

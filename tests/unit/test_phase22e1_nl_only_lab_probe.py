@@ -237,7 +237,7 @@ def test_modal_open_trigger_resolves():
 
 
 def test_modal_name_input_resolves_inside_dialog():
-    assert _top_ref(SNAPSHOT_MODAL_OPEN, 'Enter "Bishnu" into Name') == \
+    assert _top_ref(SNAPSHOT_MODAL_OPEN, 'Enter "Sam" into Name') == \
         'role=textbox[name="Name"]'
 
 
@@ -364,7 +364,7 @@ def test_real_combobox_with_name_and_value_resolves_by_name():
         (SNAPSHOT_CHECKBOXES, "Uncheck Marketing emails", 'role=checkbox[name="Marketing emails"]'),
         (SNAPSHOT_RADIOS, "Click Red radio", 'role=radio[name="Red"]'),
         (SNAPSHOT_MODAL_OPEN, "Click Open Settings", 'role=button[name="Open Settings"]'),
-        (SNAPSHOT_MODAL_OPEN, 'Enter "Bishnu" into Name', 'role=textbox[name="Name"]'),
+        (SNAPSHOT_MODAL_OPEN, 'Enter "Sam" into Name', 'role=textbox[name="Name"]'),
         (SNAPSHOT_COMBOBOX_CLOSED, "Click Select country", 'role=combobox[name="Select country"]'),
         (SNAPSHOT_COMBOBOX_OPEN, "Click India", 'role=option[name="India"]'),
     ],
