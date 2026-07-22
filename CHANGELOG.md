@@ -1,5 +1,25 @@
 # Unreleased
 
+## 0.0.6a57 — fix(mobile): exact-label preference so "Allow" wins over "Don't Allow"
+
+Follow-up to a56, for iOS system permission alerts (e.g. the notifications
+"Allow" / "Don't Allow" dialog). Both buttons contain the substring "allow", so
+the bidirectional substring match returned both as equal-confidence candidates —
+risking a tap on the wrong one (denying the permission).
+
+- **The mobile resolver now scores match exactness.** An exact label match keeps
+  full confidence (text 0.92 / accessibility 0.85); a looser partial match is
+  eased down proportionally to how much extra text surrounds the hit, so the
+  exact "Allow" outranks the partial "Don't Allow". A leading action verb is
+  stripped first ("Tap Login" scores as an exact match of "Login"), matching the
+  parser's target-phrase decomposition. Both buttons stay resolvable — asking for
+  "Don't Allow" by its exact label still selects it — and Android matching is
+  unchanged. The chosen `match_quality` is surfaced in candidate metadata.
+
+Engine-only change; no TS client change (the npm `attachMobile` from
+`0.0.6-alpha.11` is unaffected). Engine `0.0.6a56` → `0.0.6a57`.
+
+
 ## 0.0.6a56 — feat(mobile): iOS (XCUITest) grounding + attach to an existing Appium session
 
 Enables the mobile pilot: resolving iOS elements by human text, and running an
