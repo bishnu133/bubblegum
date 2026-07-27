@@ -60,6 +60,27 @@ _MAX_RETRY_CAP = 1
 _RETRY_DELAY_SECONDS = 0.05
 _WAIT_STATES = {"visible", "attached"}
 
+# JS helper (a function declaration named ``__antRoot``) that resolves the
+# ``.ant-select`` widget a resolved element is associated with. Grounding may
+# land on the widget itself, its inner ``<input role=combobox>``, a wrapper, OR
+# the field's ``<label for=…>`` (which sits OUTSIDE the widget). Selection tags
+# live on the widget root, so both the "is this an Ant select?" gate and the
+# "did the click commit?" check must climb to that root from any of these — else
+# a non-committing click on a label-resolved select is falsely reported as a
+# pass ("step passed but nothing was selected"). Prepend this to an
+# ``el => { ... }`` evaluate body, then call ``__antRoot(el)``.
+_ANT_ROOT_JS = (
+    "function __antRoot(el){"
+    " if(!el) return null;"
+    " let r = el.closest && el.closest('.ant-select'); if(r) return r;"
+    " let lbl = (el.matches && el.matches('label[for]')) ? el"
+    "   : (el.closest && el.closest('label[for]'));"
+    " if(lbl){ const c = document.getElementById(lbl.getAttribute('for'));"
+    "   if(c && c.closest){ r = c.closest('.ant-select'); if(r) return r; } }"
+    " r = el.querySelector && el.querySelector('.ant-select'); if(r) return r;"
+    " return null; }"
+)
+
 # Fallback used when ExecutionOptions.nav_wait_ms is unavailable (e.g. an older
 # ActionPlan). Bounds how long a non-navigating click waits before concluding
 # the click was an in-page action rather than a navigation.
@@ -1918,15 +1939,20 @@ class PlaywrightAdapter(BaseAdapter):
     async def _selected_texts(self, trigger) -> list:
         """Titles/labels of the items currently selected in a combobox (Ant tags).
 
-        Climbs to the ``.ant-select`` widget root first: grounding often resolves a
-        select to its INNER ``<input role=combobox>`` (accessible name), and the
-        selection items are siblings/ancestors of that input, not descendants — so
-        querying the input alone returns nothing and every commit check
-        false-negatives (the "ran twice + 28s probe" symptom).
+        Climbs to the *associated* ``.ant-select`` widget root first (see
+        ``_ANT_ROOT_JS``): grounding often resolves a select to its INNER
+        ``<input role=combobox>`` — but it may also land on the field's
+        ``<label>`` (outside the widget), and the selection items live on the
+        widget root, not on the resolved element. Reading from the associated
+        root makes the commit check work regardless of what element grounding
+        picked; querying the resolved element alone returns nothing and every
+        commit check false-negatives (the "ran twice + 28s probe" symptom) or,
+        worse, is skipped entirely (the "step passed but nothing selected" bug).
         """
         try:
             return await trigger.evaluate(
-                "el => { const root = (el.closest && el.closest('.ant-select')) || el;"
+                "el => { " + _ANT_ROOT_JS + " const root = __antRoot(el);"
+                " if (!root) return [];"
                 " return Array.from(root.querySelectorAll('.ant-select-selection-item'))"
                 ".map(n => (n.getAttribute('title') || n.textContent || '').trim()); }"
             )
@@ -1934,16 +1960,19 @@ class PlaywrightAdapter(BaseAdapter):
             return []
 
     async def _is_ant_select(self, trigger) -> bool:
-        """Whether the trigger is an Ant ``.ant-select`` (selection is a tag/item).
+        """Whether the trigger is associated with an Ant ``.ant-select`` widget.
 
         Only these reliably reflect a committed choice as a
         ``.ant-select-selection-item``, so only for these can we *verify* that a
-        click actually took — see ``_value_committed``.
+        click actually took — see ``_value_committed``. The association is
+        resolved via ``_ANT_ROOT_JS`` (self / ancestor / descendant / the
+        ``label[for]`` the trigger is or sits inside), so verification still runs
+        when grounding resolves the field to its label rather than the widget —
+        otherwise a non-committing click would be falsely reported as success.
         """
         try:
             return bool(await trigger.evaluate(
-                "el => el.matches('.ant-select') || !!el.querySelector('.ant-select')"
-                " || !!el.closest('.ant-select')"
+                "el => { " + _ANT_ROOT_JS + " return !!__antRoot(el); }"
             ))
         except Exception:  # noqa: BLE001
             return False
