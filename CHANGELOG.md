@@ -1,5 +1,30 @@
 # Unreleased
 
+## 0.0.6a59 — fix(web): verify multi-select commit even when the field is grounded to its label
+
+A multi-select step could log `passed` while nothing was actually selected. The
+"did the click add a selection tag?" verification (`_value_committed`) only ran
+when the *resolved trigger element* was itself inside `.ant-select`
+(`_is_ant_select`). Grounding often resolves a field by its label text and lands
+on the `<label for=…>`, which sits **outside** the widget — so verification was
+skipped and a click that never committed was reported as a successful select.
+This showed up on Ant Design `ant-select-multiple` fields (e.g. a "Related
+domains" picker) whose option row carries no `title` attribute and whose visible
+label lives in a nested `<span>`.
+
+The adapter now resolves the *associated* `.ant-select` widget from the trigger
+via a shared `_ANT_ROOT_JS` helper — self / ancestor / descendant / the
+`label[for]` the trigger is or sits inside — and both `_is_ant_select` and
+`_selected_texts` climb to that root. Result: a click that genuinely commits is
+verified and passes; a click that does not commit is now correctly reported as a
+failure instead of a false pass, regardless of whether grounding resolved the
+widget or its label. Added `tests/integration/test_multiselect_label_commit_web.py`
+covering the label-resolved non-commit (must fail), label-resolved commit (must
+pass), and in-widget non-commit (must fail) cases.
+
+Engine `0.0.6a58` → `0.0.6a59`.
+
+
 ## 0.0.6a58 — chore: replace app-specific sample identifiers with generic placeholders
 
 Documentation, tests, example fixtures, and changelog history referenced
