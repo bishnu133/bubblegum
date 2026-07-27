@@ -1913,6 +1913,15 @@ class PlaywrightAdapter(BaseAdapter):
         candidates = [trigger]
         if probe_others:
             candidates += await self._other_select_triggers(trigger)
+        # Collapse candidates that resolve to the SAME widget. Grounding often
+        # resolves a select to its inner ``role=combobox`` <input>, while
+        # ``_other_select_triggers`` returns that input's own ``.ant-select``
+        # container as a separate "other" candidate. Left un-deduped, the trigger
+        # and its container are two entries for one widget: we commit the value
+        # on the first, then the cleanup below treats the committed selection as a
+        # "stray" on the second and clicks its × to remove it — the step reports
+        # success while nothing ends up selected ("passed but not selected").
+        candidates = await self._dedupe_select_candidates(candidates)
         before = [await self._selected_texts(c) for c in candidates]
 
         picked = -1
@@ -1926,7 +1935,9 @@ class PlaywrightAdapter(BaseAdapter):
 
         # Some widgets auto-select the active option when the field blurs, so
         # probing a wrong candidate can leave a stray selection. Undo any NEW
-        # selection in every combobox we did not commit to.
+        # selection in every combobox we did not commit to. Candidates are
+        # deduped by widget above, so this never removes the selection we just
+        # committed to the picked widget.
         for i, cand in enumerate(candidates):
             if i == picked:
                 continue
@@ -1935,6 +1946,39 @@ class PlaywrightAdapter(BaseAdapter):
             except Exception:  # noqa: BLE001 — cleanup is best-effort
                 pass
         return picked >= 0
+
+    async def _dedupe_select_candidates(self, candidates: list) -> list:
+        """Drop candidates that resolve to the same underlying widget.
+
+        Two locators can point at one control — e.g. a ``role=combobox`` <input>
+        and the ``.ant-select`` container that wraps it. Probing both makes the
+        post-commit cleanup remove the very selection we just made. We key each
+        candidate by its ``.ant-select`` widget root (falling back to the element
+        itself for non-Ant selects) via a DOM expando that is stable across
+        evaluate calls, and keep only the first candidate per widget — preserving
+        order so the resolved trigger is still tried first. Best-effort: a
+        candidate we cannot key (e.g. a strict-mode multi-match) is kept as-is.
+        """
+        out: list = []
+        seen: set[str] = set()
+        for cand in candidates:
+            try:
+                key = await cand.evaluate(
+                    "el => { const r = (el.closest && el.closest('.ant-select')) || el;"
+                    " if (!r.__bgWidgetKey) r.__bgWidgetKey = 'w' + Math.random().toString(36).slice(2);"
+                    " return r.__bgWidgetKey; }"
+                )
+            except Exception:  # noqa: BLE001 — un-keyable candidate: keep it
+                out.append(cand)
+                continue
+            if not key:
+                out.append(cand)
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(cand)
+        return out
 
     async def _selected_texts(self, trigger) -> list:
         """Titles/labels of the items currently selected in a combobox (Ant tags).

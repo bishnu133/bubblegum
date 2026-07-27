@@ -1,5 +1,30 @@
 # Unreleased
 
+## 0.0.6a60 — fix(web): don't undo a committed multi-select value during self-correction
+
+A multi-select step could log `passed` while the value ended up **not** selected
+(the option briefly committed, then vanished; the dropdown was left open). Root
+cause is in `_select_single`'s self-correcting probe: grounding resolves the
+field to its inner `role=combobox` `<input>`, while `_other_select_triggers`
+returns that same input's `.ant-select` **container** as a separate "other"
+candidate. The value is committed on the input, then the post-commit cleanup —
+which exists to undo a stray selection left on a *wrongly-probed different*
+combobox — sees the same widget's brand-new tag, treats it as stray, and clicks
+its × to remove it. Net result: success reported, nothing selected. It only bit
+real Ant widgets (whose selection tag has a working × remove control); simpler
+mimics with a non-functional × masked it.
+
+`_select_single` now dedupes its candidate list by the underlying `.ant-select`
+widget (new `_dedupe_select_candidates`, keyed on a stable per-widget DOM
+expando, order-preserving so the resolved trigger is still tried first), so a
+widget is never both the commit target and a cleanup target. A genuinely
+different combobox is still probed and still cleaned up.
+
+Adds a browser-backed regression (a functional × remove control + the inner
+`role=combobox` ref) to `tests/integration/test_multiselect_label_commit_web.py`.
+Engine `0.0.6a59` → `0.0.6a60`.
+
+
 ## npm 0.0.6-alpha.13 — fix(node): run the engine from the active virtualenv
 
 The Node client spawned the bridge as bare `python -m bubblegum.bridge`, resolved
