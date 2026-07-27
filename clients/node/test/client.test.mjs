@@ -332,3 +332,39 @@ test("preflight() dry-runs each step and reports ok/failed without executing", a
   const cellReq = m.methods().find((x) => x.method === "act" && x.params.options.column === "RecordID");
   assert.equal(cellReq.params.options.dry_run, true);
 });
+
+// --- bridge interpreter resolution (resolveBridgeCommand) ---------------------
+// Regression: the bridge must run the engine from the *active venv* where the
+// user pip-installed it, not whatever bare `python` the Node PATH resolves to
+// (which silently ran an older engine — the "BRIDGE ENGINE: <old>" mismatch).
+import { resolveBridgeCommand } from "../dist/esm/index.js";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as pjoin } from "node:path";
+
+test("resolveBridgeCommand: BUBBLEGUM_PYTHON override wins", () => {
+  assert.equal(
+    resolveBridgeCommand({ BUBBLEGUM_PYTHON: "/custom/py", VIRTUAL_ENV: "/venv" }),
+    "/custom/py",
+  );
+});
+
+test("resolveBridgeCommand: prefers the active venv interpreter when it exists", () => {
+  const venv = mkdtempSync(pjoin(tmpdir(), "bg-venv-"));
+  const bin = process.platform === "win32" ? "Scripts" : "bin";
+  const exe = process.platform === "win32" ? "python.exe" : "python";
+  mkdirSync(pjoin(venv, bin), { recursive: true });
+  writeFileSync(pjoin(venv, bin, exe), "#!/bin/sh\n");
+  assert.equal(resolveBridgeCommand({ VIRTUAL_ENV: venv }), pjoin(venv, bin, exe));
+});
+
+test("resolveBridgeCommand: falls back to `python` when no venv/override", () => {
+  assert.equal(resolveBridgeCommand({}), "python");
+});
+
+test("resolveBridgeCommand: falls back to `python` for a stale VIRTUAL_ENV", () => {
+  assert.equal(
+    resolveBridgeCommand({ VIRTUAL_ENV: "/nonexistent/venv/path/xyz" }),
+    "python",
+  );
+});

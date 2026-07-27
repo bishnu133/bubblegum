@@ -139,3 +139,77 @@ async def test_widget_resolved_noncommit_still_fails():
     success, tags = await _select(commit=False, ref=_WIDGET_REF)
     assert tags == 0
     assert success is False
+
+
+# --- probe_others cleanup must not remove the committed selection -------------
+# Regression: grounding resolves the field to its inner role=combobox <input>,
+# while _other_select_triggers returns that input's OWN .ant-select container as
+# a separate "other" candidate. The value is committed on the input, then the
+# post-commit cleanup treats the same widget's selection as a stray and clicks
+# its × to remove it — the step reports success while nothing stays selected.
+# A real Ant tag has a functioning × (unlike the simpler DOM above), so this
+# fixture wires one up.
+_REMOVE_TAG_DOM = (
+    "<!doctype html><html><body>"
+    "<label for='domains' title='Related domains'>Related domains</label>"
+    "<div class='ant-select ant-select-multiple ant-select-show-search' data-testid='input-relatedDomain'>"
+    "  <div class='ant-select-selector'><span class='ant-select-selection-wrap' id='wrapR'>"
+    "    <div class='ant-select-selection-overflow'><div class='ant-select-selection-search'>"
+    "      <input id='domains' class='ant-select-selection-search-input' role='combobox'"
+    "       aria-label='* Related domains' aria-expanded='false' aria-owns='domains_list'"
+    "       aria-controls='domains_list' type='search' value='' readonly></div></div>"
+    "    <span class='ant-select-selection-placeholder'></span></span></div>"
+    "  <span class='ant-select-arrow'><span aria-label='down'>v</span></span></div>"
+    "<div><div class='ant-select-dropdown ant-select-dropdown-hidden' id='dd'><div>"
+    "  <div role='listbox' id='domains_list' style='height:0;width:0;overflow:hidden'>"
+    "    <div role='option' id='domains_list_0' aria-selected='false'>rewards</div></div>"
+    "  <div class='rc-virtual-list'><div class='rc-virtual-list-holder-inner'>"
+    "    <div name='domain' aria-selected='false' class='ant-select-item ant-select-item-option' id='opt'>"
+    "      <div class='ant-select-item-option-content'><span aria-label='option-rewards'>Rewards</span></div>"
+    "    </div></div></div>"
+    "</div></div></div>"
+    "<script>"
+    " const selR=document.querySelector('[data-testid=input-relatedDomain]');"
+    " const dd=document.getElementById('dd'),input=document.getElementById('domains'),wrap=document.getElementById('wrapR');"
+    " function open(){dd.classList.remove('ant-select-dropdown-hidden');input.setAttribute('aria-expanded','true');}"
+    " function close(){dd.classList.add('ant-select-dropdown-hidden');input.setAttribute('aria-expanded','false');}"
+    " selR.addEventListener('click',e=>{if(e.target.closest('.ant-select-dropdown'))return;open();});"
+    " document.getElementById('opt').addEventListener('click',()=>{"
+    "   if(!selR.querySelector('.ant-select-selection-item')){"
+    "     const t=document.createElement('span');t.className='ant-select-selection-item';t.setAttribute('title','Rewards');"
+    "     const x=document.createElement('span');x.className='ant-select-selection-item-remove';x.setAttribute('aria-label','close');x.textContent='x';"
+    "     x.addEventListener('click',(e)=>{e.stopPropagation();t.remove();});"  # real Ant: × removes the tag
+    "     t.append('Rewards',x);wrap.insertBefore(t,wrap.firstChild);}"
+    "   close();});"
+    " window.__n=()=>selR.querySelectorAll('.ant-select-selection-item').length;"
+    "</script></body></html>"
+)
+
+
+async def test_committed_selection_survives_probe_others_cleanup():
+    """A committed selection must not be removed by the same-widget cleanup."""
+    aw = pytest.importorskip("playwright.async_api")
+    launch_kwargs = {}
+    exe = os.environ.get("BG_CHROMIUM_EXECUTABLE")
+    if exe:
+        launch_kwargs["executable_path"] = exe
+    async with aw.async_playwright() as p:
+        try:
+            browser = await p.chromium.launch(**launch_kwargs)
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"No usable Chromium binary: {exc}")
+        try:
+            page = await browser.new_page()
+            await page.set_content(_REMOVE_TAG_DOM)
+            adapter = PlaywrightAdapter(page)
+            plan = ActionPlan(action_type="select", input_value="Rewards",
+                              options=ExecutionOptions(timeout_ms=4000))
+            target = ResolvedTarget(ref='role=combobox[name="* Related domains"]',
+                                    confidence=0.75, resolver_name="fuzzy_text",
+                                    metadata={"role": "combobox"})
+            res = await adapter.execute(plan, target)
+            tags = await page.evaluate("window.__n()")
+            assert res.success is True
+            assert tags == 1, "committed selection was removed by same-widget cleanup (regression)"
+        finally:
+            await browser.close()
