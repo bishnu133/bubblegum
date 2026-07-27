@@ -1,5 +1,29 @@
 # Unreleased
 
+## npm 0.0.6-alpha.13 — fix(node): run the engine from the active virtualenv
+
+The Node client spawned the bridge as bare `python -m bubblegum.bridge`, resolved
+against the Node process's `PATH`. When a tester `pip install`ed the engine into
+an activated venv but the Node runner's `PATH` didn't point at that venv (common
+with IDE test runners, `npx`, or a shell that didn't re-activate), the bridge
+silently ran a *different*, often older, engine than the one just installed — so
+engine fixes appeared to have no effect (the handshake's `engine_version` /
+"BRIDGE ENGINE" line reported the stale version).
+
+`spawnBridgeTransport` now resolves the interpreter via a new exported
+`resolveBridgeCommand(env)`:
+
+1. `BUBBLEGUM_PYTHON` — explicit override, always wins.
+2. the active virtualenv (`VIRTUAL_ENV`) interpreter, when it exists on disk —
+   so "install into the venv" and "the bridge runs" are the same Python.
+3. `python` — the previous `PATH`-resolved default (graceful fallback, incl. a
+   stale `VIRTUAL_ENV`).
+
+Per-call `spawn: { command }` still overrides everything. Engine unchanged;
+npm client `0.0.6-alpha.12` → `0.0.6-alpha.13` (adds 4 `resolveBridgeCommand`
+unit tests; full client suite green, typecheck clean).
+
+
 ## 0.0.6a59 — fix(web): verify multi-select commit even when the field is grounded to its label
 
 A multi-select step could log `passed` while nothing was actually selected. The

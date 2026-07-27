@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 import { BridgeError } from "./errors.js";
@@ -35,9 +37,42 @@ export interface SpawnOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/**
+ * Resolve the Python interpreter that runs the engine bridge.
+ *
+ * Order (first hit wins):
+ *   1. `env.BUBBLEGUM_PYTHON` — explicit override, always respected.
+ *   2. The **active virtualenv** (`env.VIRTUAL_ENV`) interpreter, when it exists
+ *      on disk. This is the important one: `pip install bubblegum-ai` into an
+ *      activated venv is what testers actually do, but Node's `spawn("python")`
+ *      resolves against the Node process's `PATH` — which frequently is NOT the
+ *      venv (IDE test runners, `npx`, a login shell that didn't re-activate).
+ *      The result is the bridge silently running a *different*, often older,
+ *      engine than the one just installed (symptom: the handshake reports an
+ *      unexpected `engine_version`). Preferring the venv interpreter directly
+ *      makes "install into the venv" and "the bridge runs" the same Python.
+ *   3. `python` — resolved via `PATH`, the previous default.
+ *
+ * Any of these can still be overridden per call via `SpawnOptions.command`.
+ */
+export function resolveBridgeCommand(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.BUBBLEGUM_PYTHON?.trim();
+  if (override) return override;
+
+  const venv = env.VIRTUAL_ENV?.trim();
+  if (venv) {
+    const candidate =
+      process.platform === "win32"
+        ? join(venv, "Scripts", "python.exe")
+        : join(venv, "bin", "python");
+    if (existsSync(candidate)) return candidate;
+  }
+  return "python";
+}
+
 /** Spawn the Python bridge as a child process and frame JSON-RPC over its stdio. */
 export function spawnBridgeTransport(opts: SpawnOptions = {}): Transport {
-  const command = opts.command ?? "python";
+  const command = opts.command ?? resolveBridgeCommand(opts.env ?? process.env);
   const args = opts.args ?? ["-m", "bubblegum.bridge"];
   const child = spawn(command, args, {
     cwd: opts.cwd,
