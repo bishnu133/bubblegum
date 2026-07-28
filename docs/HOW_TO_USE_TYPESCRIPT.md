@@ -170,6 +170,22 @@ await bg.verify("login call succeeded", {
 });
 ```
 
+### Selecting from a dropdown without typing — `select_no_filter`
+
+Most searchable dropdowns are resolved by typing the value to filter the list.
+But some comboboxes key their options by an **id/GUID** (the option *value*) and
+only *display* a friendly label — Ant Design filters by the value, so typing the
+label filters against the GUID and **empties the list**, and the option can never
+be clicked. For those, pass `select_no_filter: true` so the engine **skips typing
+and scans (scrolling) the open list** to find and click the option by its visible
+text:
+
+```ts
+await bg.act('Select "My Scheme Name" from Scheme name dropdown', { select_no_filter: true });
+```
+
+Default is `false`, so every other dropdown behaves exactly as before.
+
 ---
 
 ## Dynamic values (dates, times & uniqueness)
