@@ -1823,9 +1823,10 @@ class PlaywrightAdapter(BaseAdapter):
         # tree, so role alone can't tell them apart). evaluate() is unavailable
         # on test doubles; treat that (None) as native to stay backward
         # compatible with the legacy select_option path.
+        no_filter = bool(getattr(plan.options, "select_no_filter", False))
         tag = await self._safe_tag_name(locator)
         if tag is not None and tag != "select":
-            await self._select_from_custom_combobox(locator, value, timeout)
+            await self._select_from_custom_combobox(locator, value, timeout, no_filter=no_filter)
             return
 
         # Native <select>. Testers write the *visible* option ("France"), but a
@@ -1851,8 +1852,13 @@ class PlaywrightAdapter(BaseAdapter):
             return None
         return (tag or "").strip().lower() or None
 
-    async def _select_from_custom_combobox(self, trigger, value: str, timeout: int) -> None:
+    async def _select_from_custom_combobox(self, trigger, value: str, timeout: int, *, no_filter: bool = False) -> None:
         """Select ``value`` from a non-native combobox (Ant Design / MUI / CDK).
+
+        ``no_filter=True`` opts out of the type-to-filter step: the option is
+        found by scanning the open list instead of typing the value into the
+        search box. Needed for comboboxes whose option *values* differ from their
+        visible labels (typing filters against the value and empties the list).
 
         Opens the trigger, then clicks the matching option. The listbox is
         frequently portal-rendered to <body> (out of the trigger's subtree), so
@@ -1885,7 +1891,7 @@ class PlaywrightAdapter(BaseAdapter):
                 # already know THIS multi-select is the target, and probing the
                 # rest per value is what made the step take ~44s and left a stray
                 # popup open in another section.
-                if not await self._select_single(trigger, v, timeout, probe_others=False):
+                if not await self._select_single(trigger, v, timeout, probe_others=False, no_filter=no_filter):
                     missed.append(v)
             if missed and len(missed) == len(values):
                 raise ValueError(
@@ -1895,7 +1901,7 @@ class PlaywrightAdapter(BaseAdapter):
                 logger.warning("multi-select: could not add %r (added the rest)", missed)
             return
 
-        if await self._select_single(trigger, values[0], timeout):
+        if await self._select_single(trigger, values[0], timeout, no_filter=no_filter):
             return
         raise ValueError(
             f"could not find a dropdown option matching {value!r} after opening "
@@ -1928,7 +1934,7 @@ class PlaywrightAdapter(BaseAdapter):
         return parts or [value]
 
     async def _select_single(self, trigger, value: str, timeout: int,
-                             probe_others: bool = True) -> bool:
+                             probe_others: bool = True, no_filter: bool = False) -> bool:
         """Commit one ``value`` into a combobox, self-correcting the trigger.
 
         Tries the resolved trigger first; if it does not actually offer the value
@@ -1958,7 +1964,7 @@ class PlaywrightAdapter(BaseAdapter):
         picked = -1
         for i, cand in enumerate(candidates):
             try:
-                if await self._try_pick_option(cand, value, timeout):
+                if await self._try_pick_option(cand, value, timeout, no_filter=no_filter):
                     picked = i
                     break
             except Exception:  # noqa: BLE001 — try the next candidate
@@ -2138,6 +2144,39 @@ class PlaywrightAdapter(BaseAdapter):
         except Exception:  # noqa: BLE001
             return False
 
+    async def _scroll_open_list_to_option(self, value: str) -> bool:
+        """Scroll an open (virtualized) dropdown until an option matching ``value``
+        is rendered, marking it with ``data-bg-opt=1``.
+
+        rc-virtual-list (and similar) only render the visible window of rows, so a
+        target further down isn't in the DOM until scrolled into view. Used by the
+        no-filter select path to walk a list we didn't narrow by typing.
+        Best-effort and bounded; returns True once the option is marked.
+        """
+        try:
+            if await self._mark_matching_option(value):
+                return True
+            for _ in range(15):
+                scrolled = await self._page.evaluate(
+                    r"""() => {
+                      const holder = document.querySelector(
+                        '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .rc-virtual-list-holder')
+                        || document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+                      if (!holder) return false;
+                      const before = holder.scrollTop;
+                      holder.scrollTop = before + Math.max(holder.clientHeight * 0.85, 120);
+                      return holder.scrollTop !== before;
+                    }"""
+                )
+                await self._page.wait_for_timeout(120)
+                if await self._mark_matching_option(value):
+                    return True
+                if not scrolled:
+                    break
+        except Exception:  # noqa: BLE001 — scanning is best-effort
+            return False
+        return False
+
     async def _remove_new_selections(self, trigger, before: list) -> None:
         """Deselect items that appeared in ``trigger`` since ``before`` was taken.
 
@@ -2167,8 +2206,13 @@ class PlaywrightAdapter(BaseAdapter):
             except Exception:  # noqa: BLE001
                 return
 
-    async def _try_pick_option(self, trigger, value: str, timeout: int) -> bool:
+    async def _try_pick_option(self, trigger, value: str, timeout: int, no_filter: bool = False) -> bool:
         """Open one combobox, filter by typing, and click the matching option.
+
+        ``no_filter=True`` skips the type-to-filter step and scans the open list
+        for the matching option instead. Use it when typing the value would
+        empty the list — e.g. a combobox whose options are keyed by an id/GUID
+        the visible label doesn't contain, so the built-in filter never matches.
 
         Returns True when an option was clicked, False when this combobox does
         not offer ``value`` (leaving it cleared + closed so the next candidate
@@ -2191,7 +2235,10 @@ class PlaywrightAdapter(BaseAdapter):
                 'input.ant-select-selection-search-input, input[role="combobox"], '
                 'input[type="search"], input:not([type="hidden"]):not([readonly])'
             ).first
-            if await search.count() > 0 and await search.is_editable(timeout=500):
+            # no_filter: don't type into the search box — typing here filters the
+            # list against the option value (e.g. a GUID) and empties it, so we
+            # scan the already-open list for the option instead.
+            if not no_filter and await search.count() > 0 and await search.is_editable(timeout=500):
                 await search.fill(value, timeout=min(timeout, 2000))
                 await self._page.wait_for_timeout(200)
                 typed_filter = True
@@ -2212,6 +2259,13 @@ class PlaywrightAdapter(BaseAdapter):
             await opened.first.wait_for(state="visible", timeout=probe)
         except Exception:  # noqa: BLE001 — proceed; the attempts still guard themselves
             pass
+
+        # no_filter: we did not type to narrow the list, so the target may be
+        # below the fold of a virtualized popup. Walk the list (scroll + re-scan)
+        # until the option is rendered, so "go through the items and pick it"
+        # works without filtering.
+        if no_filter:
+            await self._scroll_open_list_to_option(value)
 
         esc = value.replace("\\", "\\\\").replace('"', '\\"')
         # Scope option clicks to the popup THIS trigger owns FIRST. Two selects can

@@ -1,5 +1,31 @@
 # Unreleased
 
+## 0.0.6a62 — feat(web): `select_no_filter` — pick a dropdown option without type-to-filter
+
+New opt-in per-call option for `select` steps. Searchable comboboxes are
+normally resolved by typing the value to filter the list, but some Ant selects
+key their options by an **id/GUID** (the option *value*) and only *display* a
+friendly label. Ant filters by the value, so typing the label filters against the
+GUID and **empties the list** — the option can never be clicked (symptom: "type
+the text and the items disappear"). Passing `select_no_filter: true` skips the
+typing and instead **scans the open list, scrolling a virtualized popup as
+needed**, then clicks the option by its visible text:
+
+```ts
+await bg.act('Select "My Scheme" from Scheme name dropdown', { select_no_filter: true });
+```
+
+Threaded from `ExecutionOptions.select_no_filter` (default `false`) through
+`_do_select` → `_select_from_custom_combobox` → `_select_single` →
+`_try_pick_option`, which now guards the type-to-filter block and adds a bounded
+virtual-list scroll-scan (`_scroll_open_list_to_option`). The default select path
+is **unchanged** — every existing dropdown behaves exactly as before. Adds
+`tests/integration/test_select_no_filter_web.py` (default types-and-fails vs
+opt-in scans-and-selects) and a `build_options` plumbing unit test.
+
+Engine `0.0.6a61` → `0.0.6a62`.
+
+
 ## 0.0.6a61 — fix(web): stop text values piling into the first input on unlabeled forms
 
 On a form whose Ant inputs have no accessible name — the labels use `for=` ids

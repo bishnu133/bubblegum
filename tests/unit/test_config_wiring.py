@@ -66,6 +66,13 @@ def test_build_options_explicit_kwargs_override_runtime_config():
     assert opts.memory_max_failures == 8
 
 
+def test_build_options_select_no_filter_flows_through():
+    configure_runtime(config=BubblegumConfig())
+    # Default off; opt-in via per-call kwarg (e.g. bg.act(..., { select_no_filter: true })).
+    assert _build_options({}).select_no_filter is False
+    assert _build_options({"select_no_filter": True}).select_no_filter is True
+
+
 def test_safe_default_config_loading_no_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("BUBBLEGUM_CONFIG", raising=False)

@@ -60,6 +60,13 @@ class ExecutionOptions(BaseModel):
     stability_quiet_ms:  int        = 400
     stability_timeout_ms: int       = 5_000
     stability_spinner_selectors: list[str] | None = None
+    # Web select: opt out of the type-to-filter step and pick the option by
+    # scanning the open list instead. For a searchable combobox whose option
+    # *values* differ from their visible labels (e.g. options keyed by GUID with
+    # a friendly display name), typing the label filters against the value and
+    # empties the list, so the option can never be clicked. Default False keeps
+    # the normal type-to-filter behaviour unchanged for every other select.
+    select_no_filter:    bool       = False
 
 
 # ---------------------------------------------------------------------------
