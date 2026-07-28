@@ -319,6 +319,16 @@ def _parse_response(text: str, resolver_name: str) -> list[ResolvedTarget]:
         )
         return []
 
+    # A ``role=<role>`` ref with no ``[name="…"]`` is ambiguous by construction —
+    # it matches every element of that role on the page (e.g. ``role=textbox`` on
+    # a form with several unlabeled inputs), so acting on it fills/clicks the
+    # first match, not the intended one. The prompt asks for a named ref; when the
+    # model can't supply one, discard rather than emit a page-wide match — this
+    # lets the deterministic label-based DOM fallback resolve the field instead.
+    if ref.startswith("role=") and "[name=" not in ref:
+        logger.debug("LLMGroundingResolver: discarding nameless role ref %r (ambiguous)", ref)
+        return []
+
     return [
         ResolvedTarget(
             ref=ref,

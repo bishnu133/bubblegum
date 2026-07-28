@@ -1,5 +1,33 @@
 # Unreleased
 
+## 0.0.6a61 — fix(web): stop text values piling into the first input on unlabeled forms
+
+On a form whose Ant inputs have no accessible name — the labels use `for=` ids
+the inputs don't carry (only `data-testid`), so the label↔input link is broken —
+every `Enter "X" into <field>` step landed in the **first** input. Three distinct
+causes, all fixed:
+
+1. **Nameless `role=textbox` silently filled `.first`.** With no accessible name,
+   grounding produced a bare `role=textbox` that matches every input; the
+   executor's strict-mode fallback then filled the first match. The `.first`
+   strict-mode fallback is now disabled for value-entry actions (`type`/`fill`/
+   `set`) — it re-raises so the label-based DOM input resolver can target the
+   real field. (It still applies to clicks, where first-match is reasonable.)
+2. **The LLM tier returned a nameless `role=` ref.** `_parse_response` now
+   discards any `role=<role>` ref without a `[name="…"]` — ambiguous by
+   construction — so the deterministic label resolver takes over instead.
+3. **`find_input` fell back to the first input on no match.** The DOM-order
+   tie-break made an unmatched phrase score just above zero, so it returned the
+   first field. It now requires a genuine label/placeholder/section match, and
+   matches whitespace-insensitively so a spaceless phrase (`ExternalSourceName`)
+   still resolves its spaced label ("External Source Name").
+
+Net: each value goes to its own field, and a field that genuinely can't be
+resolved fails loudly instead of silently filling the wrong box. Adds
+`tests/integration/test_nameless_inputs_web.py` (browser-backed) and a
+nameless-role parser unit test. Engine `0.0.6a60` → `0.0.6a61`.
+
+
 ## 0.0.6a60 — fix(web): don't undo a committed multi-select value during self-correction
 
 A multi-select step could log `passed` while the value ended up **not** selected
