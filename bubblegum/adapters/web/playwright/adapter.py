@@ -567,6 +567,22 @@ _FIND_INPUT_JS = r"""
   __SECTION_JS
   const placeholder = (e) => norm(e.getAttribute('placeholder') || '');
   const overlap = (txt) => { if (!tokens.length || !txt) return 0; let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n / tokens.length; };
+  // Whitespace-insensitive match: a phrase written without spaces
+  // ("ExternalSourceName") should still match a spaced label ("External Source
+  // Name"). Token overlap misses this because the single 18-char token isn't a
+  // substring of the spaced label. Safe: exact tight-equality, or containment
+  // only when the contained side is long enough to be meaningful (so a field
+  // labelled just "Name" does not match "ExternalSourceName").
+  const tight = (s) => norm(s).replace(/\s+/g, '');
+  const phraseTight = tight(phrase);
+  const tightMatch = (txt) => {
+    const t = tight(txt);
+    if (!t || !phraseTight) return 0;
+    if (t === phraseTight) return 1;
+    if (phraseTight.length >= 4 && t.includes(phraseTight)) return 1;
+    if (t.length >= 6 && phraseTight.includes(t)) return 1;
+    return 0;
+  };
   // A field's ON-SCREEN identity for the collision test: its associated label, or
   // its placeholder when it has no label. Two Ant range/number inputs with the
   // same placeholder ("Position" on both a Food and a Drink "Stamp Position"
@@ -576,19 +592,25 @@ _FIND_INPUT_JS = r"""
   // has no section context and picks the first one in DOM order.
   const identity = (e) => visibleLabel(e) || placeholder(e);
 
-  let best = null, bestScore = -1, bestIdent = 0, bestSec = '';
+  let best = null, bestScore = -1, bestReal = 0, bestIdent = 0, bestSec = '';
   const ids = els.map(identity);
   els.forEach((e, i) => {
     const secOv = overlap(sectionText(e));
     // Section overlap (weight 1.0 < the label weight 3.0) breaks ties between
     // same-labelled fields in different sections without overriding a field whose
     // own label is a clearly better match.
-    let score = 3.0 * overlap(labelText(e)) + 1.2 * overlap(placeholder(e)) + 1.0 * secOv;
-    if (e.disabled) score -= 5;             // strongly avoid disabled fields
-    score += (els.length - i) * 0.001;      // earlier-in-DOM tie-break
-    if (score > bestScore) { bestScore = score; best = e; bestIdent = overlap(ids[i]); bestSec = sectionText(e); }
+    let real = 3.0 * overlap(labelText(e)) + 1.2 * overlap(placeholder(e)) + 1.0 * secOv
+             + 3.0 * tightMatch(labelText(e)) + 1.2 * tightMatch(placeholder(e));
+    if (e.disabled) real -= 5;              // strongly avoid disabled fields
+    // The DOM-order term ONLY orders ties — it must not, on its own, make a
+    // no-overlap field look like a match (that is what made every unmatched
+    // phrase fall onto the first input on the page).
+    const score = real + (els.length - i) * 0.001;
+    if (score > bestScore) { bestScore = score; bestReal = real; best = e; bestIdent = overlap(ids[i]); bestSec = sectionText(e); }
   });
-  if (!best || bestScore <= 0) return null;
+  // Require a genuine label/placeholder/section match — never fall back to the
+  // first input just because the tie-break epsilon is positive.
+  if (!best || bestReal <= 0) return null;
   // "sectioned": the winner shares its (matched) on-screen identity — label OR
   // placeholder — with at least one other field, and a section heading / id is
   // what set it apart. This is the signal that lets the caller pre-empt grounding;
@@ -1690,6 +1712,15 @@ class PlaywrightAdapter(BaseAdapter):
             # already takes .first; mirror that for actions instead of failing
             # the whole step on a strict-mode violation.
             if not _is_strict_mode_violation(exc):
+                raise
+            # ...but NOT for value-entry. Filling the FIRST of several matches is
+            # almost always the wrong field — the classic case is a nameless
+            # ``role=textbox`` matching every input on a page whose Ant form
+            # labels point at ids the inputs don't carry (broken label[for]), so
+            # every "Enter X into <field>" step would pile into the first box.
+            # Re-raise so the SDK's label-based input recovery
+            # (``_maybe_resolve_input``) can target the intended field instead.
+            if plan.action_type in ("type", "fill", "set"):
                 raise
             logger.info(
                 "Strict-mode violation on %s — retrying against the first match",

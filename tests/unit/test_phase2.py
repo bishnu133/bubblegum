@@ -389,6 +389,17 @@ class TestParseResponse:
     def test_empty_string_returns_empty(self):
         assert _parse_response("", "llm_grounding") == []
 
+    def test_nameless_role_ref_rejected(self):
+        # A high-confidence but nameless role ref is ambiguous — it matches every
+        # element of that role on the page, so acting on it hits the first match
+        # (the classic "every value lands in the first input" bug). Discard it so
+        # the deterministic label-based DOM fallback can resolve the real field.
+        text = json.dumps({"ref": "role=textbox", "confidence": 0.9, "reasoning": "guess"})
+        assert _parse_response(text, "llm_grounding") == []
+        # A named role ref is still accepted.
+        named = json.dumps({"ref": 'role=textbox[name="Auth ClientID"]', "confidence": 0.9, "reasoning": "ok"})
+        assert len(_parse_response(named, "llm_grounding")) == 1
+
     def test_markdown_fences_stripped(self):
         text = '```json\n{"ref": "role=button[name=\\"OK\\"]", "confidence": 0.88, "reasoning": "ok"}\n```'
         targets = _parse_response(text, "llm_grounding")
