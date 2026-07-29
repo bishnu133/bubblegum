@@ -33,7 +33,7 @@ from bubblegum.core.schemas import ActionPlan, ExecutionOptions, ResolvedTarget
 
 
 def _dom(commit: bool) -> str:
-    """An Ant multi-select 'Related domains' with a single option 'Rewards'.
+    """An Ant multi-select 'Categories' with a single option 'Alpha'.
 
     ``commit=True`` mimics normal Ant behaviour (clicking the option row adds a
     ``.ant-select-selection-item`` tag). ``commit=False`` mimics a widget that
@@ -42,34 +42,34 @@ def _dom(commit: bool) -> str:
     """
     commit_js = (
         "const t=document.createElement('span');t.className='ant-select-selection-item';"
-        "t.setAttribute('title','Rewards');t.textContent='Rewards';"
+        "t.setAttribute('title','Alpha');t.textContent='Alpha';"
         "wrap.insertBefore(t,wrap.firstChild);"
         if commit else "/* no commit */"
     )
     return (
         "<!doctype html><html><body>"
-        "<label id='lbl' for='domains' title='Related domains'>Related domains</label>"
+        "<label id='lbl' for='cats' title='Categories'>Categories</label>"
         "<div class='ant-select ant-select-multiple ant-select-show-search'"
-        " data-testid='input-relatedDomain'>"
+        " data-testid='input-categories'>"
         "  <div class='ant-select-selector'><span class='ant-select-selection-wrap'>"
         "    <div class='ant-select-selection-overflow'><div class='ant-select-selection-search'>"
-        "      <input id='domains' class='ant-select-selection-search-input' role='combobox'"
-        "       aria-expanded='false' aria-owns='domains_list' aria-controls='domains_list'"
+        "      <input id='cats' class='ant-select-selection-search-input' role='combobox'"
+        "       aria-expanded='false' aria-owns='cats_list' aria-controls='cats_list'"
         "       type='search' value='' readonly></div></div>"
         "    <span class='ant-select-selection-placeholder'></span></span></div>"
         "  <span class='ant-select-arrow'><span aria-label='down'>v</span></span>"
         "</div>"
         "<div><div class='ant-select-dropdown ant-select-dropdown-hidden' id='dd'><div>"
-        "  <div role='listbox' id='domains_list' style='height:0;width:0;overflow:hidden'>"
-        "    <div role='option' id='domains_list_0' aria-selected='false'>rewards</div></div>"
+        "  <div role='listbox' id='cats_list' style='height:0;width:0;overflow:hidden'>"
+        "    <div role='option' id='cats_list_0' aria-selected='false'>alpha</div></div>"
         "  <div class='rc-virtual-list'><div class='rc-virtual-list-holder-inner'>"
         "    <div name='domain' aria-selected='false' class='ant-select-item ant-select-item-option' id='opt'>"
-        "      <div class='ant-select-item-option-content'><span aria-label='option-rewards'>Rewards</span></div>"
+        "      <div class='ant-select-item-option-content'><span aria-label='option-alpha'>Alpha</span></div>"
         "    </div></div></div>"
         "</div></div></div>"
         "<script>"
         " const sel=document.querySelector('.ant-select'),dd=document.getElementById('dd'),"
-        "  input=document.getElementById('domains'),wrap=sel.querySelector('.ant-select-selection-wrap');"
+        "  input=document.getElementById('cats'),wrap=sel.querySelector('.ant-select-selection-wrap');"
         " function open(){dd.classList.remove('ant-select-dropdown-hidden');input.setAttribute('aria-expanded','true');}"
         " function close(){dd.classList.add('ant-select-dropdown-hidden');}"
         " sel.addEventListener('click',e=>{if(e.target.closest('.ant-select-dropdown'))return;open();});"
@@ -81,7 +81,7 @@ def _dom(commit: bool) -> str:
 
 
 async def _select(commit: bool, ref: str):
-    """Run a ``select`` of 'Rewards' and return ``(success, tag_count)``."""
+    """Run a ``select`` of 'Alpha' and return ``(success, tag_count)``."""
     aw = pytest.importorskip("playwright.async_api")
     launch_kwargs = {}
     exe = os.environ.get("BG_CHROMIUM_EXECUTABLE")
@@ -98,7 +98,7 @@ async def _select(commit: bool, ref: str):
             adapter = PlaywrightAdapter(page)
             plan = ActionPlan(
                 action_type="select",
-                input_value="Rewards",
+                input_value="Alpha",
                 options=ExecutionOptions(timeout_ms=4000),
             )
             target = ResolvedTarget(ref=ref, confidence=0.9, resolver_name="test",
@@ -116,8 +116,8 @@ async def _select(commit: bool, ref: str):
 
 # The two refs represent the two ways grounding lands on this field: on the
 # widget wrapper (data-testid) or on its <label> (accessible-name match).
-_LABEL_REF = 'label[for="domains"]'
-_WIDGET_REF = '[data-testid="input-relatedDomain"]'
+_LABEL_REF = 'label[for="cats"]'
+_WIDGET_REF = '[data-testid="input-categories"]'
 
 
 async def test_label_resolved_noncommit_is_not_reported_as_selected():
@@ -151,35 +151,35 @@ async def test_widget_resolved_noncommit_still_fails():
 # fixture wires one up.
 _REMOVE_TAG_DOM = (
     "<!doctype html><html><body>"
-    "<label for='domains' title='Related domains'>Related domains</label>"
-    "<div class='ant-select ant-select-multiple ant-select-show-search' data-testid='input-relatedDomain'>"
+    "<label for='cats' title='Categories'>Categories</label>"
+    "<div class='ant-select ant-select-multiple ant-select-show-search' data-testid='input-categories'>"
     "  <div class='ant-select-selector'><span class='ant-select-selection-wrap' id='wrapR'>"
     "    <div class='ant-select-selection-overflow'><div class='ant-select-selection-search'>"
-    "      <input id='domains' class='ant-select-selection-search-input' role='combobox'"
-    "       aria-label='* Related domains' aria-expanded='false' aria-owns='domains_list'"
-    "       aria-controls='domains_list' type='search' value='' readonly></div></div>"
+    "      <input id='cats' class='ant-select-selection-search-input' role='combobox'"
+    "       aria-label='* Categories' aria-expanded='false' aria-owns='cats_list'"
+    "       aria-controls='cats_list' type='search' value='' readonly></div></div>"
     "    <span class='ant-select-selection-placeholder'></span></span></div>"
     "  <span class='ant-select-arrow'><span aria-label='down'>v</span></span></div>"
     "<div><div class='ant-select-dropdown ant-select-dropdown-hidden' id='dd'><div>"
-    "  <div role='listbox' id='domains_list' style='height:0;width:0;overflow:hidden'>"
-    "    <div role='option' id='domains_list_0' aria-selected='false'>rewards</div></div>"
+    "  <div role='listbox' id='cats_list' style='height:0;width:0;overflow:hidden'>"
+    "    <div role='option' id='cats_list_0' aria-selected='false'>alpha</div></div>"
     "  <div class='rc-virtual-list'><div class='rc-virtual-list-holder-inner'>"
     "    <div name='domain' aria-selected='false' class='ant-select-item ant-select-item-option' id='opt'>"
-    "      <div class='ant-select-item-option-content'><span aria-label='option-rewards'>Rewards</span></div>"
+    "      <div class='ant-select-item-option-content'><span aria-label='option-alpha'>Alpha</span></div>"
     "    </div></div></div>"
     "</div></div></div>"
     "<script>"
-    " const selR=document.querySelector('[data-testid=input-relatedDomain]');"
-    " const dd=document.getElementById('dd'),input=document.getElementById('domains'),wrap=document.getElementById('wrapR');"
+    " const selR=document.querySelector('[data-testid=input-categories]');"
+    " const dd=document.getElementById('dd'),input=document.getElementById('cats'),wrap=document.getElementById('wrapR');"
     " function open(){dd.classList.remove('ant-select-dropdown-hidden');input.setAttribute('aria-expanded','true');}"
     " function close(){dd.classList.add('ant-select-dropdown-hidden');input.setAttribute('aria-expanded','false');}"
     " selR.addEventListener('click',e=>{if(e.target.closest('.ant-select-dropdown'))return;open();});"
     " document.getElementById('opt').addEventListener('click',()=>{"
     "   if(!selR.querySelector('.ant-select-selection-item')){"
-    "     const t=document.createElement('span');t.className='ant-select-selection-item';t.setAttribute('title','Rewards');"
+    "     const t=document.createElement('span');t.className='ant-select-selection-item';t.setAttribute('title','Alpha');"
     "     const x=document.createElement('span');x.className='ant-select-selection-item-remove';x.setAttribute('aria-label','close');x.textContent='x';"
     "     x.addEventListener('click',(e)=>{e.stopPropagation();t.remove();});"  # real Ant: × removes the tag
-    "     t.append('Rewards',x);wrap.insertBefore(t,wrap.firstChild);}"
+    "     t.append('Alpha',x);wrap.insertBefore(t,wrap.firstChild);}"
     "   close();});"
     " window.__n=()=>selR.querySelectorAll('.ant-select-selection-item').length;"
     "</script></body></html>"
@@ -202,9 +202,9 @@ async def test_committed_selection_survives_probe_others_cleanup():
             page = await browser.new_page()
             await page.set_content(_REMOVE_TAG_DOM)
             adapter = PlaywrightAdapter(page)
-            plan = ActionPlan(action_type="select", input_value="Rewards",
+            plan = ActionPlan(action_type="select", input_value="Alpha",
                               options=ExecutionOptions(timeout_ms=4000))
-            target = ResolvedTarget(ref='role=combobox[name="* Related domains"]',
+            target = ResolvedTarget(ref='role=combobox[name="* Categories"]',
                                     confidence=0.75, resolver_name="fuzzy_text",
                                     metadata={"role": "combobox"})
             res = await adapter.execute(plan, target)

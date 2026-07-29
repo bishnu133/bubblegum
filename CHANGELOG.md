@@ -1,5 +1,28 @@
 # Unreleased
 
+## 0.0.6a64 — fix(web): disambiguate a click by visible text (no selector needed)
+
+Two controls can share an accessible name when one is named only by a decorative
+icon's `aria-label`: an icon-only trigger
+(`<span role="button"><span role="img" aria-label="search">`) and a real button
+with visible text (`<button><icon/><span>Search</span></button>`) both answer to
+`role=button[name="search"]`. A `Click the Search button` step then landed on the
+first DOM match — the icon — instead of the labelled button, forcing testers to
+fall back to a raw CSS `selector`, which defeats the natural-language goal.
+
+`_do_click` now, **only when the resolved locator matches more than one element**,
+picks the match whose *visible* text (its own text with `role="img"` / `.anticon`
+/ `svg` / `aria-hidden` descendants removed) equals or contains the target — via
+a new `_pick_click_by_visible_text` helper. It returns the original locator
+unchanged for a unique match or when no candidate's visible text clearly matches,
+so ordinary clicks are never disturbed; it only ever replaces an otherwise-
+arbitrary first-match pick. Fully generic — no app- or widget-specific rules.
+
+Also genericized the sample identifiers in the recently-added web integration
+tests so the library carries no app-specific product terms. Adds
+`tests/integration/test_click_visible_text_web.py`. Engine `0.0.6a63` → `0.0.6a64`.
+
+
 ## 0.0.6a63 — feat(web): click a clickable table row by its cell text
 
 Data tables commonly make the whole **row** clickable (Ant `onRow` onClick, a
@@ -12,7 +35,7 @@ clicking a search result in a results table — failed with no candidate.
 interactive element matches**, looks for a clickable table row
 (`tr[data-row-key]`, `tr.clickable-row`, `[role="row"]`, or a `cursor:pointer`
 row) whose cell text matches — preferring an **exact** cell match so a filtered
-`AutoRoadshow-…240` row is never confused with a sibling `AutoRoadshow-…224` that
+`Row-A` row is never confused with a sibling `Row-B` that
 shares its prefix, then case-insensitive, then substring. Ordinary
 button/link/menu clicks are completely unaffected (the row scan runs only after
 the interactive search finds nothing).
@@ -35,7 +58,7 @@ typing and instead **scans the open list, scrolling a virtualized popup as
 needed**, then clicks the option by its visible text:
 
 ```ts
-await bg.act('Select "My Scheme" from Scheme name dropdown', { select_no_filter: true });
+await bg.act('Select "My Item" from the Item dropdown', { select_no_filter: true });
 ```
 
 Threaded from `ExecutionOptions.select_no_filter` (default `false`) through
@@ -68,8 +91,8 @@ causes, all fixed:
 3. **`find_input` fell back to the first input on no match.** The DOM-order
    tie-break made an unmatched phrase score just above zero, so it returned the
    first field. It now requires a genuine label/placeholder/section match, and
-   matches whitespace-insensitively so a spaceless phrase (`ExternalSourceName`)
-   still resolves its spaced label ("External Source Name").
+   matches whitespace-insensitively so a spaceless phrase (`FieldThree`)
+   still resolves its spaced label ("Field Three").
 
 Net: each value goes to its own field, and a field that genuinely can't be
 resolved fails loudly instead of silently filling the wrong box. Adds

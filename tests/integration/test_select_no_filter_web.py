@@ -21,24 +21,24 @@ from bubblegum.adapters.web.playwright.adapter import PlaywrightAdapter
 from bubblegum.core.schemas import ActionPlan, ExecutionOptions, ResolvedTarget
 
 _OPTS = [
-    ("40d5fffc-c4ec-4000-ba14-bdbdeaa8001a", "21JulyScheme"),
-    ("877f8f7e-dc2a-46ee-b5dc-3731e07c59f3", "21JulyScheme2"),
-    ("db8df6f7-846c-434c-9177-b5440e50510a", "sasaa"),
-    ("aaaa1111-2222-3333-4444-555566667777", "TargetScheme-20260728133745"),  # target
+    ("40d5fffc-c4ec-4000-ba14-bdbdeaa8001a", "Alpha Item"),
+    ("877f8f7e-dc2a-46ee-b5dc-3731e07c59f3", "Beta Item"),
+    ("db8df6f7-846c-434c-9177-b5440e50510a", "Gamma Item"),
+    ("aaaa1111-2222-3333-4444-555566667777", "Target-20240101-999"),  # target
 ]
 _ROWS = "".join(
-    f'<div name="schemeId" data-value="{g}" class="ant-select-item ant-select-item-option">'
+    f'<div name="itemId" data-value="{g}" class="ant-select-item ant-select-item-option">'
     f'<div class="ant-select-item-option-content"><span aria-label="option-{g}">{lbl}</span></div></div>'
     for g, lbl in _OPTS
 )
 _DOM = ("""
 <!doctype html><html><body>
-<label for="schemeIds" title="Scheme name">Scheme name</label>
-<div class="ant-select ant-select-multiple ant-select-show-search" data-testid="select-schemes">
+<label for="itemIds" title="Item name">Item name</label>
+<div class="ant-select ant-select-multiple ant-select-show-search" data-testid="select-items">
   <div class="ant-select-selector"><span class="ant-select-selection-wrap" id="wrap">
     <div class="ant-select-selection-overflow"><div class="ant-select-selection-search">
-      <input id="schemeIds" class="ant-select-selection-search-input" role="combobox"
-             aria-label="Scheme name" aria-expanded="false" aria-owns="sch_list"
+      <input id="itemIds" class="ant-select-selection-search-input" role="combobox"
+             aria-label="Item name" aria-expanded="false" aria-owns="sch_list"
              aria-controls="sch_list" type="search" value=""></div></div>
     <span class="ant-select-selection-placeholder"></span></span></div>
   <span class="ant-select-arrow"><span aria-label="down">v</span></span></div>
@@ -49,7 +49,7 @@ _DOM = ("""
 </div></div></div>
 <script>
  const sel=document.querySelector('.ant-select'),dd=document.getElementById('dd'),
-   input=document.getElementById('schemeIds'),wrap=document.getElementById('wrap');
+   input=document.getElementById('itemIds'),wrap=document.getElementById('wrap');
  const rows=[...document.querySelectorAll('.ant-select-item-option')];
  function open(){dd.classList.remove('ant-select-dropdown-hidden');input.setAttribute('aria-expanded','true');}
  function close(){dd.classList.add('ant-select-dropdown-hidden');input.setAttribute('aria-expanded','false');}
@@ -82,9 +82,9 @@ async def _run(no_filter: bool):
             page = await browser.new_page()
             await page.set_content(_DOM)
             adapter = PlaywrightAdapter(page)
-            plan = ActionPlan(action_type="select", input_value="TargetScheme-20260728133745",
+            plan = ActionPlan(action_type="select", input_value="Target-20240101-999",
                               options=ExecutionOptions(timeout_ms=4000, select_no_filter=no_filter))
-            target = ResolvedTarget(ref='[data-testid="select-schemes"]', confidence=0.75,
+            target = ResolvedTarget(ref='[data-testid="select-items"]', confidence=0.75,
                                     resolver_name="fuzzy_text", metadata={"role": "combobox"})
             try:
                 res = await adapter.execute(plan, target)
@@ -109,4 +109,4 @@ async def test_select_no_filter_scans_and_selects():
     """select_no_filter skips typing, scans the list, and selects the option."""
     success, tags = await _run(no_filter=True)
     assert success is True
-    assert tags == ["TargetScheme-20260728133745"]
+    assert tags == ["Target-20240101-999"]
