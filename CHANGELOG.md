@@ -1,5 +1,28 @@
 # Unreleased
 
+## 0.0.6a63 — feat(web): click a clickable table row by its cell text
+
+Data tables commonly make the whole **row** clickable (Ant `onRow` onClick, a
+`clickable-row` class, or `cursor:pointer`) while the cell content is a plain,
+non-interactive `<span>`. The interactive-element resolvers (button / link /
+menuitem / `[onclick]`) never see that span, so `Click "<row text>"` — e.g.
+clicking a search result in a results table — failed with no candidate.
+
+`_FIND_CLICKABLE_JS` (the deterministic click DOM fallback) now, **only when no
+interactive element matches**, looks for a clickable table row
+(`tr[data-row-key]`, `tr.clickable-row`, `[role="row"]`, or a `cursor:pointer`
+row) whose cell text matches — preferring an **exact** cell match so a filtered
+`AutoRoadshow-…240` row is never confused with a sibling `AutoRoadshow-…224` that
+shares its prefix, then case-insensitive, then substring. Ordinary
+button/link/menu clicks are completely unaffected (the row scan runs only after
+the interactive search finds nothing).
+
+So `Click "<name>"` (or `Click the "<name>" text in the table`) now clicks the
+row — which matters because the name is usually a dynamic `{{…}}` value that must
+be expanded in the instruction (a static `selector` can't carry it). Adds
+`tests/integration/test_clickable_row_web.py`. Engine `0.0.6a62` → `0.0.6a63`.
+
+
 ## 0.0.6a62 — feat(web): `select_no_filter` — pick a dropdown option without type-to-filter
 
 New opt-in per-call option for `select` steps. Searchable comboboxes are
