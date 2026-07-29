@@ -1764,9 +1764,66 @@ class PlaywrightAdapter(BaseAdapter):
             if target is not None:
                 target.metadata["strict_mode_fallback_first"] = True
 
+    async def _pick_click_by_visible_text(self, locator, target_hint: str | None):
+        """Disambiguate a multi-match click locator by visible text.
+
+        Returns a single-element locator: the match whose *visible* text (its own
+        text with icon / aria-hidden / role=img descendants removed) equals or
+        contains ``target_hint``. Falls back to ``locator.first`` when the locator
+        is unique, when the hint is empty, or when no candidate has a clearly
+        matching visible text — so ordinary clicks are never disturbed and this
+        only ever fixes an otherwise-arbitrary first-match pick.
+        """
+        want = " ".join((target_hint or "").split()).strip().lower()
+        # Drop a trailing widget noun the caller may have kept ("Search button").
+        want = re.sub(r"\s+(button|link|tab|icon|menu\s*item|menuitem|item|option)$", "", want).strip()
+        if not want:
+            return locator
+        try:
+            if await locator.count() <= 1:
+                return locator
+        except Exception:  # noqa: BLE001 — non-countable locator (test double)
+            return locator
+        try:
+            idx = await locator.evaluate_all(
+                r"""(els, want) => {
+                  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                  const visText = (el) => {
+                    const c = el.cloneNode(true);
+                    c.querySelectorAll('[role="img"], .anticon, svg, [aria-hidden="true"]')
+                      .forEach((n) => n.remove());
+                    return norm(c.textContent);
+                  };
+                  let best = -1, bestScore = 2;   // require a real match to override
+                  els.forEach((el, i) => {
+                    const vt = visText(el);
+                    let s = 0;
+                    if (vt && vt === want) s = 4;
+                    else if (vt && vt.includes(want)) s = 3;
+                    if (s > bestScore) { bestScore = s; best = i; }
+                  });
+                  return best;   // -1 => caller keeps .first
+                }""",
+                want,
+            )
+        except Exception:  # noqa: BLE001 — evaluate unavailable / failed
+            return locator
+        if idx is None or idx < 0:
+            return locator
+        return locator.nth(idx)
+
     async def _do_click(
         self, plan: ActionPlan, locator, timeout: int, target: ResolvedTarget | None = None
     ) -> None:
+        # When the resolved locator matches several elements, prefer the one whose
+        # VISIBLE text matches what the user asked for, before falling back to the
+        # first DOM match. This disambiguates a labelled control from another that
+        # shares its accessible name only through a decorative icon — e.g. a
+        # "Search" button (visible text) vs an icon-only trigger whose name comes
+        # from an <span role=img aria-label="search">. Generic: no effect on a
+        # unique match, and it only overrides the first-match default when some
+        # candidate's visible text clearly matches the target.
+        locator = await self._pick_click_by_visible_text(locator, plan.target_hint)
         # Record URL before click so we can detect navigation afterwards.
         url_before = self._page.url
         await locator.click(timeout=timeout)

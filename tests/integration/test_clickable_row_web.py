@@ -63,17 +63,17 @@ async def _click(names, instr):
 
 async def test_click_row_by_quoted_text_single_row():
     status, clicked = await _click(
-        ["AutoRoadshow-20260729183240"], 'Click "AutoRoadshow-20260729183240"'
+        ["Record-20240101-001"], 'Click "Record-20240101-001"'
     )
     assert status in ("passed", "recovered")
-    assert clicked == "AutoRoadshow-20260729183240"
+    assert clicked == "Record-20240101-001"
 
 
 async def test_click_row_exact_match_among_prefix_siblings():
     """Exact cell match must pick the right row, not a prefix-sharing sibling."""
-    names = ["AutoRoadshow-20260729183240", "AutoRoadshow-20260729184224", "gjhdgsaj"]
+    names = ["Record-20240101-001", "Record-20240101-002", "other-record"]
     status, clicked = await _click(
-        names, 'Click the "AutoRoadshow-20260729184224" text in the table'
+        names, 'Click the "Record-20240101-002" text in the table'
     )
     assert status in ("passed", "recovered")
-    assert clicked == "AutoRoadshow-20260729184224"
+    assert clicked == "Record-20240101-002"
