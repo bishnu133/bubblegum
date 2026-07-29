@@ -1230,7 +1230,41 @@ _FIND_CLICKABLE_JS = r"""
     if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wl));
     if (matches.length) break;
   }
-  if (!matches.length) return null;
+  if (!matches.length) {
+    // Fallback: a clickable TABLE ROW whose cell text matches. The row's own
+    // click handler is what navigates (Ant `onRow` onClick / a `clickable-row`
+    // class / cursor:pointer), while the matching text is a plain, non-
+    // interactive cell <span> the interactive selectors above never see. Only
+    // used when nothing interactive matched, so ordinary button/link/menu
+    // clicks are completely unaffected.
+    const rowSel = 'tr[data-row-key], tr.clickable-row, [role="row"]';
+    const clickableRow = (r) => {
+      if (!visible(r)) return false;
+      if (r.hasAttribute && r.hasAttribute('data-row-key')) return true;
+      if (/clickable/i.test(r.className || '')) return true;
+      try { if (window.getComputedStyle(r).cursor === 'pointer') return true; } catch (e) {}
+      return false;
+    };
+    const cellTexts = (r) => Array.from(
+      r.querySelectorAll('td, th, [role="cell"], [role="gridcell"]')
+    ).map((c) => norm(c.textContent));
+    const rows = Array.from(document.querySelectorAll(rowSel)).filter(clickableRow);
+    let hit = null, hitCount = 0;
+    for (const w of wants) {
+      const wl = w.toLowerCase();
+      // Prefer an exact cell match (so a filtered "AutoRoadshow-…20240729" row
+      // is not confused with a sibling that merely shares the prefix), then
+      // case-insensitive, then substring.
+      let h = rows.filter((r) => cellTexts(r).some((t) => t === w));
+      if (!h.length && !exact) h = rows.filter((r) => cellTexts(r).some((t) => t.toLowerCase() === wl));
+      if (!h.length && !exact) h = rows.filter((r) => cellTexts(r).some((t) => t.toLowerCase().includes(wl)));
+      if (h.length) { hit = h[0]; hitCount = h.length; break; }
+    }
+    if (!hit) return null;
+    document.querySelectorAll('[data-bg-click]').forEach((n) => n.removeAttribute('data-bg-click'));
+    hit.setAttribute('data-bg-click', '1');
+    return { selector: '[data-bg-click="1"]', count: hitCount, name: want, tag: hit.tagName, via: 'row' };
+  }
   // Outermost interactive ancestor (drop a matched element nested in another).
   matches = matches.filter((e) => !matches.some((o) => o !== e && o.contains(e)));
   const rank = (e) => {
