@@ -535,6 +535,15 @@ async def act(
     t0 = time.monotonic()
     adapter = _get_adapter(channel, page=page, driver=driver)
 
+    # Expand dynamic-value tokens across the WHOLE instruction up front, exactly
+    # as verify() does. This covers the action TARGET as well as the input value:
+    # e.g. Click "Record-{{$Name}}" must click the element bearing the captured
+    # value, and {{timestamp as X}} captures/recalls are honoured for every verb.
+    # Grounding, quoted-segment matching, and the table/link/clickable resolvers
+    # all read `instruction`, so substituting here (rather than only on
+    # input_value in _decompose_for) makes dynamic text work for clicks too.
+    instruction = substitute_dynamic_tokens(instruction) or instruction
+
     # M2/M6: mobile system / hardware verbs (press back, rotate, hide keyboard,
     # deep link, background app, biometric, notification) and network-condition
     # verbs (go offline, airplane mode, throttle to 3G) act on the device, not a

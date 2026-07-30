@@ -1,5 +1,25 @@
 # Unreleased
 
+## 0.0.6a65 — fix(core): expand dynamic tokens in action targets, not just values
+
+A value captured earlier with `{{... as Name}}` and recalled with `{{$Name}}`
+was only substituted for the **input value** of a `type`/set step. When the same
+token appeared in an action **target** — e.g. `Click "Record-{{$Name}}"` to
+click a freshly-created row after searching for it — the literal `{{$Name}}`
+string reached grounding unexpanded. No element on the page contains that literal
+text, so the click failed with low confidence and the AI tier had nothing to
+match either (it, too, was searching for the raw token).
+
+`act()` now expands dynamic tokens across the **whole instruction** up front,
+exactly as `verify()` already did — so the target phrase, every quoted segment,
+and the table/link/clickable resolvers all see the recalled value. Captures
+(`{{timestamp as X}}`, `{{uuid:8 as Y}}`) still happen once, and value-only
+expansion in `_decompose_for` becomes a harmless no-op on the already-expanded
+text. Fully generic and verb-agnostic — click, hover, and every other action get
+the same treatment `type` already had. Adds a regression test
+(`test_click_target_expands_dynamic_token`). Engine `0.0.6a64` → `0.0.6a65`.
+
+
 ## 0.0.6a64 — fix(web): disambiguate a click by visible text (no selector needed)
 
 Two controls can share an accessible name when one is named only by a decorative
