@@ -397,6 +397,8 @@ export class Bubblegum {
     if (summary) params.summary = summary;
     if (opts.title) params.title = opts.title;
     if (opts.suiteName) params.suite_name = opts.suiteName;
+    if (opts.summaryTitle) params.summary_title = opts.summaryTitle;
+    if (opts.scope === "sinceLast") params.scope = "since_last";
 
     return this.client.request<ReportResult>("report.write", params);
   }

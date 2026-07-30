@@ -101,6 +101,11 @@ class BubblegumSession:
         self._bootstrap = bootstrap
         self._bootstrapped = False
         self._results: list[StepResult] = []
+        # Reporting cursor: index into ``_results`` marking where the last report
+        # was written. Lets one session emit several *per-case* reports — each
+        # covering only the steps run since the previous report — so multiple
+        # named tests can live in a single test file. See results_since_report().
+        self._report_cursor = 0
         self._scope_stack = ScopeStack()
         # 22E-3: optional label used to name auto-screenshots on failure.
         # The pytest fixture sets this from request.node.nodeid; tests that
@@ -483,6 +488,20 @@ class BubblegumSession:
     def results(self) -> list[StepResult]:
         """All StepResult objects collected so far in this session."""
         return list(self._results)
+
+    def results_since_report(self) -> list[StepResult]:
+        """StepResults recorded since the last report was written.
+
+        Used to emit one report per *test case* from a single session: after
+        each case, ``report.write`` (with ``scope="since_last"``) writes only
+        that case's steps and advances the cursor via
+        :meth:`advance_report_cursor`, so the next case starts clean.
+        """
+        return list(self._results[self._report_cursor:])
+
+    def advance_report_cursor(self) -> None:
+        """Mark every result so far as reported; the next case starts fresh."""
+        self._report_cursor = len(self._results)
 
     def summary(self) -> dict:
         """Return a dict of {total, passed, failed, recovered, dry_run, duration_ms}."""
