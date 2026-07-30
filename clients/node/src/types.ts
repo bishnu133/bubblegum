@@ -72,6 +72,22 @@ export interface ReportOptions {
   title?: string;
   /** Suite / test name (Allure/JUnit, and the summary manifest key). */
   suiteName?: string;
+  /**
+   * Header for the combined *summary* page, independent of any single test's
+   * `title`. Persisted, so the last test to run no longer decides the heading.
+   * Configure it once per execution (e.g. "Web Automation Summary Report");
+   * defaults to a generic "Test Automation Summary Report".
+   */
+  summaryTitle?: string;
+  /**
+   * Which of the session's steps this report covers:
+   *   - `"all"` (default): every step run in the session so far.
+   *   - `"sinceLast"`: only the steps since the previous `report()` call, then
+   *     advance the cursor. Call `report({ scope: "sinceLast", … })` after each
+   *     test case to put several named tests in one file — each gets its own
+   *     individual report and its own summary row.
+   */
+  scope?: "all" | "sinceLast";
 }
 
 /** Result of {@link Bubblegum.report}: resolved paths written, and step count. */

@@ -35,6 +35,11 @@ from bubblegum.core.schemas import StepResult
 
 _MANIFEST_VERSION = 3
 
+# Header shown on the combined summary page when the tester configures none.
+# Deliberately generic (web *and* mobile suites use this report) — override per
+# run with the ``summary_title`` argument / the Node ``summaryTitle`` option.
+DEFAULT_SUMMARY_TITLE = "Test Automation Summary Report"
+
 
 def _count_statuses(results: Sequence[StepResult]) -> dict[str, int]:
     counts = {"passed": 0, "recovered": 0, "failed": 0, "skipped": 0, "dry_run": 0}
@@ -99,8 +104,20 @@ def write_summary(
     *,
     suite_name: str = "bubblegum",
     title: str = "Bubblegum Suite Report",
+    summary_title: str | None = None,
 ) -> Path:
-    """Upsert this run and (re)render the combined summary + per-test detail report."""
+    """Upsert this run and (re)render the combined summary + per-test detail report.
+
+    The combined page header is the *summary* title, which is independent of any
+    single test's title so the last test to run no longer decides the heading:
+
+      * ``summary_title`` (this call) wins and is persisted into the manifest;
+      * otherwise the title stored by an earlier run is reused (first-writer
+        wins, stable across the suite);
+      * otherwise :data:`DEFAULT_SUMMARY_TITLE`.
+
+    ``title`` still names each test's embedded detail report, unchanged.
+    """
     html_path = Path(path)
     html_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = _manifest_path(html_path)
@@ -124,9 +141,13 @@ def write_summary(
     manifest["version"] = _MANIFEST_VERSION
     manifest["runs"] = _upsert(manifest["runs"], record)
     manifest["generated_at"] = datetime.now(timezone.utc).isoformat()
+    # Resolve the header once and remember it, so an explicit summary_title from
+    # any run sets it and later runs don't overwrite it with a per-test title.
+    header = summary_title or manifest.get("title") or DEFAULT_SUMMARY_TITLE
+    manifest["title"] = header
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    html_path.write_text(_render_combined(manifest, detail_dir, title), encoding="utf-8")
+    html_path.write_text(_render_combined(manifest, detail_dir, header), encoding="utf-8")
     return html_path.resolve()
 
 

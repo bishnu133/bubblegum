@@ -14,6 +14,10 @@ and returns both, so the CLI runner can tear sessions down on shutdown.
 
 from __future__ import annotations
 
+import os
+import re
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from bubblegum import __version__
@@ -28,6 +32,65 @@ def _dump(result: Any) -> Any:
     if callable(dump):
         return dump(mode="json")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Report path helpers (run-id tokens + directory-aware naming)
+# ---------------------------------------------------------------------------
+
+def _run_id() -> str:
+    """A stable id for this test *execution*.
+
+    Prefer ``BUBBLEGUM_RUN_ID`` so every test file/process in one CI run shares
+    a single value (and lands in the same timestamped folder); otherwise fall
+    back to a per-process timestamp. Cached so repeated calls agree.
+    """
+    global _RUN_ID_CACHE
+    if _RUN_ID_CACHE is None:
+        _RUN_ID_CACHE = (
+            os.environ.get("BUBBLEGUM_RUN_ID")
+            or datetime.now().strftime("%Y%m%d-%H%M%S")
+        )
+    return _RUN_ID_CACHE
+
+
+_RUN_ID_CACHE: str | None = None
+
+
+def _expand_run_tokens(path: str) -> str:
+    """Replace ``{run_id}`` / ``{timestamp}`` in a report path with the run id.
+
+    Lets a tester write ``reports/{run_id}/summary.html`` and get one folder per
+    execution — ideal CI artifacts, and older runs are never overwritten.
+    """
+    rid = _run_id()
+    return path.replace("{run_id}", rid).replace("{timestamp}", rid)
+
+
+def _report_slug(name: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9._-]+", "-", (name or "test").strip()).strip("-")
+    return (s or "test")[:120]
+
+
+def _resolve_report_path(raw: str, *, ext: str, base: str) -> str:
+    """Resolve a report path, expanding run tokens and directory-valued paths.
+
+    If ``raw`` names a directory (it exists as one, or ends with a path
+    separator), the file is auto-named ``<base><ext>`` inside it — so per-test
+    reports keyed by a distinct ``base`` (e.g. the suite name) never overwrite
+    one another. A plain file path is returned unchanged (tokens aside).
+    """
+    expanded = _expand_run_tokens(raw)
+    # Directory-valued when it ends with a separator, already exists as a
+    # directory, or its final component carries no file extension.
+    looks_like_dir = (
+        expanded.endswith(("/", os.sep))
+        or Path(expanded).is_dir()
+        or not Path(expanded).suffix
+    )
+    if looks_like_dir:
+        return str(Path(expanded) / f"{_report_slug(base)}{ext}")
+    return expanded
 
 
 def _require(params: dict[str, Any], key: str) -> Any:
@@ -118,35 +181,56 @@ class BridgeHandlers:
         requested.
         """
         session = self.sessions.get(params.get("session_id"))
-        # ``results`` is a method on BubblegumSession (and a property on some
-        # fakes) — normalize to the list either way.
-        results = session.results
-        if callable(results):
-            results = results()
         title = params.get("title") or "Bubblegum Test Report"
         suite_name = params.get("suite_name") or "bubblegum"
+        summary_title = params.get("summary_title")
+
+        # ``scope="since_last"`` reports only the steps run since the previous
+        # report.write — the primitive that lets several named test cases share
+        # one session/test-file, each getting its own report + summary row. The
+        # default ("all") is unchanged: report every step in the session.
+        scope = params.get("scope") or "all"
+        if scope == "since_last" and callable(getattr(session, "results_since_report", None)):
+            results = session.results_since_report()
+        else:
+            # ``results`` is a method on BubblegumSession (and a property on some
+            # fakes) — normalize to the list either way.
+            results = session.results
+            if callable(results):
+                results = results()
+
+        # Directory-valued paths auto-name ``<suite>.<ext>`` so per-test reports
+        # never overwrite; ``{run_id}`` tokens fan runs out into per-execution
+        # folders. Individual reports key on the suite name; the shared summary
+        # keeps its own base name.
+        def _ind(raw: str, ext: str) -> str:
+            return _resolve_report_path(raw, ext=ext, base=suite_name)
 
         written: dict[str, str] = {}
         try:
             if params.get("html"):
                 from bubblegum.reporting.html_report import write_html_report
-                written["html"] = str(write_html_report(results, params["html"], title=title))
+                written["html"] = str(write_html_report(results, _ind(params["html"], ".html"), title=title))
             if params.get("json"):
                 from bubblegum.reporting.json_report import write_json_report
-                written["json"] = str(write_json_report(results, params["json"], title=title))
+                written["json"] = str(write_json_report(results, _ind(params["json"], ".json"), title=title))
             if params.get("junit"):
                 from bubblegum.reporting.junit_report import write_junit_report
-                written["junit"] = str(write_junit_report(results, params["junit"], suite_name=suite_name))
+                written["junit"] = str(write_junit_report(results, _ind(params["junit"], ".xml"), suite_name=suite_name))
             if params.get("allure"):
                 from bubblegum.reporting.allure_report import write_allure_results
-                written["allure"] = str(write_allure_results(results, params["allure"], suite_name=suite_name))
+                written["allure"] = str(write_allure_results(results, _expand_run_tokens(params["allure"]), suite_name=suite_name))
             if params.get("summary"):
                 # Cross-run suite summary: upserts this run (keyed by suite_name)
                 # into a manifest and renders an aggregated overview, so several
                 # independently-run tests show one page instead of overwriting.
                 from bubblegum.reporting.summary_report import write_summary
+                summary_path = _resolve_report_path(params["summary"], ext=".html", base="summary")
                 written["summary"] = str(
-                    write_summary(results, params["summary"], suite_name=suite_name, title=title)
+                    write_summary(
+                        results, summary_path, suite_name=suite_name,
+                        title=title, summary_title=summary_title,
+                    )
                 )
         except OSError as exc:
             raise p.BridgeError(p.ENGINE_ERROR, f"report.write failed: {exc}") from exc
@@ -156,6 +240,12 @@ class BridgeHandlers:
                 p.INVALID_PARAMS,
                 "report.write: specify at least one of html / json / junit / allure / summary",
             )
+
+        # Advance the cursor only after a successful per-case write, so the next
+        # case's report starts from a clean slate.
+        if scope == "since_last" and callable(getattr(session, "advance_report_cursor", None)):
+            session.advance_report_cursor()
+
         return {"written": written, "steps": len(results)}
 
     # -- runtime config --------------------------------------------------

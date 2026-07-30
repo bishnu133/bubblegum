@@ -1,5 +1,42 @@
 # Unreleased
 
+## 0.0.6a66 — feat(report): multiple tests per file, kept reports, run folders, configurable summary title
+
+Four reporting improvements, all generic and opt-in (existing single-report
+runs are unchanged):
+
+**1. Several named tests in one test file.** `report.write` gains
+`scope="since_last"` (Node: `report({ scope: "sinceLast" })`). The session now
+keeps a *result cursor*; a `since_last` report covers only the steps run since
+the previous report, then advances the cursor. So a file can run case after
+case — `report({ scope: "sinceLast", suiteName: "…", summary, html })` after
+each — and every case gets its own individual report **and** its own summary
+row. Default `scope="all"` reports every step, as before.
+
+**2. Keep every individual report — no more overwrite.** A report path that
+names a **directory** (ends with a separator, exists as a dir, or has no file
+extension) is auto-named `<suiteName>.<ext>` inside it. Point `html`/`json`/
+`junit` at a folder and per-test reports never clobber each other; the shared
+`summary` keeps its own `summary.html` base name.
+
+**3. Timestamped run folders for CI artifacts.** Any report path may contain a
+`{run_id}` (or `{timestamp}`) token, expanded to a per-execution id — from
+`BUBBLEGUM_RUN_ID` when set (so every test file/process in one CI run shares a
+single folder) or a per-process timestamp otherwise. Write to
+`reports/{run_id}/summary.html` and each execution lands in its own folder;
+older runs are preserved.
+
+**4. Configurable summary header.** The combined summary page no longer takes
+its heading from whichever test happened to run last. A dedicated, persisted
+`summary_title` (Node: `summaryTitle`) sets the header once and later runs don't
+overwrite it; it defaults to a generic `"Test Automation Summary Report"`.
+Configure e.g. `summaryTitle: "Web Automation Summary Report"`.
+
+Node client `0.0.6-alpha.13` → `0.0.6-alpha.14` (`ReportOptions.scope`,
+`ReportOptions.summaryTitle`). Adds `tests/unit/test_report_scoping_and_paths.py`.
+Engine `0.0.6a65` → `0.0.6a66`.
+
+
 ## 0.0.6a65 — fix(core): expand dynamic tokens in action targets, not just values
 
 A value captured earlier with `{{... as Name}}` and recalled with `{{$Name}}`
