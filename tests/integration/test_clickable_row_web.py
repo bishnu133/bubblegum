@@ -77,3 +77,52 @@ async def test_click_row_exact_match_among_prefix_siblings():
     )
     assert status in ("passed", "recovered")
     assert clicked == "Record-20240101-002"
+
+
+async def test_click_target_expands_dynamic_token():
+    """A dynamic token in a click TARGET must be expanded before grounding.
+
+    A value captured earlier (`{{... as X}}`) and recalled in a click phrase
+    (`Click "Prefix-{{$X}}"`) has to resolve to the element bearing the
+    *expanded* text — not the literal `{{$X}}` string, which matches nothing and
+    used to fail with low confidence. The value is only expanded for `type`/set
+    inputs before; this covers the click path.
+    """
+    aw = pytest.importorskip("playwright.async_api")
+    launch_kwargs = {}
+    exe = os.environ.get("BG_CHROMIUM_EXECUTABLE")
+    if exe:
+        launch_kwargs["executable_path"] = exe
+    from bubblegum import act, configure_runtime
+
+    configure_runtime()
+    async with aw.async_playwright() as p:
+        try:
+            browser = await p.chromium.launch(**launch_kwargs)
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"No usable Chromium binary: {exc}")
+        try:
+            page = await browser.new_page()
+            # 1. Capture a timestamp into a named var via a real Enter step.
+            await page.set_content(
+                "<!doctype html><html><body>"
+                "<label for='sn'>Search Name</label>"
+                "<input id='sn' aria-label='Search Name' type='text'>"
+                "</body></html>"
+            )
+            await act(
+                'Enter "Record-{{timestamp|%Y%m%d%H%M%S as CapName}}" into Search Name',
+                channel="web",
+                page=page,
+            )
+            captured = await page.eval_on_selector("#sn", "e => e.value")
+            assert captured.startswith("Record-")
+
+            # 2. A table row whose text is the captured value (plus a decoy).
+            await page.set_content(_table([captured, "Record-does-not-match"]))
+            res = await act('Click "Record-{{$CapName}}"', channel="web", page=page)
+            clicked = await page.evaluate("window.__c")
+            assert res.status in ("passed", "recovered"), res.status
+            assert clicked == captured, f"clicked {clicked!r}, expected {captured!r}"
+        finally:
+            await browser.close()
