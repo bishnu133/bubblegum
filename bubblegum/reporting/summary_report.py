@@ -48,6 +48,23 @@ def _count_statuses(results: Sequence[StepResult]) -> dict[str, int]:
     return counts
 
 
+def _count_fallbacks(results: Sequence[StepResult]) -> int:
+    """Steps resolved via the tester-provided fallback selector (a safety net).
+
+    Reported apart from ``recovered`` (self-heal) so a degraded locator strategy
+    shows up as its own tech-debt signal instead of masquerading as healing.
+    """
+    n = 0
+    for r in results:
+        target = getattr(r, "target", None)
+        if target is None:
+            continue
+        meta = getattr(target, "metadata", None) or {}
+        if getattr(target, "resolver_name", None) == "fallback_selector" or meta.get("fallback_selector_used"):
+            n += 1
+    return n
+
+
 def compute_run_summary(results: Sequence[StepResult], suite_name: str) -> dict:
     """Build one test's summary record from its StepResults."""
     counts = _count_statuses(results)
@@ -62,6 +79,7 @@ def compute_run_summary(results: Sequence[StepResult], suite_name: str) -> dict:
         "failed": counts["failed"],
         "skipped": counts["skipped"],
         "dry_run": counts["dry_run"],
+        "fallback": _count_fallbacks(results),
         "duration_ms": duration_ms,
         "last_run": datetime.now(timezone.utc).isoformat(),
     }
@@ -165,6 +183,7 @@ def _totals(runs: list[dict]) -> dict:
         "recovered": sum(int(r.get("recovered", 0)) for r in runs),
         "failed": sum(int(r.get("failed", 0)) for r in runs),
         "skipped": sum(int(r.get("skipped", 0)) for r in runs),
+        "fallback": sum(int(r.get("fallback", 0)) for r in runs),
     }
 
 
@@ -188,18 +207,20 @@ def _summary_rows(runs: list[dict]) -> str:
             "<td class='name'>{name}</td>"
             "<td><span class='badge {cls}'>{badge}</span></td>"
             "<td class='num'>{total}</td><td class='num pass'>{passed}</td>"
-            "<td class='num heal'>{recovered}</td><td class='num fail'>{failed}</td>"
+            "<td class='num heal'>{recovered}</td><td class='num fb'>{fallback}</td>"
+            "<td class='num fail'>{failed}</td>"
             "<td class='num skip'>{skipped}</td><td class='num'>{dur}</td>"
             "<td class='ts'>{ts}</td></tr>".format(
                 cls=cls, name=html.escape(str(r.get("name", ""))),
                 badge="PASS" if cls == "passed" else "FAIL",
                 total=int(r.get("total", 0)), passed=int(r.get("passed", 0)),
-                recovered=int(r.get("recovered", 0)), failed=int(r.get("failed", 0)),
+                recovered=int(r.get("recovered", 0)), fallback=int(r.get("fallback", 0)),
+                failed=int(r.get("failed", 0)),
                 skipped=int(r.get("skipped", 0)), dur=_fmt_duration(int(r.get("duration_ms", 0))),
                 ts=html.escape(str(r.get("last_run", ""))[:19].replace("T", " ")),
             )
         )
-    return "\n".join(rows) or "<tr><td colspan='9' class='empty'>No test runs recorded yet.</td></tr>"
+    return "\n".join(rows) or "<tr><td colspan='10' class='empty'>No test runs recorded yet.</td></tr>"
 
 
 def _detail_sections(runs: list[dict], detail_dir: Path) -> str:
@@ -255,13 +276,13 @@ def _render_combined(manifest: dict, detail_dir: Path, title: str) -> str:
   .card {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; min-width: 96px; }}
   .card .k {{ font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }}
   .card .v {{ font-size: 22px; font-weight: 700; margin-top: 2px; }}
-  .v.pass {{ color: #15803d; }} .v.fail {{ color: #b91c1c; }} .v.heal {{ color: #b45309; }} .v.skip {{ color: #6b7280; }}
+  .v.pass {{ color: #15803d; }} .v.fail {{ color: #b91c1c; }} .v.heal {{ color: #b45309; }} .v.skip {{ color: #6b7280; }} .v.fb {{ color: #a21caf; }}
   table {{ width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }}
   th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid #f0f1f3; font-size: 13px; }}
   th {{ background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }}
   td.num, th.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
   td.name {{ font-weight: 600; }}
-  td.pass {{ color: #15803d; }} td.heal {{ color: #b45309; }} td.fail {{ color: #b91c1c; }} td.skip {{ color: #9ca3af; }}
+  td.pass {{ color: #15803d; }} td.heal {{ color: #b45309; }} td.fail {{ color: #b91c1c; }} td.skip {{ color: #9ca3af; }} td.fb {{ color: #a21caf; font-weight: 600; }}
   td.ts {{ color: #6b7280; }} tr.failed td.name {{ color: #b91c1c; }}
   .badge {{ display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }}
   .badge.passed {{ background: #dcfce7; color: #15803d; }}
@@ -298,13 +319,14 @@ def _render_combined(manifest: dict, detail_dir: Path, title: str) -> str:
       <div class="card"><div class="k">Total Steps</div><div class="v">{t['steps']}</div></div>
       <div class="card"><div class="k">Steps Passed</div><div class="v pass">{t['passed']}</div></div>
       <div class="card"><div class="k">Self-healed</div><div class="v heal">{t['recovered']}</div></div>
+      <div class="card"><div class="k">Fallback ⚠</div><div class="v fb">{t['fallback']}</div></div>
       <div class="card"><div class="k">Steps Failed</div><div class="v fail">{t['failed']}</div></div>
       <div class="card"><div class="k">Skipped</div><div class="v skip">{t['skipped']}</div></div>
     </div>
     <table>
       <thead><tr>
         <th>Test</th><th>Status</th><th class="num">Steps</th><th class="num">Passed</th>
-        <th class="num">Healed</th><th class="num">Failed</th><th class="num">Skipped</th>
+        <th class="num">Healed</th><th class="num">Fallback ⚠</th><th class="num">Failed</th><th class="num">Skipped</th>
         <th class="num">Duration</th><th>Last Run</th>
       </tr></thead>
       <tbody>
