@@ -5,6 +5,25 @@ import { ReportOptions, ReportResult, SessionSummary, StepOptions, StepResult } 
 
 export type Channel = "web" | "mobile";
 
+/**
+ * Ergonomic camelCase aliases for engine step-options that use snake_case.
+ * Keeps `{ fallbackSelector: "#save" }` readable at the call site while the
+ * engine still receives `fallback_selector`. Any key already in snake_case (or
+ * not listed) passes through untouched.
+ */
+const STEP_OPTION_ALIASES: Record<string, string> = {
+  fallbackSelector: "fallback_selector",
+};
+
+function normalizeStepOptions(options?: StepOptions): StepOptions | undefined {
+  if (!options) return options;
+  const out: StepOptions = {};
+  for (const [k, v] of Object.entries(options)) {
+    out[STEP_OPTION_ALIASES[k] ?? k] = v;
+  }
+  return out;
+}
+
 export interface LaunchOptions extends BridgeClientOptions {
   /** "web" (default) or "mobile". */
   channel?: Channel;
@@ -205,7 +224,7 @@ export class Bubblegum {
     return this.client.request<StepResult>("act", {
       session_id: this.sessionId,
       instruction,
-      options,
+      options: normalizeStepOptions(options),
     });
   }
 
@@ -254,7 +273,7 @@ export class Bubblegum {
     return this.client.request<StepResult>("verify", {
       session_id: this.sessionId,
       instruction,
-      options,
+      options: normalizeStepOptions(options),
     });
   }
 
@@ -262,7 +281,7 @@ export class Bubblegum {
     return this.client.request<StepResult>("extract", {
       session_id: this.sessionId,
       instruction,
-      options,
+      options: normalizeStepOptions(options),
     });
   }
 
@@ -323,7 +342,7 @@ export class Bubblegum {
       session_id: this.sessionId,
       failed_selector: args.failedSelector,
       intent: args.intent,
-      options: args.options,
+      options: normalizeStepOptions(args.options),
     });
   }
 

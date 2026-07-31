@@ -1011,6 +1011,25 @@ def _render_step(idx: int, result: StepResult) -> str:
             )
         healing_html += '</div>'
 
+    # Fallback-selector notice: the step succeeded only because it fell back to a
+    # tester-provided selector after every natural + AI approach failed. Flagged
+    # as tech debt (distinct from self-heal) so a sign-off reviewer can see which
+    # steps need their locator strategy restored.
+    fallback_html = ""
+    _meta = result.target.metadata if result.target else {}
+    if (result.target and result.target.resolver_name == "fallback_selector") or (_meta or {}).get("fallback_selector_used"):
+        _sel = str((_meta or {}).get("fallback_selector", result.target.ref if result.target else ""))
+        fallback_html = (
+            f'<div style="margin-top:8px;padding:8px;background:#fdf4ff;'
+            f'border-left:3px solid #a21caf;border-radius:4px;'
+            f'font-size:0.82rem;color:#86198f;">'
+            f'<strong>⚠ Fallback selector used.</strong> '
+            f'Natural and AI resolution could not identify this element, so the '
+            f'tester-provided selector <code>{html.escape(_sel)}</code> was used '
+            f'as a last resort. Restore a resilient (role/text/label) locator when you can.'
+            f'</div>'
+        )
+
     traces_html = ""
     if result.traces:
         trace_rows = "".join(
@@ -1493,6 +1512,7 @@ def _render_step(idx: int, result: StepResult) -> str:
       </div>
       {error_html}
       {healing_html}
+      {fallback_html}
       {screenshot_html}
       {hydration_html}
       {graph_html}

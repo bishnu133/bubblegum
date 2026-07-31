@@ -642,6 +642,12 @@ async def act(
                 fallback = await _maybe_resolve_clickable(adapter, channel, instruction, intent)
             if fallback is None:
                 fallback = await _maybe_resolve_input(adapter, channel, intent)
+            # Last resort: the tester-provided fallback selector. Only reached
+            # once every natural + AI tier AND the DOM fallbacks above have
+            # failed — a deterministic safety net so one DOM change can't
+            # red-fail a critical step. Flagged in the report, not a self-heal.
+            if fallback is None:
+                fallback = _fallback_selector_target(intent)
             if fallback is None:
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 return _failed_result(instruction, exc, duration_ms)
@@ -699,6 +705,17 @@ async def act(
             target, exec_result = recovered
             execution_recovered = True
 
+    # Last-resort safety net on execution failure: the element resolved but the
+    # action didn't take (stale / overlaid / wrong element) and the DOM
+    # self-heal above couldn't rescue it. If the tester supplied a fallback
+    # selector and we're not already using it, try it once before failing.
+    if not exec_result.success and target.resolver_name != FALLBACK_SELECTOR_RESOLVER:
+        fb_target = _fallback_selector_target(intent)
+        if fb_target is not None:
+            fb_exec = await adapter.execute(plan, fb_target)
+            if fb_exec.success:
+                target, exec_result = fb_target, fb_exec
+
     duration_ms = int((time.monotonic() - t0) * 1000)
 
     if not exec_result.success:
@@ -734,7 +751,11 @@ async def act(
     # Phase 3 — persist the winning resolution for self-healing replay. The
     # metadata now carries any healing advisory, so a future memory-cache replay
     # of this step keeps surfacing the substitution warning.
-    _memory_cache.record_success(intent, target)
+    # Never cache a fallback-selector win: caching would make Tier 1 replay the
+    # raw selector next run and silently mask that natural resolution is broken.
+    # The safety net must re-attempt natural resolution every time.
+    if target.resolver_name != FALLBACK_SELECTOR_RESOLVER:
+        _memory_cache.record_success(intent, target)
 
     # 5. Capture screenshot artifact after successful execution
     artifacts: list[ArtifactRef] = []
@@ -2477,6 +2498,43 @@ def _maybe_inject_vision_candidates(intent: StepIntent) -> None:
     candidates = _maybe_build_vision_candidates(intent)
     if candidates:
         intent.context["vision_candidates"] = candidates
+
+
+# Marker used across the engine + reporters to flag a step that was resolved by
+# the tester-provided fallback selector (a last-resort safety net) rather than a
+# natural/AI approach. Kept distinct from "recovered" (genuine self-heal) so
+# reports can surface locator debt without inflating the self-heal metric.
+FALLBACK_SELECTOR_RESOLVER = "fallback_selector"
+
+
+def _fallback_selector_target(intent: StepIntent) -> ResolvedTarget | None:
+    """Build a last-resort target from ``options.fallback_selector``, if set.
+
+    Returned only for use *after* every natural + AI tier and the built-in DOM
+    fallbacks have failed. The step still passes if this executes, but the
+    target is tagged so the report flags it as a fallback (tech debt), never as
+    a self-heal. Confidence is deliberately modest — it reflects "the tester
+    told us where it is", not a confident semantic match.
+    """
+    selector = getattr(intent.options, "fallback_selector", None)
+    if not selector:
+        return None
+    logger.warning(
+        "Natural + AI resolution failed for %r; using tester-provided "
+        "fallback selector %r. Consider restoring a resilient locator strategy "
+        "for this step.",
+        intent.instruction, selector,
+    )
+    return ResolvedTarget(
+        ref=selector,
+        confidence=0.5,
+        resolver_name=FALLBACK_SELECTOR_RESOLVER,
+        metadata={
+            "source": FALLBACK_SELECTOR_RESOLVER,
+            "fallback_selector_used": True,
+            "fallback_selector": selector,
+        },
+    )
 
 
 def _failed_result(instruction: str, exc: BubblegumError, duration_ms: int) -> StepResult:

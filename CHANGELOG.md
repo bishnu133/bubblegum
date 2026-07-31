@@ -1,5 +1,45 @@
 # Unreleased
 
+## 0.0.6a67 — feat(grounding): last-resort fallback selector (self-healing with a deterministic safety net)
+
+A new opt-in safety net for enterprise suites: a tester-provided selector that
+the engine uses **only after every natural + AI approach fails** to identify the
+element. It keeps a critical step from red-failing on a single DOM change,
+without giving up self-healing or putting selectors in the step text.
+
+Precedence — the fallback runs dead last:
+
+```
+Tier 1 deterministic → Tier 2 fuzzy → Tier 3 AI → built-in DOM fallbacks
+   → fallback_selector (NEW, last resort) → fail
+```
+
+This is deliberately distinct from the existing `selector` option, which *pins*
+an element and is tried first:
+
+  * `selector` — "use this directly" (Tier 1, unchanged).
+  * `fallback_selector` (Node: `fallbackSelector`) — "try everything natural
+    first; use this only if all of it fails."
+
+Writing neither keeps the step fully selector-free. When the net catches, the
+step **passes** but the result is tagged `resolver: fallback_selector` with a
+`fallback_selector_used` metadata flag, a WARNING is logged, and the reports
+surface it as its own signal (a purple ⚠ "Fallback" count/column in the summary
+and a per-step notice in the detail report) — kept **separate from the
+self-heal count** so a degraded locator strategy shows up as tech debt rather
+than masquerading as healing. A fallback win is **never cached** to memory, so
+the engine re-attempts natural resolution every run instead of silently pinning
+the raw selector.
+
+Accepts any Playwright locator (CSS, `xpath=…`, text engines); `data-testid` is
+recommended. The Node client maps the ergonomic `fallbackSelector` alias to the
+engine's `fallback_selector` for `act`/`verify`/`extract`/`recover`.
+
+Node client `0.0.6-alpha.14` → `0.0.6-alpha.15` (`fallbackSelector` step-option
+alias). Adds `tests/unit/test_fallback_selector.py` and
+`tests/integration/test_fallback_selector_web.py`. Engine `0.0.6a66` → `0.0.6a67`.
+
+
 ## 0.0.6a66 — feat(report): multiple tests per file, kept reports, run folders, configurable summary title
 
 Four reporting improvements, all generic and opt-in (existing single-report

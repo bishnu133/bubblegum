@@ -67,6 +67,15 @@ class ExecutionOptions(BaseModel):
     # empties the list, so the option can never be clicked. Default False keeps
     # the normal type-to-filter behaviour unchanged for every other select.
     select_no_filter:    bool       = False
+    # Last-resort locator safety net. A CSS/XPath/Playwright selector the engine
+    # uses ONLY after every natural + AI approach (Tiers 1-3) and the built-in
+    # DOM fallbacks have failed to identify the element. Unlike ``selector``
+    # (which pins the element and is tried first), this keeps resolution
+    # natural/self-healing and falls back to the raw selector just to keep a
+    # critical step from red-failing on a single DOM change. Its use is flagged
+    # in the report as tech debt, never counted as a self-heal. Default None
+    # keeps steps fully selector-free.
+    fallback_selector:   str | None = None
 
 
 # ---------------------------------------------------------------------------
