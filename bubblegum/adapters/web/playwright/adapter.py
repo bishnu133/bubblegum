@@ -81,6 +81,40 @@ _ANT_ROOT_JS = (
     " return null; }"
 )
 
+# Returns the topmost *open, visible* dialog/modal element, or null when none is
+# open. Used to scope element resolution (inputs, file inputs, …) to the modal a
+# tester is interacting with, so a same-named field on the page BEHIND the mask
+# can't win. Mirrors the dialog detection in _FIND_DIALOG_CLICKABLE_JS. Generic:
+# native <dialog>, ARIA dialog roles, and the common component-library modals.
+_DIALOG_ROOT_JS = (
+    "function __bgTopDialog(){"
+    " const D = \"[role='dialog'],[role='alertdialog'],dialog[open],\""
+    "   + \".ant-modal,.ant-modal-confirm,.MuiDialog-container,.MuiModal-root,\""
+    "   + \".chakra-modal__content,.modal.show,.modal.in,.ReactModal__Content\";"
+    " const vis = (e)=>{ const r=e.getBoundingClientRect();"
+    "   if(r.width<=0||r.height<=0) return false;"
+    "   const s=window.getComputedStyle(e);"
+    "   return s.visibility!=='hidden'&&s.display!=='none'&&s.opacity!=='0'; };"
+    # Only *blocking* modals scope resolution — a non-modal [role=dialog] (a
+    # cookie banner, a popover) must not hijack fields elsewhere on the page. A
+    # dialog qualifies when it declares aria-modal, is a known component modal,
+    # or a backdrop/mask is currently visible over the page.
+    " const MASK = \".ant-modal-mask,.MuiBackdrop-root,.modal-backdrop,\""
+    "   + \".ReactModal__Overlay,[class*='backdrop'],[class*='Backdrop']\";"
+    " const maskUp = Array.from(document.querySelectorAll(MASK)).some(vis);"
+    " const isModal = (e)=> e.getAttribute('aria-modal')==='true'"
+    "   || /ant-modal(?!-mask)|MuiDialog|chakra-modal|ReactModal__Content|(^|\\s)modal(\\s|$)/.test(e.className||'')"
+    "   || maskUp;"
+    " let ds = Array.from(document.querySelectorAll(D)).filter(vis).filter(isModal);"
+    " if(!ds.length) return null;"
+    " const zOf=(e)=>{ let n=e,m=0; while(n&&n.nodeType===1){"
+    "   const v=parseInt(window.getComputedStyle(n).zIndex,10);"
+    "   if(!isNaN(v))m=Math.max(m,v); n=n.parentElement; } return m; };"
+    " ds.sort((a,b)=>(zOf(a)-zOf(b))||"
+    "   ((a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1));"
+    " return ds[ds.length-1]; }"
+)
+
 # Fallback used when ExecutionOptions.nav_wait_ms is unavailable (e.g. an older
 # ActionPlan). Bounds how long a non-navigating click waits before concluding
 # the click was an in-page action rather than a navigation.
@@ -505,6 +539,7 @@ _FIND_SELECT_TRIGGER_JS = r"""
 # has no accessible name. Skips ant-select search inputs and disabled fields.
 _FIND_INPUT_JS = r"""
 (args) => {
+  __DIALOG_JS
   // Nearest form-item-ish ancestor that actually CONTAINS a label — see the
   // note in _FIND_SELECT_TRIGGER_JS. Without this, Ant's nested
   // `.ant-form-item-control-input-content` (which matches [class*="form-item"])
@@ -524,20 +559,28 @@ _FIND_INPUT_JS = r"""
   const SEL = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio])'
             + ':not([type=submit]):not([type=button]):not([type=file]):not([type=radio]),'
             + 'textarea, [contenteditable=""], [contenteditable="true"]';
-  let els = Array.from(document.querySelectorAll(SEL))
-    .filter((e) => !e.classList.contains('ant-select-selection-search-input'));
   const visible = (e) => {
     const r = e.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return false;
     const s = window.getComputedStyle(e);
     return s.visibility !== 'hidden' && s.display !== 'none';
   };
-  els = els.filter(visible);
   // A disabled/readonly input must never win — it can't be typed into. The most
   // common trap is a same-named field on the page BEHIND an open modal (e.g. a
   // disabled "Points" budget field while the modal's enabled "Points"
   // input is the real target). Honour the documented "visible, enabled" contract.
-  els = els.filter((e) => !e.disabled && !e.readOnly && e.getAttribute('aria-disabled') !== 'true');
+  const collect = (root) => Array.from(root.querySelectorAll(SEL))
+    .filter((e) => !e.classList.contains('ant-select-selection-search-input'))
+    .filter(visible)
+    .filter((e) => !e.disabled && !e.readOnly && e.getAttribute('aria-disabled') !== 'true');
+  // Modal scoping: when a dialog/modal is open the target field is (almost)
+  // always inside it — a same-named ENABLED field on the page behind the mask
+  // must not win on DOM order. Collect from the topmost open dialog first, and
+  // only fall back to the whole document when the dialog holds no fillable match
+  // (or no dialog is open) so ordinary non-modal flows are unchanged.
+  const __dlg = __bgTopDialog();
+  let els = __dlg ? collect(__dlg) : collect(document);
+  if (!els.length && __dlg) els = collect(document);
   if (!els.length) return null;
 
   // The VISIBLE label (associated <label>/aria/form-item label) — no name/id.
@@ -630,7 +673,7 @@ _FIND_INPUT_JS = r"""
   return { selector, label: labelText(best), score: bestScore,
            section: bestSec, sectioned };
 }
-""".replace("__SECTION_JS", _SECTION_HEADING_JS)
+""".replace("__SECTION_JS", _SECTION_HEADING_JS).replace("__DIALOG_JS", _DIALOG_ROOT_JS)
 
 
 # JS: resolve a rich-text editor (`contenteditable`) for a "type" step by its
@@ -1122,6 +1165,7 @@ _FIND_DATE_RANGE_JS = r"""
 # distinguishable), and id/name/testid (camelCase + kebab split into words).
 _FIND_FILE_INPUT_JS = r"""
 (args) => {
+  __DIALOG_JS
   // Nearest form-item-ish ancestor that actually CONTAINS a label — see the
   // note in _FIND_SELECT_TRIGGER_JS (Ant's nested control wrapper otherwise
   // swallows closest() and the label/testid context returns nothing).
@@ -1140,11 +1184,17 @@ _FIND_FILE_INPUT_JS = r"""
   const tokens = phrase.split(' ').filter((t) => t.length > 1);
   if (!tokens.length) return null;
 
-  const els = Array.from(document.querySelectorAll('input[type=file]'));
+  // Modal scoping: when a dialog/modal is open, the upload widget the tester
+  // means is inside it — a file input belonging to a background form must not
+  // win. Prefer inputs within the topmost open dialog, falling back to the whole
+  // document when it has none (or no dialog is open).
+  const __dlg = __bgTopDialog();
+  let els = Array.from((__dlg || document).querySelectorAll('input[type=file]'));
+  if (!els.length && __dlg) els = Array.from(document.querySelectorAll('input[type=file]'));
   if (!els.length) return null;
 
   // Nearest section heading preceding the element in document order.
-  const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]'));
+  const headings = Array.from((__dlg || document).querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]'));
   const sectionText = (el) => {
     let best = '';
     for (const h of headings) {
@@ -1189,7 +1239,7 @@ _FIND_FILE_INPUT_JS = r"""
   best.setAttribute('data-bg-file', '1');
   return { selector: '[data-bg-file="1"]', label: bestTxt, score: bestScore, tie };
 }
-"""
+""".replace("__DIALOG_JS", _DIALOG_ROOT_JS)
 
 
 # JS: click any interactive element by accessible name (button/link/menuitem/

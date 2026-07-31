@@ -1,5 +1,27 @@
 # Unreleased
 
+## 0.0.6a68 — fix(web): scope input & upload resolution to the open modal
+
+Text-entry and file-upload steps inside a modal dialog could land on a
+**same-named field on the page behind the mask** instead of the modal's field.
+The DOM finders searched the whole document, and while a *disabled* background
+field was already avoided, a *visible, enabled* one (e.g. a workout form's
+"Description" textarea behind an "Add safety disclaimer" modal that also has a
+"Description") would win on DOM order — so the modal's textarea stayed empty and
+the upload hit the wrong `<input type=file>`.
+
+Both `_FIND_INPUT_JS` and `_FIND_FILE_INPUT_JS` now scope candidate collection
+to the **topmost open blocking modal** when one is present (new shared
+`__bgTopDialog()` helper, mirroring the existing dialog-click resolver), falling
+back to the whole document when the modal holds no match — so ordinary non-modal
+flows are unchanged. "Blocking" is required (aria-modal, a known component-modal
+class — Ant / MUI / Chakra / Bootstrap / react-modal — or a visible backdrop),
+so a non-modal `[role=dialog]` (cookie banner, popover) never hijacks fields
+elsewhere on the page. Fully generic; no app- or widget-specific selectors.
+
+Adds `tests/integration/test_modal_scope_web.py`. Engine `0.0.6a67` → `0.0.6a68`.
+
+
 ## 0.0.6a67 — feat(grounding): last-resort fallback selector (self-healing with a deterministic safety net)
 
 A new opt-in safety net for enterprise suites: a tester-provided selector that
