@@ -859,6 +859,12 @@ async def verify(
     if _looks_like_selected_assertion(instruction, kwargs):
         return await _verify_selected(adapter, channel, instruction, kwargs, t0)
 
+    # Status-indicator assertion ("the tag appeared as In Draft", "status is
+    # Live"): read status pills/badges/chips generically and match the value —
+    # page-scoped, no element grounding, works on any UI framework.
+    if _looks_like_status_assertion(instruction, kwargs):
+        return await _verify_status(adapter, channel, instruction, kwargs, options, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -1058,6 +1064,124 @@ async def _verify_selected(adapter, channel: str, instruction: str, kwargs: dict
         instruction=instruction, t0=t0, passed=passed, message=message,
         error=error, metadata={"checked": actual_checked, "expected_checked": expected_checked},
         ref=res["selector"], resolver_name="radio_dom",
+    )
+
+
+_STATUS_NOUN_RE = re.compile(r"\b(status|state|tag|badge|chip|pill|flag)\b", re.IGNORECASE)
+_STATUS_CONNECTIVE_RE = re.compile(
+    r"\b(appeared?\s+as|marked\s+as|shows?|showing|displays?|reads?|is|are|as|equals?)\b|[=:]",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_status_assertion(instruction: str, kwargs: dict) -> bool:
+    """True when the phrase asserts a *status indicator's* value.
+
+    Matches natural phrasings like 'the Workouts tag appeared as In Draft',
+    'status is Live', 'the badge shows Active' — a status/state/tag/badge word
+    plus a connective (or quotes). Deliberately generic so it works whatever the
+    UI framework renders the pill with. Radio/checkbox and table-row assertions
+    are routed earlier, so this only sees standalone status checks.
+    """
+    if kwargs.get("assertion_type") == "status":
+        return True
+    if kwargs.get("assertion_type"):
+        return False
+    text = instruction or ""
+    if not _STATUS_NOUN_RE.search(text):
+        return False
+    return bool(_STATUS_CONNECTIVE_RE.search(text) or _quoted_segments(text))
+
+
+def _extract_status_value(instruction: str) -> str:
+    """Pull the expected status value out of a status assertion.
+
+    Prefers a quoted value; otherwise takes the text after the last connective
+    ('… appeared as In Draft' → 'In Draft'), stripping a leading article and a
+    trailing status noun ('shows In Draft status' → 'In Draft').
+    """
+    quoted = _quoted_segments(instruction)
+    if quoted:
+        return quoted[0]
+    s = instruction or ""
+    conns = list(re.finditer(
+        r"\b(?:appeared?\s+as|marked\s+as|shows?|showing|displays?|reads?"
+        r"|status\s+(?:is|of)|state\s+(?:is|of)|is|are|as|equals?)\b\s*|[=:]\s*",
+        s, re.IGNORECASE,
+    ))
+    if conns:
+        s = s[conns[-1].end():]
+    s = re.sub(r"^\s*(the|a|an)\s+", "", s.strip(), flags=re.IGNORECASE)
+    s = re.sub(r"\s*\b(status|state|tag|badge|chip|pill|flag)\b\s*$", "", s.strip(), flags=re.IGNORECASE)
+    return s.strip(" \"'.:“”‘’")
+
+
+async def _verify_status(adapter, channel: str, instruction: str, kwargs: dict, options, t0: float) -> StepResult:
+    """Assert a status-indicator component shows an expected value.
+
+    Reads the visible text of status components (Ant tag/badge, MUI chip,
+    Bootstrap/Chakra badge, ``role=status``, ``data-status``/``data-state``, or
+    any status/tag/badge/chip/pill/state-classed element) — no selector, any
+    tech stack — and matches the expected value (exact, then substring). Falls
+    back to a page-wide text check when the page exposes no status component, so
+    a plainly-rendered state still validates. Page-scoped: no element grounding.
+    """
+    expected = kwargs.get("expected_value") or _extract_status_value(instruction)
+    reader = getattr(adapter, "read_status_texts", None)
+    texts: list[str] = []
+    if channel == "web" and callable(reader) and expected:
+        try:
+            texts = await reader()
+        except Exception as exc:  # noqa: BLE001 — never let the probe break a verify
+            logger.debug("read_status_texts errored: %s", exc)
+
+    exp = (expected or "").strip().lower()
+    hit = None
+    for t in texts:
+        tl = (t or "").strip().lower()
+        if exp and (tl == exp or exp in tl or tl in exp):
+            hit = t
+            break
+
+    if hit is not None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=True,
+            message=f"status shows {hit!r}", error=None,
+            metadata={"expected_status": expected, "actual_status": hit,
+                      "statuses_found": texts[:12]},
+            ref="status", resolver_name="status_dom",
+        )
+
+    # No status component matched — fall back to a page-wide text_visible so a
+    # state rendered as plain text (not a pill) still validates.
+    if expected:
+        vp = build_validation_plan(
+            assertion_type="text_visible", expected_value=expected,
+            timeout_ms=kwargs.get("timeout_ms", options.timeout_ms),
+        )
+        try:
+            vr = await adapter.validate(vp)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("status text_visible fallback errored: %s", exc)
+            vr = None
+        if vr is not None and vr.passed:
+            return _page_scoped_result(
+                instruction=instruction, t0=t0, passed=True,
+                message=f"{expected!r} is visible", error=None,
+                metadata={"expected_status": expected, "matched": "text_visible"},
+                ref="status", resolver_name="status_dom",
+            )
+
+    found = ", ".join(repr(t) for t in texts[:8]) if texts else "no status components found"
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=False,
+        message=f"status {expected!r} not present (found: {found})",
+        error=ErrorInfo(
+            error_type="ValidationFailedError",
+            message=f"expected status {expected!r}; page shows: {found}",
+        ),
+        metadata={"expected_status": expected, "statuses_found": texts[:12]},
+        ref="status", resolver_name="status_dom",
     )
 
 

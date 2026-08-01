@@ -252,59 +252,225 @@ def _detail_sections(runs: list[dict], detail_dir: Path) -> str:
     return "\n".join(sections) or "<p class='empty'>No test runs recorded yet.</p>"
 
 
+# Outcome palette — reused by the donut, per-test bars and legend.
+_OUTCOMES = [
+    ("passed", "Passed", "var(--pass)"),
+    ("recovered", "Self-healed", "var(--heal)"),
+    ("fallback", "Fallback", "var(--fb)"),
+    ("failed", "Failed", "var(--fail)"),
+    ("skipped", "Skipped", "var(--skip)"),
+]
+
+
+def _donut_svg(parts: list[tuple[str, int, str]], center_big: str, center_small: str, size: int = 190) -> str:
+    """A self-contained donut using the stroke-dasharray technique (no JS/libs)."""
+    import math
+
+    r = 70.0
+    c = 2 * math.pi * r
+    cx = cy = size / 2.0
+    total = sum(v for _, v, _ in parts) or 1
+    segs = ['<circle cx="%s" cy="%s" r="%s" fill="none" stroke="var(--track)" stroke-width="24"/>' % (cx, cy, r)]
+    offset = 0.0
+    for label, val, color in parts:
+        if val <= 0:
+            continue
+        length = (val / total) * c
+        segs.append(
+            '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="24" '
+            'stroke-dasharray="%.2f %.2f" stroke-dashoffset="%.2f" stroke-linecap="butt" '
+            'transform="rotate(-90 %s %s)"><title>%s: %d</title></circle>'
+            % (cx, cy, r, color, length, c - length, -offset, cx, cy, html.escape(label), val)
+        )
+        offset += length
+    text = (
+        '<text x="%s" y="%s" text-anchor="middle" class="donut-big">%s</text>'
+        '<text x="%s" y="%s" text-anchor="middle" class="donut-small">%s</text>'
+        % (cx, cy - 2, html.escape(center_big), cx, cy + 20, html.escape(center_small))
+    )
+    return (
+        '<svg viewBox="0 0 %d %d" width="%d" height="%d" class="donut" role="img">%s%s</svg>'
+        % (size, size, size, size, "".join(segs), text)
+    )
+
+
+def _legend_html(t: dict) -> str:
+    items = []
+    for key, label, color in _OUTCOMES:
+        items.append(
+            '<div class="lg"><span class="dot" style="background:%s"></span>'
+            '<span class="lg-l">%s</span><span class="lg-v">%d</span></div>'
+            % (color, label, int(t.get(key, 0)))
+        )
+    return "".join(items)
+
+
+def _test_bars_html(runs: list[dict]) -> str:
+    rows = []
+    for r in sorted(runs, key=lambda r: (r.get("status") != "failed", str(r.get("name", "")).lower())):
+        total = max(int(r.get("total", 0)), 1)
+        segs = []
+        for key, _label, color in _OUTCOMES:
+            v = int(r.get(key, 0))
+            if v > 0:
+                segs.append(
+                    '<span class="seg" style="width:%.2f%%;background:%s" title="%s: %d"></span>'
+                    % (v / total * 100, color, _label, v)
+                )
+        name = html.escape(str(r.get("name", "")))
+        pr = int(r.get("passed", 0)) / total * 100
+        cls = "fail" if r.get("status") == "failed" else "ok"
+        rows.append(
+            '<div class="bar-row"><div class="bar-name %s" title="%s">%s</div>'
+            '<div class="bar">%s</div><div class="bar-pct">%.0f%%</div></div>'
+            % (cls, name, name, "".join(segs), pr)
+        )
+    return "\n".join(rows) or '<p class="empty">No test runs recorded yet.</p>'
+
+
+_SUMMARY_CSS = """
+  :root{ color-scheme: light dark;
+    --bg:#eef1f5; --panel:#ffffff; --border:#e5e8ee; --text:#161b22; --muted:#5b6472;
+    --track:#eceef3; --accent:#4f46e5; --accent2:#7c3aed;
+    --pass:#16a34a; --heal:#d97706; --fb:#a21caf; --fail:#dc2626; --skip:#9aa3b2;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.05); }
+  @media (prefers-color-scheme: dark){ :root{
+    --bg:#0d0f14; --panel:#161a22; --border:#252b36; --text:#e6e9ef; --muted:#9aa3b2;
+    --track:#222834; --accent:#818cf8; --accent2:#a78bfa;
+    --shadow:0 1px 2px rgba(0,0,0,.4); } }
+  *{ box-sizing:border-box; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    margin:0; padding:0; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:1200px; margin:0 auto; padding:28px 24px 48px; }
+  header.hero{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    flex-wrap:wrap; margin-bottom:22px; }
+  .hero h1{ font-size:22px; font-weight:800; margin:0; letter-spacing:-.02em;
+    background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text;
+    background-clip:text; -webkit-text-fill-color:transparent; }
+  .hero .sub{ color:var(--muted); font-size:12.5px; margin-top:4px; }
+  .health{ display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; padding:10px 16px; box-shadow:var(--shadow); }
+  .health .pct{ font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .health .lbl{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .pill{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
+  .pill.ok{ background:color-mix(in srgb,var(--pass) 16%, transparent); color:var(--pass); }
+  .pill.bad{ background:color-mix(in srgb,var(--fail) 16%, transparent); color:var(--fail); }
+  .tabs{ display:flex; gap:4px; margin-bottom:20px; background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; padding:4px; width:fit-content; box-shadow:var(--shadow); }
+  .tab{ padding:8px 18px; cursor:pointer; border:none; background:none; font-size:13.5px; font-weight:600;
+    color:var(--muted); border-radius:9px; transition:.15s; }
+  .tab.active{ color:#fff; background:linear-gradient(90deg,var(--accent),var(--accent2)); }
+  .panel{ display:none; } .panel.active{ display:block; animation:fade .2s ease; }
+  @keyframes fade{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:none;} }
+  .kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:14px; margin-bottom:18px; }
+  .kpi{ background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px 16px;
+    box-shadow:var(--shadow); position:relative; overflow:hidden; }
+  .kpi .k{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .kpi .v{ font-size:26px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .kpi .s{ font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .kpi .rail{ position:absolute; left:0; top:0; bottom:0; width:4px; }
+  .v.pass{ color:var(--pass); } .v.fail{ color:var(--fail); } .v.heal{ color:var(--heal); }
+  .v.fb{ color:var(--fb); } .v.skip{ color:var(--skip); } .v.accent{ color:var(--accent); }
+  .charts{ display:grid; grid-template-columns:minmax(260px,340px) 1fr; gap:16px; margin-bottom:18px; }
+  @media (max-width:820px){ .charts{ grid-template-columns:1fr; } }
+  .chart{ background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:18px 20px;
+    box-shadow:var(--shadow); }
+  .chart h3{ font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 12px; }
+  .donut-wrap{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .donut{ flex:0 0 auto; }
+  .donut-big{ font-size:30px; font-weight:800; fill:var(--text); }
+  .donut-small{ font-size:11px; fill:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .legend{ display:flex; flex-direction:column; gap:8px; min-width:150px; }
+  .lg{ display:flex; align-items:center; gap:8px; font-size:13px; }
+  .lg .dot{ width:10px; height:10px; border-radius:3px; flex:0 0 auto; }
+  .lg-l{ color:var(--muted); } .lg-v{ margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
+  .bars{ display:flex; flex-direction:column; gap:10px; }
+  .bar-row{ display:grid; grid-template-columns:150px 1fr 42px; align-items:center; gap:12px; }
+  .bar-name{ font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar-name.fail{ color:var(--fail); }
+  .bar{ height:14px; border-radius:7px; overflow:hidden; background:var(--track); display:flex; }
+  .bar .seg{ height:100%; }
+  .bar-pct{ font-size:12px; font-weight:700; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .table-card{ background:var(--panel); border:1px solid var(--border); border-radius:16px; overflow:hidden;
+    box-shadow:var(--shadow); }
+  table{ width:100%; border-collapse:collapse; }
+  th,td{ padding:11px 14px; text-align:left; border-bottom:1px solid var(--border); font-size:13px; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background:color-mix(in srgb,var(--accent) 5%, transparent); }
+  th{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  td.name{ font-weight:650; }
+  td.pass{ color:var(--pass); } td.heal{ color:var(--heal); } td.fail{ color:var(--fail); }
+  td.skip{ color:var(--skip); } td.fb{ color:var(--fb); font-weight:700; }
+  td.ts{ color:var(--muted); } tr.failed td.name{ color:var(--fail); }
+  .badge{ display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+  .badge.passed{ background:color-mix(in srgb,var(--pass) 16%, transparent); color:var(--pass); }
+  .badge.failed{ background:color-mix(in srgb,var(--fail) 16%, transparent); color:var(--fail); }
+  details.test{ background:var(--panel); border:1px solid var(--border); border-radius:14px; margin-bottom:10px; overflow:hidden; box-shadow:var(--shadow); }
+  details.test > summary{ cursor:pointer; padding:13px 16px; display:flex; align-items:center; gap:12px; list-style:none; }
+  details.test > summary::-webkit-details-marker{ display:none; }
+  details.test > summary::before{ content:"\\25B8"; color:var(--muted); font-size:12px; }
+  details.test[open] > summary::before{ content:"\\25BE"; }
+  .tname{ font-weight:650; } .tcounts{ color:var(--muted); font-size:12px; margin-left:auto; }
+  .detail-wrap{ border-top:1px solid var(--border); }
+  .detail-frame{ width:100%; height:80vh; border:0; background:var(--panel); }
+  .missing,.empty{ color:var(--muted); padding:16px; }
+"""
+
+_SUMMARY_JS = """
+  document.querySelectorAll('.tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (b) { b.classList.remove('active'); });
+      document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
+    });
+  });
+"""
+
+
 def _render_combined(manifest: dict, detail_dir: Path, title: str) -> str:
     runs = manifest.get("runs", [])
     t = _totals(runs)
     generated = str(manifest.get("generated_at", ""))[:19].replace("T", " ")
+    total_ms = sum(int(r.get("duration_ms", 0)) for r in runs)
 
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(title)}</title>
-<style>
-  :root {{ color-scheme: light dark; }}
-  body {{ font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-         margin: 0; padding: 24px; background: #f6f7f9; color: #1c2430; }}
-  h1 {{ font-size: 20px; margin: 0 0 4px; }}
-  .sub {{ color: #6b7280; font-size: 12px; margin-bottom: 16px; }}
-  .tabs {{ display: flex; gap: 8px; border-bottom: 2px solid #e5e7eb; margin-bottom: 20px; }}
-  .tab {{ padding: 8px 16px; cursor: pointer; border: none; background: none; font-size: 14px;
-         font-weight: 600; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px; }}
-  .tab.active {{ color: #2563eb; border-bottom-color: #2563eb; }}
-  .panel {{ display: none; }} .panel.active {{ display: block; }}
-  .cards {{ display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }}
-  .card {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; min-width: 96px; }}
-  .card .k {{ font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }}
-  .card .v {{ font-size: 22px; font-weight: 700; margin-top: 2px; }}
-  .v.pass {{ color: #15803d; }} .v.fail {{ color: #b91c1c; }} .v.heal {{ color: #b45309; }} .v.skip {{ color: #6b7280; }} .v.fb {{ color: #a21caf; }}
-  table {{ width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }}
-  th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid #f0f1f3; font-size: 13px; }}
-  th {{ background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }}
-  td.num, th.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
-  td.name {{ font-weight: 600; }}
-  td.pass {{ color: #15803d; }} td.heal {{ color: #b45309; }} td.fail {{ color: #b91c1c; }} td.skip {{ color: #9ca3af; }} td.fb {{ color: #a21caf; font-weight: 600; }}
-  td.ts {{ color: #6b7280; }} tr.failed td.name {{ color: #b91c1c; }}
-  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }}
-  .badge.passed {{ background: #dcfce7; color: #15803d; }}
-  .badge.failed {{ background: #fee2e2; color: #b91c1c; }}
-  details.test {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }}
-  details.test > summary {{ cursor: pointer; padding: 12px 16px; display: flex; align-items: center; gap: 12px; list-style: none; }}
-  details.test > summary::-webkit-details-marker {{ display: none; }}
-  details.test > summary::before {{ content: "▸"; color: #9ca3af; font-size: 12px; }}
-  details.test[open] > summary::before {{ content: "▾"; }}
-  .tname {{ font-weight: 600; }} .tcounts {{ color: #6b7280; font-size: 12px; margin-left: auto; }}
-  .detail-wrap {{ border-top: 1px solid #f0f1f3; }}
-  .detail-frame {{ width: 100%; height: 80vh; border: 0; background: #fff; }}
-  .missing, .empty {{ color: #9ca3af; padding: 16px; }}
-  @media (prefers-color-scheme: dark) {{
-    body {{ background: #0f1115; color: #e5e7eb; }}
-    .card, table, details.test {{ background: #171a21; border-color: #2a2f3a; }}
-    th {{ background: #12151b; }} td, th {{ border-color: #232833; }} .tabs {{ border-color: #2a2f3a; }}
-  }}
-</style></head>
-<body>
-  <h1>{html.escape(title)}</h1>
-  <div class="sub">Generated {html.escape(generated)} · {t['tests']} test(s)</div>
+    tests = t["tests"] or 0
+    test_pass_rate = round((t["tests_passed"] / tests) * 100) if tests else 0
+    steps = t["steps"] or 0
+    step_pass_rate = round((t["passed"] / steps) * 100) if steps else 0
+    overall_ok = t["tests_failed"] == 0 and tests > 0
+    health_pill = ('<span class="pill ok">All passing</span>' if overall_ok
+                   else f'<span class="pill bad">{t["tests_failed"]} failing</span>' if tests
+                   else '<span class="pill bad">No runs</span>')
+
+    donut_parts = [(label, int(t.get(key, 0)), color) for key, label, color in _OUTCOMES]
+    donut = _donut_svg(donut_parts, f"{step_pass_rate}%", "steps passed")
+
+    kpis = (
+        f'<div class="kpi"><span class="rail" style="background:var(--accent)"></span>'
+        f'<div class="k">Tests</div><div class="v accent">{t["tests_passed"]}<span style="font-size:16px;color:var(--muted)">/{tests}</span></div>'
+        f'<div class="s">{test_pass_rate}% pass rate</div></div>'
+        f'<div class="kpi"><span class="rail" style="background:var(--fail)"></span>'
+        f'<div class="k">Tests Failed</div><div class="v fail">{t["tests_failed"]}</div><div class="s">of {tests} tests</div></div>'
+        f'<div class="kpi"><span class="rail" style="background:var(--text)"></span>'
+        f'<div class="k">Total Steps</div><div class="v">{steps}</div><div class="s">{t["passed"]} passed</div></div>'
+        f'<div class="kpi"><span class="rail" style="background:var(--heal)"></span>'
+        f'<div class="k">Self-healed</div><div class="v heal">{t["recovered"]}</div><div class="s">auto-recovered</div></div>'
+        f'<div class="kpi"><span class="rail" style="background:var(--fb)"></span>'
+        f'<div class="k">Fallback ⚠</div><div class="v fb">{t["fallback"]}</div><div class="s">selector safety net</div></div>'
+        f'<div class="kpi"><span class="rail" style="background:var(--fail)"></span>'
+        f'<div class="k">Steps Failed</div><div class="v fail">{t["failed"]}</div><div class="s">{t["skipped"]} skipped</div></div>'
+        f'<div class="kpi"><span class="rail" style="background:var(--accent2)"></span>'
+        f'<div class="k">Duration</div><div class="v">{_fmt_duration(total_ms)}</div><div class="s">total run time</div></div>'
+    )
+
+    body = f"""<div class="wrap">
+  <header class="hero">
+    <div><h1>{html.escape(title)}</h1>
+      <div class="sub">Generated {html.escape(generated)} &middot; {tests} test(s) &middot; {steps} steps</div></div>
+    <div class="health"><div><div class="lbl">Test pass rate</div><div class="pct">{test_pass_rate}%</div></div>{health_pill}</div>
+  </header>
 
   <div class="tabs">
     <button class="tab active" data-panel="summary">Summary</button>
@@ -312,18 +478,14 @@ def _render_combined(manifest: dict, detail_dir: Path, title: str) -> str:
   </div>
 
   <section class="panel active" id="panel-summary">
-    <div class="cards">
-      <div class="card"><div class="k">Tests</div><div class="v">{t['tests']}</div></div>
-      <div class="card"><div class="k">Tests Passed</div><div class="v pass">{t['tests_passed']}</div></div>
-      <div class="card"><div class="k">Tests Failed</div><div class="v fail">{t['tests_failed']}</div></div>
-      <div class="card"><div class="k">Total Steps</div><div class="v">{t['steps']}</div></div>
-      <div class="card"><div class="k">Steps Passed</div><div class="v pass">{t['passed']}</div></div>
-      <div class="card"><div class="k">Self-healed</div><div class="v heal">{t['recovered']}</div></div>
-      <div class="card"><div class="k">Fallback ⚠</div><div class="v fb">{t['fallback']}</div></div>
-      <div class="card"><div class="k">Steps Failed</div><div class="v fail">{t['failed']}</div></div>
-      <div class="card"><div class="k">Skipped</div><div class="v skip">{t['skipped']}</div></div>
+    <div class="kpis">{kpis}</div>
+    <div class="charts">
+      <div class="chart"><h3>Step outcomes</h3>
+        <div class="donut-wrap">{donut}<div class="legend">{_legend_html(t)}</div></div></div>
+      <div class="chart"><h3>Per-test breakdown</h3>
+        <div class="bars">{_test_bars_html(runs)}</div></div>
     </div>
-    <table>
+    <div class="table-card"><table>
       <thead><tr>
         <th>Test</th><th>Status</th><th class="num">Steps</th><th class="num">Passed</th>
         <th class="num">Healed</th><th class="num">Fallback ⚠</th><th class="num">Failed</th><th class="num">Skipped</th>
@@ -332,21 +494,17 @@ def _render_combined(manifest: dict, detail_dir: Path, title: str) -> str:
       <tbody>
 {_summary_rows(runs)}
       </tbody>
-    </table>
+    </table></div>
   </section>
 
   <section class="panel" id="panel-details">
 {_detail_sections(runs, detail_dir)}
   </section>
+</div>"""
 
-  <script>
-    document.querySelectorAll('.tab').forEach(function (btn) {{
-      btn.addEventListener('click', function () {{
-        document.querySelectorAll('.tab').forEach(function (b) {{ b.classList.remove('active'); }});
-        document.querySelectorAll('.panel').forEach(function (p) {{ p.classList.remove('active'); }});
-        btn.classList.add('active');
-        document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
-      }});
-    }});
-  </script>
-</body></html>"""
+    return (
+        '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{html.escape(title)}</title>\n<style>{_SUMMARY_CSS}</style></head>\n<body>\n"
+        f"{body}\n<script>{_SUMMARY_JS}</script>\n</body></html>"
+    )

@@ -1,5 +1,43 @@
 # Unreleased
 
+## 0.0.6a69 — feat: generic status assertion + modern summary report + console renderer
+
+Three additions, all framework-agnostic and self-contained.
+
+**1. Verify an item's status (tag / badge / chip / pill), any tech stack.** A
+phrase like `the tag appeared as In Draft`, `status is Live`, or `the badge
+shows Active` is now a first-class page-scoped assertion. It reads the visible
+text of status-indicator components generically — Ant (`.ant-tag`/`.ant-badge`),
+MUI (`.MuiChip`/`.MuiBadge`), Bootstrap/Chakra (`.badge`), ARIA (`role=status`),
+`data-status`/`data-state`, and any `status`/`tag`/`badge`/`chip`/`pill`/`state`
+-classed element — and matches the expected value (exact, then substring), with
+a page-wide text fallback when a state is rendered as plain text. No selector,
+no grounding. Previously such a phrase fell through to `text_visible` and
+searched for the *whole sentence*, so it always failed. New
+`read_status_texts()` adapter method; detection via `_looks_like_status_assertion`
+and value extraction via `_extract_status_value`; or force it with
+`assertion_type="status"`.
+
+**2. Modernized Summary HTML report.** The combined summary is redesigned for
+stakeholders: gradient header with a live test-pass-rate health pill, a KPI grid
+(tests, pass rate, steps, self-healed, fallback, failed, duration), an inline
+SVG **step-outcome donut** with legend, a **per-test breakdown** of stacked
+pass/heal/fallback/fail/skip bars, and a polished detail table — all theme-aware
+(light/dark) and still 100% self-contained (no external libraries or fonts).
+
+**3. Modern console renderer (Node client).** New `formatStepLine`, `logStep`,
+and a `RunConsole` tracker render each step as a clean, colorized line (status
+glyph, action, resolver · confidence · timing, self-healed / ⚠ fallback flags,
+and the error on failure), with a header and an enterprise-style summary footer
+(counts, pass rate, elapsed). Dependency-free ANSI; auto-disables color for
+non-TTY / `NO_COLOR`.
+
+Node client `0.0.6-alpha.15` → `0.0.6-alpha.16` (`formatStepLine`, `logStep`,
+`RunConsole`, `ConsoleOptions`). Adds `tests/unit/test_status_assertion.py`,
+`tests/integration/test_status_verify_web.py`, and `test/console.test.mjs`.
+Engine `0.0.6a68` → `0.0.6a69`.
+
+
 ## 0.0.6a68 — fix(web): scope input & upload resolution to the open modal
 
 Text-entry and file-upload steps inside a modal dialog could land on a
