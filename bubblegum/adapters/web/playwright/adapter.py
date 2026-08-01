@@ -115,6 +115,55 @@ _DIALOG_ROOT_JS = (
     " return ds[ds.length-1]; }"
 )
 
+# JS: collect the visible text of *status-indicator* components — the small
+# pill/tag/badge/chip/label a UI uses to show an item's state (e.g. "In Draft",
+# "Live", "Active"). Deliberately framework-agnostic: Ant (.ant-tag/.ant-badge),
+# MUI (.MuiChip/.MuiBadge), Bootstrap (.badge), Chakra/Bulma/Tailwind-ish
+# conventions, plus ARIA (role=status) and data-* hooks, and any element whose
+# class/role/testid *word* is status/tag/badge/chip/pill/state/label. Returns the
+# distinct trimmed texts, shortest-first (a status label is short), so a caller
+# can assert an item's state without a hand-written selector on any tech stack.
+_READ_STATUS_JS = r"""
+() => {
+  const SEL = [
+    ".ant-tag", ".ant-badge-status-text", ".ant-badge-count", ".ant-badge-status",
+    ".MuiChip-label", ".MuiChip-root", ".MuiBadge-badge",
+    ".chakra-badge", ".badge", ".tag", ".chip", ".pill", ".status",
+    "[role='status']", "[data-status]", "[data-state]", "[data-testid*='status' i]",
+    "[data-testid*='badge' i]", "[data-testid*='tag' i]",
+    "[class*='status' i]", "[class*='badge' i]", "[class*='chip' i]",
+    "[class*='-tag' i]", "[class*='tag-' i]", "[class*='pill' i]",
+    "[class*='state' i]"
+  ].join(",");
+  const seen = new Set();
+  const out = [];
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
+  };
+  let els;
+  try { els = Array.from(document.querySelectorAll(SEL)); }
+  catch (e) { els = []; }
+  for (const el of els) {
+    if (!visible(el)) continue;
+    // Own text only when the element is a leaf-ish label — skip big containers
+    // whose text is the whole card; a status pill's own text is short.
+    const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!txt || txt.length > 60) continue;
+    // Prefer the innermost carrier: if a child already matched, skip the parent.
+    if (el.querySelector && el.querySelector(SEL)) continue;
+    const key = txt.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(txt);
+  }
+  out.sort((a, b) => a.length - b.length);
+  return out;
+}
+"""
+
 # Fallback used when ExecutionOptions.nav_wait_ms is unavailable (e.g. an older
 # ActionPlan). Bounds how long a non-navigating click waits before concluding
 # the click was an in-page action rather than a navigation.
@@ -2963,6 +3012,22 @@ class PlaywrightAdapter(BaseAdapter):
             return None
         logger.debug("find_file_input %r -> %s", target_phrase, result)
         return result.get("selector")
+
+    async def read_status_texts(self) -> list[str]:
+        """Return the visible texts of status-indicator components on the page.
+
+        Framework-agnostic (Ant tag/badge, MUI chip/badge, Bootstrap/Chakra
+        badge, ARIA ``role=status``, ``data-status``/``data-state``, and any
+        element whose class/testid word is status/tag/badge/chip/pill/state).
+        Used by the status assertion so a tester can validate an item's state
+        (e.g. "In Draft") without naming a selector, on any tech stack.
+        """
+        try:
+            texts = await self._page.evaluate(_READ_STATUS_JS)
+        except Exception as exc:  # noqa: BLE001 — never let a probe break a verify
+            logger.debug("read_status_texts errored: %s", exc)
+            return []
+        return list(texts or [])
 
     async def find_clickable(self, text: str, *, exact: bool = False) -> str | None:
         """Return a selector for a single interactive element named ``text``.

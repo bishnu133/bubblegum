@@ -15,6 +15,9 @@ export type { Transport, SpawnOptions, BridgeClientOptions } from "./client.js";
 
 export { BridgeError } from "./errors.js";
 
+export { formatStepLine, logStep, RunConsole } from "./console.js";
+export type { ConsoleOptions } from "./console.js";
+
 export {
   PROTOCOL_VERSION,
   SUPPORTED_PROTOCOL_VERSIONS,
