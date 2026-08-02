@@ -45,7 +45,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from bubblegum.core.config import BubblegumConfig
+from bubblegum.core.config import LOCAL_VISION_BACKENDS, BubblegumConfig
 from bubblegum.core.grounding.engine import GroundingEngine
 from bubblegum.core.grounding.errors import (
     BubblegumError,
@@ -59,6 +59,13 @@ from bubblegum.core.parser import decompose, extract_expected, infer_action_type
 from bubblegum.core.planner import build_options, build_validation_plan, context_request, make_intent
 from bubblegum.core.recovery import remove_explicit_selector, used_explicit_selector
 from bubblegum.core.mobile.memory_signature import build_mobile_memory_signature
+from bubblegum.core.mobile.canvas_routing import (
+    evaluate_canvas_routing,
+    ocr_text_present,
+    select_canvas_vision_candidate,
+)
+from bubblegum.core.mobile.readiness import readiness_failure_message
+from bubblegum.core.coordinates import bbox_center, coordinate_ref
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -578,6 +585,13 @@ async def act(
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
     _maybe_inject_vision_candidates(intent)
+    # M-C: on a self-drawn surface the hierarchy can't describe (Flutter, games,
+    # raw GL/Surface views), route this screen to vision/OCR + a tap coordinate.
+    _maybe_route_canvas(intent, channel)
+    # M-D: bail out with a clear message if the app crashed / isn't responding.
+    blocked = _maybe_blocked_by_mobile_health(intent, channel, instruction, t0)
+    if blocked is not None:
+        return blocked
 
     # 3. Ground.
     # Table / link DOM actions first: "click the <col> value in the <row> row"
@@ -642,6 +656,16 @@ async def act(
                 fallback = await _maybe_resolve_clickable(adapter, channel, instruction, intent)
             if fallback is None:
                 fallback = await _maybe_resolve_input(adapter, channel, intent)
+            # M-C: on a canvas/Flutter screen the hierarchy has no element to pin,
+            # so tap the best on-screen OCR/vision match by its coordinate. Only
+            # engages when this screen was routed to vision; a no-op otherwise.
+            if fallback is None:
+                fallback = _maybe_resolve_canvas_vision(intent, channel)
+            # M-A: mobile selector-less scroll-to-find. When the target is simply
+            # off-screen, swipe and re-ground before giving up. Mobile-only,
+            # opt-in, bounded; a no-op on web and on screens with nothing to scroll.
+            if fallback is None:
+                fallback = await _maybe_scroll_to_target(adapter, channel, intent)
             # Last resort: the tester-provided fallback selector. Only reached
             # once every natural + AI tier AND the DOM fallbacks above have
             # failed — a deterministic safety net so one DOM change can't
@@ -882,6 +906,16 @@ async def verify(
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
     _maybe_inject_vision_candidates(intent)
+    # M-C2: on a canvas/Flutter screen, verify text by OCR instead of the
+    # (text-less) hierarchy — and don't hard-fail at grounding below.
+    _maybe_route_canvas(intent, channel)
+    # M-D: fail fast with a clear message when the app crashed / isn't responding.
+    blocked = _maybe_blocked_by_mobile_health(intent, channel, instruction, t0)
+    if blocked is not None:
+        return blocked
+    canvas_verify = _maybe_verify_canvas_text(intent, channel, instruction, kwargs, t0)
+    if canvas_verify is not None:
+        return canvas_verify
 
     try:
         target, traces = await _ground_with_wait(adapter, intent)
@@ -1562,6 +1596,16 @@ async def extract(
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
     _maybe_inject_vision_candidates(intent)
+    # M-C2: on a canvas/Flutter screen, extract text by OCR instead of the
+    # (text-less) hierarchy, before falling through to element grounding.
+    _maybe_route_canvas(intent, channel)
+    # M-D: fail fast with a clear message when the app crashed / isn't responding.
+    blocked = _maybe_blocked_by_mobile_health(intent, channel, instruction, t0)
+    if blocked is not None:
+        return blocked
+    canvas_extract = _maybe_extract_canvas_text(intent, channel, instruction, t0)
+    if canvas_extract is not None:
+        return canvas_extract
 
     # Ground — find the target element
     try:
@@ -1923,6 +1967,13 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
     # can decide whether to emit a point:// ref when no element mapping exists.
     intent.context.setdefault(
         "coordinate_click_fallback", _config.grounding.coordinate_click_fallback
+    )
+    # M-E: mobile hierarchy compaction knobs, read by AppiumHierarchyResolver.
+    intent.context.setdefault(
+        "config_mobile_hierarchy_compaction", _config.grounding.mobile_hierarchy_compaction
+    )
+    intent.context.setdefault(
+        "config_mobile_hierarchy_max_nodes", _config.grounding.mobile_hierarchy_max_nodes
     )
 
 
@@ -2566,13 +2617,381 @@ async def _ground_with_wait(adapter, intent: StepIntent):
             )
 
 
+async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
+    """M-A: selector-less scroll-to-find for the mobile channel.
+
+    Reached only after grounding found no candidate on the current screen. When
+    the screen has a scrollable container (per the ``scroll_discovery`` plan the
+    adapter computed into ``app_state``), swipe one page in the plan's direction,
+    re-collect context, and re-ground — up to ``scroll_to_find_max_scrolls``
+    times — so a control named in plain English ("Tap Accept") is found even when
+    it starts below the fold. No selector is involved: the same natural-language
+    step just works.
+
+    Returns the resolved ``ResolvedTarget`` (annotated with ``scroll_to_find``
+    diagnostics) once the target appears, or ``None`` when it stays unresolved,
+    the channel isn't mobile, the feature is off, or the screen has nothing to
+    scroll. Bounded, opt-in via ``grounding.scroll_to_find``, and a no-op on web.
+    """
+    if channel != "mobile":
+        return None
+    if not getattr(_config.grounding, "scroll_to_find", False):
+        return None
+    if intent.action_type not in ("tap", "click", "type", "select", "verify", "extract"):
+        return None
+    scroll = getattr(adapter, "scroll_screen", None)
+    if not callable(scroll):
+        return None
+
+    app_state = intent.context.get("app_state")
+    plan = app_state.get("scroll_discovery") if isinstance(app_state, dict) else None
+    if not isinstance(plan, dict) or str(plan.get("status")) != "candidate" or plan.get("scroll_needed") is not True:
+        return None
+
+    direction = str(plan.get("scroll_direction") or "down").lower()
+    try:
+        max_scrolls = max(1, min(int(getattr(_config.grounding, "scroll_to_find_max_scrolls", 4)), 10))
+    except (TypeError, ValueError):
+        max_scrolls = 4
+
+    attempts = 0
+    for i in range(1, max_scrolls + 1):
+        try:
+            await scroll(direction)
+        except Exception as exc:
+            logger.debug("scroll_to_find: swipe failed on attempt %d: %s", i, exc)
+            break
+        attempts = i
+
+        # Re-snapshot so the next grounding pass sees the newly revealed nodes.
+        ctx_request = context_request()
+        ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
+        try:
+            ui_ctx = await adapter.collect_context(ctx_request)
+        except Exception as exc:
+            logger.debug("scroll_to_find: context collect failed on attempt %d: %s", i, exc)
+            break
+        _merge_context(intent, ui_ctx)
+        _maybe_inject_vision_candidates(intent)
+
+        try:
+            target, _traces = await _ground_with_wait(adapter, intent)
+        except BubblegumError:
+            # Still not found. Stop early only if the fresh plan says there is
+            # nothing left to scroll (bottom reached / no scrollable container).
+            fresh_state = intent.context.get("app_state")
+            fresh_plan = fresh_state.get("scroll_discovery") if isinstance(fresh_state, dict) else None
+            if isinstance(fresh_plan, dict) and str(fresh_plan.get("status")) == "unsupported":
+                break
+            continue
+
+        meta = dict(target.metadata)
+        meta["scroll_to_find"] = {
+            "attempted": True,
+            "attempts": attempts,
+            "direction": direction,
+            "max_scrolls": max_scrolls,
+            "found_after_scroll": True,
+        }
+        logger.debug("scroll_to_find: resolved '%s' after %d scroll(s)", intent.instruction, attempts)
+        return target.model_copy(update={"metadata": meta})
+
+    logger.debug("scroll_to_find: '%s' not found after %d scroll(s)", intent.instruction, attempts)
+    return None
+
+
+def _maybe_route_canvas(intent: StepIntent, channel: str) -> dict | None:
+    """M-C: decide whether this mobile screen is a self-drawn/canvas surface.
+
+    Runs after context collection. When the screen is Flutter / a game engine /
+    a raw GL-Surface view (the hierarchy exposes no grounding text), it stores a
+    routing decision on ``intent.context["canvas_routing"]`` and turns on the
+    coordinate-tap fallback for *this step only* — so a vision/OCR hit can be
+    tapped by coordinate. A no-op on web, on native screens with real text, and
+    when disabled. Returns the decision dict (or None when not applicable).
+    """
+    if channel != "mobile":
+        return None
+    if not getattr(_config.grounding, "canvas_auto_route", True):
+        return None
+
+    app_state = intent.context.get("app_state")
+    ui_framework = app_state.get("ui_framework") if isinstance(app_state, dict) else None
+    decision = evaluate_canvas_routing(
+        hierarchy_xml=intent.context.get("hierarchy_xml"),
+        ui_framework=ui_framework if isinstance(ui_framework, dict) else None,
+        vision_available=_vision_provider is not None,
+        platform=intent.platform,
+    )
+    intent.context["canvas_routing"] = decision
+    if decision.get("route_to_vision"):
+        # Precise where possible, coordinate-tap only where the hierarchy can't
+        # help: enable the fallback for this screen regardless of the global
+        # default (which stays off for ordinary screens).
+        intent.context["coordinate_click_fallback"] = True
+        if decision.get("warnings"):
+            logger.info(
+                "Canvas routing (%s): screen routed to vision but %s — configure a "
+                "vision backend (e.g. grounding.vision_backend=rapidocr) to ground it.",
+                decision.get("reason"),
+                ",".join(decision["warnings"]),
+            )
+        else:
+            logger.debug("Canvas routing: screen routed to vision (%s)", decision.get("reason"))
+    return decision
+
+
+def _maybe_resolve_canvas_vision(intent: StepIntent, channel: str) -> ResolvedTarget | None:
+    """M-C: tap the best on-screen OCR/vision match on a canvas/Flutter screen.
+
+    Reached only after hierarchy grounding found nothing AND this screen was
+    routed to vision by ``_maybe_route_canvas``. Picks the injected vision/OCR
+    candidate whose text best matches the step's target and returns a
+    coordinate ``ResolvedTarget`` (``point://x,y`` + structured point) that the
+    adapter taps directly — bypassing the confidence bands that make a
+    vision-only screen otherwise un-actionable. Tap/click only (typing needs a
+    real element). Returns None when not routed, no candidates, or no match.
+    """
+    if channel != "mobile":
+        return None
+    decision = intent.context.get("canvas_routing")
+    if not isinstance(decision, dict) or not decision.get("route_to_vision"):
+        return None
+    if intent.action_type not in ("tap", "click"):
+        return None
+    candidates = intent.context.get("vision_candidates")
+    if not candidates:
+        return None
+
+    best = select_canvas_vision_candidate(
+        target_phrase=intent.target_phrase,
+        instruction=intent.instruction,
+        vision_candidates=candidates,
+    )
+    if best is None:
+        return None
+    center = bbox_center(best["bbox"])
+    if center is None:
+        return None
+    x, y = center
+
+    safe_decision = {
+        "surface_type": decision.get("surface_type", "unknown"),
+        "reason": decision.get("reason", "unknown"),
+        "framework": decision.get("framework", "unknown"),
+    }
+    metadata = {
+        "source": "canvas_vision",
+        "matched_text": best["text"],
+        "bbox": best["bbox"],
+        "coordinate_point": [x, y],
+        "coordinate_click": True,
+        "canvas_routing": safe_decision,
+        "match_score": best["score"],
+        "vision_confidence": best["confidence"],
+    }
+    logger.debug(
+        "canvas_vision: tapping %r at (%d, %d) on %s surface",
+        best["text"], x, y, safe_decision["surface_type"],
+    )
+    return ResolvedTarget(
+        ref=coordinate_ref(x, y),
+        point=[x, y],
+        confidence=round(min(0.95, float(best["score"])), 4),
+        resolver_name="canvas_vision",
+        metadata=metadata,
+    )
+
+
+def _maybe_blocked_by_mobile_health(
+    intent: StepIntent, channel: str, instruction: str, t0: float
+) -> "StepResult | None":
+    """M-D: fail fast with a clear message when the app is wedged.
+
+    After context collection the adapter records a ``readiness`` verdict in
+    ``app_state``. When a hard blocker is present — the app crashed (a 'has
+    stopped' dialog) or isn't responding (an ANR dialog) — grounding would only
+    fail cryptically, so return an actionable failed ``StepResult`` instead.
+    A live spinner is *not* a hard blocker here (the stability wait already
+    handles it); only ANR/crash short-circuit. Mobile-only; None otherwise.
+    """
+    if channel != "mobile":
+        return None
+    app_state = intent.context.get("app_state")
+    readiness = app_state.get("readiness") if isinstance(app_state, dict) else None
+    if not isinstance(readiness, dict):
+        return None
+    blocker = readiness.get("blocker")
+    if blocker not in ("anr", "crash"):
+        return None
+
+    message = readiness_failure_message(readiness, instruction=instruction)
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref="screen",
+        confidence=0.0,
+        resolver_name="readiness",
+        metadata={
+            "readiness": {
+                "blocker": blocker,
+                "evidence": list(readiness.get("evidence") or []),
+            }
+        },
+    )
+    return StepResult(
+        status="failed",
+        action=instruction,
+        target=target,
+        confidence=0.0,
+        duration_ms=duration_ms,
+        traces=[],
+        error=ErrorInfo(error_type="AppNotReadyError", message=message),
+    )
+
+
+def _maybe_verify_canvas_text(
+    intent: StepIntent, channel: str, instruction: str, kwargs: dict, t0: float
+) -> "StepResult | None":
+    """M-C2: verify a ``text_visible`` assertion by OCR on a canvas/Flutter screen.
+
+    Reached before hierarchy grounding in ``verify()``. When this screen was
+    routed to vision (``_maybe_route_canvas``), the accessibility hierarchy has no
+    text to check, so the expected phrase is verified against the on-screen
+    OCR/vision candidates instead. Returns a finished ``StepResult`` (so the
+    caller returns immediately and never hard-fails at grounding), or ``None`` to
+    let the normal path run. Only handles the default ``text_visible`` assertion;
+    specialized assertions were already dispatched earlier.
+    """
+    if channel != "mobile":
+        return None
+    decision = intent.context.get("canvas_routing")
+    if not isinstance(decision, dict) or not decision.get("route_to_vision"):
+        return None
+    if kwargs.get("assertion_type", "text_visible") != "text_visible":
+        return None
+
+    explicit = kwargs.get("expected_value")
+    quoted = _quoted_segments(instruction) if explicit is None else []
+    if len(quoted) >= 2:
+        expected_list = quoted
+    else:
+        expected_list = [explicit if explicit is not None else (quoted[0] if quoted else extract_expected(instruction))]
+    expected_list = [e for e in expected_list if isinstance(e, str) and e.strip()]
+    if not expected_list:
+        return None
+
+    candidates = intent.context.get("vision_candidates") or []
+    surface = str(decision.get("surface_type", "unknown"))
+    checks = [(e, ocr_text_present(e, candidates)) for e in expected_list]
+    passed = all(c["found"] for _, c in checks)
+    matched = "; ".join(
+        f"{e!r}={'ok' if c['found'] else 'not visible'}" for e, c in checks
+    )
+
+    if passed:
+        error = None
+    elif not candidates:
+        error = ErrorInfo(
+            error_type="ValidationFailedError",
+            message=(
+                f"Canvas screen ({surface}): no on-screen text was captured to verify "
+                f"{expected_list!r}. Configure a vision backend (grounding.vision_backend=rapidocr)."
+            ),
+        )
+    else:
+        error = ErrorInfo(
+            error_type="ValidationFailedError",
+            message=f"Text not visible on {surface} screen: {matched}",
+        )
+
+    return _page_scoped_result(
+        instruction=instruction,
+        t0=t0,
+        passed=passed,
+        message=matched if candidates else "no on-screen text captured",
+        error=error,
+        metadata={
+            "source": "canvas_ocr",
+            "surface_type": surface,
+            "expected": expected_list,
+            "matched": [c["matched_text"] for _, c in checks if c["found"]],
+        },
+        ref="screen",
+        resolver_name="canvas_ocr",
+    )
+
+
+def _maybe_extract_canvas_text(
+    intent: StepIntent, channel: str, instruction: str, t0: float
+) -> "StepResult | None":
+    """M-C2: extract text by OCR on a canvas/Flutter screen.
+
+    Reached before hierarchy grounding in ``extract()``. When the screen was
+    routed to vision, returns the on-screen OCR/vision text best matching the
+    target phrase as the extracted value. Returns ``None`` (let the normal path
+    run) when not routed or when no candidate matches.
+    """
+    if channel != "mobile":
+        return None
+    decision = intent.context.get("canvas_routing")
+    if not isinstance(decision, dict) or not decision.get("route_to_vision"):
+        return None
+    candidates = intent.context.get("vision_candidates")
+    if not candidates:
+        return None
+
+    best = select_canvas_vision_candidate(
+        target_phrase=intent.target_phrase,
+        instruction=intent.instruction,
+        vision_candidates=candidates,
+    )
+    if best is None:
+        return None
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref="screen",
+        confidence=round(min(0.95, float(best["score"])), 4),
+        resolver_name="canvas_ocr",
+        metadata={
+            "source": "canvas_ocr",
+            "surface_type": str(decision.get("surface_type", "unknown")),
+            "matched_text": best["text"],
+            "bbox": best["bbox"],
+            "extracted_value": best["text"],
+        },
+    )
+    logger.debug("canvas_ocr extract: %r -> %r", instruction, best["text"])
+    return StepResult(
+        status="passed",
+        action=instruction,
+        target=target,
+        confidence=target.confidence,
+        duration_ms=duration_ms,
+        traces=[],
+    )
+
+
+def _vision_backend_is_local() -> bool:
+    """True when the configured vision backend runs entirely on this machine.
+
+    An on-device backend (e.g. rapidocr) never sends pixels anywhere, so it
+    raises no privacy concern and is exempt from the hosted-vision opt-ins.
+    """
+    return _config.grounding.vision_backend in LOCAL_VISION_BACKENDS
+
+
 def _vision_privacy_ok() -> bool:
     """Is the vision pipeline allowed to process this screenshot?
 
-    process_screenshots_for_vision is the master opt-in. Sending pixels to a
-    HOSTED model additionally requires send_screenshots; a self-hosted grounder
-    (vision_is_local) keeps them in-network and needs no third-party consent.
+    An on-device backend (rapidocr) keeps pixels in-process, so it satisfies the
+    gate on its own. Otherwise process_screenshots_for_vision is the master
+    opt-in, and sending pixels to a HOSTED model additionally requires
+    send_screenshots; a self-hosted grounder (vision_is_local) keeps them
+    in-network and needs no third-party consent.
     """
+    if _vision_backend_is_local():
+        return True
     if not _config.privacy.process_screenshots_for_vision:
         return False
     return bool(_config.privacy.send_screenshots or _config.privacy.vision_is_local)
@@ -2592,10 +3011,11 @@ def _should_request_vision_screenshot(intent: StepIntent) -> bool:
 
 def _allows_provider_vision_cost(intent: StepIntent) -> bool:
     # Hosted vision is a "high"-cost operation. A self-hosted grounder in your
-    # network is effectively free, so it is reachable under the default policy —
-    # important on mobile, where the a11y hierarchy is often too thin to resolve
-    # from and screenshot grounding is the primary path.
-    if _config.privacy.vision_is_local:
+    # network — or an on-device OCR backend (rapidocr) — is effectively free, so
+    # it is reachable under the default policy. Important on mobile, where the
+    # a11y hierarchy is often too thin to resolve from and screenshot grounding
+    # is the primary path.
+    if _config.privacy.vision_is_local or _vision_backend_is_local():
         return True
     return str(intent.options.max_cost_level).lower() == "high"
 

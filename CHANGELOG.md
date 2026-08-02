@@ -1,5 +1,211 @@
 # Unreleased
 
+## 0.0.6a75 — perf(mobile): hierarchy compaction for grounding
+
+A complex app's `page_source` is mostly decorative layout containers — thousands
+of nodes with no text, no id, and nothing to interact with. The hierarchy
+resolver parsed and built a graph over *every* node on every grounding pass (and
+again on each scroll re-ground), so that bulk was pure latency — and on a device
+farm, latency near the command timeout is a reliability risk. Bubblegum now
+prunes the hierarchy to the nodes that can actually be a target before grounding.
+
+- **New `core.mobile.hierarchy_compaction` (pure, unit-tested).**
+  `compact_hierarchy_xml()` keeps every node carrying text / a11y description /
+  id / value, plus interactive and scrollable nodes, plus their ancestors — and
+  drops decorative textless subtrees and invisible textless nodes. Returns the
+  compacted XML + stats (`original_nodes`, `kept_nodes`, `dropped_nodes`,
+  `compacted`, `truncated`). On a 500-container screen with one real control it
+  reduces to 2 nodes.
+- **Parity-safe by construction.** Every candidate-producing node is kept, and
+  the resolver's locators are global XPaths (`//tag[@text='…']`) that don't depend
+  on the pruned structure — so the *same* candidates resolve, just faster. A
+  resolver test asserts byte-identical candidate refs with compaction on vs off,
+  including a target buried under 300 decorative nodes.
+- **Scoped to grounding only.** Applied inside `AppiumHierarchyResolver`; the full
+  `page_source` is left untouched for the readiness / system-dialog / framework
+  detectors, which legitimately rely on nodes (progress bars, dialog containers)
+  that compaction drops.
+- **Config:** `grounding.mobile_hierarchy_compaction` (on by default) and
+  `grounding.mobile_hierarchy_max_nodes` (default 1500; advisory — no groundable
+  node is ever dropped to meet the cap). Threaded to the resolver via context.
+  Mobile-only; no web change.
+- Coverage: `tests/unit/test_mobile_hierarchy_compaction.py` — subtree pruning,
+  ancestor retention, interactive/invisible handling, empty/unparseable safety,
+  large-tree reduction, and resolver candidate parity (on vs off).
+
+## 0.0.6a74 — feat(mobile): readiness & resilience (ANR / crash / session-loss / spinners)
+
+Real apps aren't always ready the instant a screen appears, and long device-farm
+runs can lose the Appium session. Bubblegum now reads these conditions and reacts
+sensibly instead of failing with a cryptic grounding error: it waits out
+spinners, fails fast with an actionable message when the app crashes or stops
+responding, and labels a lost session distinctly.
+
+- **New `core.mobile.readiness` (pure, unit-tested).** `detect_mobile_readiness()`
+  classifies the current screen from the hierarchy — a live progress/loading
+  indicator (Android ProgressBar, iOS ActivityIndicator, Compose/Flutter
+  spinners), an ANR ("isn't responding") dialog, or a crash ("has stopped")
+  dialog — with hard-blocker precedence (crash > anr > progress).
+  `classify_driver_error()` sorts a driver exception into `session_lost` /
+  `transient` / `other`. Signatures are deliberately specific (e.g.
+  "unfortunately" alone is **not** treated as a crash) to avoid false positives.
+- **Progress-aware, ANR/crash-aware stability wait.** `AppiumAdapter.wait_until_stable`
+  now keeps waiting (bounded by `stability_timeout_ms`) while a spinner is up even
+  once the hierarchy stops changing, and returns early with an `anr`/`crash`
+  outcome when a blocking dialog appears — no point waiting on a wedged app. The
+  verdict is also recorded in `app_state["readiness"]` on every context snapshot.
+- **Fail fast with a clear message.** A new SDK health gate runs after context
+  collection in `act()`, `verify()`, and `extract()`: on a crash/ANR it returns a
+  failed `StepResult` with an `AppNotReadyError` and an actionable message
+  ("relaunch the app / restart the session", "wait for it to recover") instead of
+  letting the step fail obscurely at grounding. A spinner is not a hard blocker
+  here — the stability wait already handles it.
+- **Lost sessions are labeled.** The adapter's retry reason now reports
+  `session_lost` for invalid/terminated-session errors (which are never retried in
+  place), so reports distinguish a dead session from a transient blip.
+- Coverage: `tests/unit/test_mobile_readiness.py` — readiness classification and
+  precedence, the "unfortunately is not a crash" guard, driver-error
+  classification + retry-reason labeling, the progress-aware / ANR-early-return /
+  quiet-stable `wait_until_stable` (fake driver), and the SDK health gate
+  (crash/ANR fail, ready/progress/web pass-through).
+
+## 0.0.6a73 — feat(mobile): OCR verify & extract on canvas/Flutter screens
+
+Completes the canvas story for assertions and reads. `verify('the screen shows
+"Level 2"')` and `extract('Get the score')` now work on a Flutter/game/canvas
+screen, where the accessibility hierarchy has no text to check — the expected
+phrase is verified, and text is extracted, from the on-screen OCR/vision
+candidates instead. Native screens are unchanged: they still verify/extract from
+the hierarchy exactly as before.
+
+- **`verify()` — OCR `text_visible` on routed screens.** After context
+  collection, `verify()` runs the same canvas routing as `act()`; on a routed
+  screen a new `_maybe_verify_canvas_text()` checks the expected phrase(s) against
+  the OCR candidates and returns a finished result — so a canvas screen no longer
+  hard-fails at hierarchy grounding. Multiple quoted phrases must all be visible.
+  Matching handles a phrase split across OCR boxes (e.g. "Level 2" as "Level" +
+  "2") via a whole-screen text fallback.
+- **`extract()` — OCR text on routed screens.** `_maybe_extract_canvas_text()`
+  returns the on-screen text best matching the target phrase as the extracted
+  value, before falling through to element grounding.
+- **`ocr_text_present()`** added to `core.mobile.canvas_routing` (pure, unit
+  tested): exact/substring per box plus a joined whole-screen match.
+- **Honest failures.** On a routed screen with no vision backend configured, the
+  verify result carries an actionable message pointing at
+  `grounding.vision_backend=rapidocr`.
+- Scope: `text_visible` verify and text extract (tap/click stay in a72). No web
+  behaviour change; specialized assertions (a11y/network/visual/table/status)
+  are dispatched earlier and untouched.
+- Coverage: `tests/unit/test_canvas_verify_extract.py` — `ocr_text_present`
+  (exact/substring/spanning/absent/empty) and both SDK hooks (pass/fail,
+  all-quoted-required, no-candidate actionable error, not-routed/web/non-text
+  skips for verify; matched/none/not-routed/no-match for extract).
+
+## 0.0.6a72 — feat(mobile): Flutter/canvas auto-routing to vision
+
+Bubblegum now recognises a self-drawn screen and grounds it by pixels
+automatically — the tester never has to know what technology an app was built
+with. On a Flutter screen (or a game/engine, a raw GL/Surface view, or any screen
+whose accessibility hierarchy exposes no usable text), a plain-English
+`act("Tap Play")` resolves by OCR/vision and taps the matched text's coordinate,
+while ordinary native screens keep resolving precisely from the hierarchy exactly
+as before.
+
+- **New `core.mobile.canvas_routing`.** `evaluate_canvas_routing()` classifies the
+  current screen from the hierarchy alone — Flutter (via the UI-framework
+  detector), a canvas/engine surface class (FlutterView / GLSurfaceView /
+  TextureView / UnityPlayer / …), a hierarchy with nodes but no text, or no
+  hierarchy at all — and decides whether to route to vision.
+  `select_canvas_vision_candidate()` picks the on-screen OCR/vision candidate
+  whose text best matches the step's target. Both are pure and unit-tested.
+- **Two SDK hooks, both additive.** `_maybe_route_canvas()` runs after context
+  collection: on a routed screen it turns on the coordinate-tap fallback *for that
+  step only* (the global default stays off for ordinary screens) and records the
+  decision for the report. `_maybe_resolve_canvas_vision()` runs only after
+  hierarchy grounding finds nothing — it taps the best OCR match by coordinate,
+  bypassing the confidence bands that would otherwise make a vision-only screen
+  un-actionable (a perfect OCR match on a canvas screen scores mid-band because it
+  has no role/hierarchy support). Tap/click only; typing still needs a real
+  element.
+- **Degrades honestly.** When a screen routes to vision but no vision backend is
+  configured, the decision carries a `vision_backend_not_configured` warning and
+  the SDK logs an actionable hint to enable `vision_backend=rapidocr`. Pairs
+  directly with the a71 offline OCR backend.
+- **Config:** `grounding.canvas_auto_route` (on by default). Mobile-only; a no-op
+  on web and on any native screen that exposes text.
+- Coverage: `tests/unit/test_canvas_routing.py` — Flutter/canvas/opaque/native/
+  absent-hierarchy classification, vision-unavailable warning, candidate selection
+  (exact/none/dict inputs), and the SDK hooks (coordinate fallback enabled on
+  Flutter but not native, web no-op, config disable, coordinate tap of the best
+  match, and the not-routed / typing / no-candidate skips).
+
+## 0.0.6a71 — feat(vision): offline on-device OCR grounding (RapidOCR)
+
+Bubblegum can now ground a step from the **pixels on screen, entirely on the
+machine running the test** — no network, no hosted model, no per-call cost. This
+is the "works on any technology" path: screens the accessibility hierarchy
+cannot describe (Flutter and other canvas-drawn UIs, games, custom-rendered
+widgets, DRM-masked views) still resolve a plain-English step, because OCR reads
+the visible text and the existing visual-ref hydrator maps a matched box to a tap
+coordinate. Screenshots never leave the process, so it is the privacy-clean
+default for enterprise apps and the low-latency default on a device farm (only
+the screenshot travels back over the wire; OCR runs on the runner).
+
+- **New `rapidocr` vision backend.** A `RapidOCRVisionProvider` implements the
+  same `VisionProvider.detect_targets` contract as the hosted backends, returning
+  on-screen text candidates (`text`/`label` + axis-aligned `bbox` + score) that
+  flow through the already-shipped `VisionModelResolver` → visual-ref hydrator →
+  coordinate tap. No resolver, adapter, or hydrator change was needed.
+- **Local by construction — one switch to turn on.** `rapidocr` inference runs
+  in-process, so it is exempt from the hosted-vision privacy opt-ins: setting
+  `grounding.vision_backend: rapidocr` + `grounding.enable_vision: true` is
+  enough. `config.vision_enabled` and the SDK privacy/cost gates recognise
+  on-device backends (new `LOCAL_VISION_BACKENDS` set), so no `send_screenshots`
+  / `vision_is_local` / `process_screenshots_for_vision` flags are required.
+- **Optional dependency, fail-safe when absent.** RapidOCR is pulled by the new
+  `localvision` extra (`pip install "bubblegum-ai[localvision]"`). When it isn't
+  installed the provider stays dormant and returns no candidates, so the
+  deterministic + hierarchy tiers are unaffected. Any engine/inference error is
+  swallowed to `[]` — a bad frame never fails a step.
+- Coverage: `tests/unit/test_rapidocr_vision_backend.py` — polygon→bbox
+  conversion, confidence filter, candidate cap, malformed-item skipping, injected
+  tuple/bare engines, empty-image and engine-absent fail-safes, factory
+  selection, and the config/SDK local-gate behaviour (no privacy opt-in needed
+  for `rapidocr`; hosted backends still require it).
+
+## 0.0.6a70 — feat(mobile): selector-less scroll-to-find
+
+A plain-English step that names an off-screen control now resolves without a
+selector. When a mobile grounding attempt finds no candidate on the current
+screen and the screen has a scrollable container, Bubblegum swipes one page,
+re-collects the UI hierarchy, and re-grounds — repeating up to a bounded number
+of times — until the named control comes into view. So `act("Tap Accept")` works
+even when "Accept" starts below the fold, on native, hybrid, Android, or iOS, and
+without naming a locator.
+
+- **Wired the existing bounded scroll-discovery plan into execution.** The
+  adapter already computed a `scroll_discovery` plan (scrollable-container
+  detection + direction) into `app_state` on every context snapshot, but nothing
+  consumed it. `sdk.act()` now calls a new `_maybe_scroll_to_target()` on a
+  grounding miss (after the deterministic DOM fallbacks, before the last-resort
+  fallback selector). It swipes → re-collects → re-grounds, stops early when the
+  fresh plan reports nothing left to scroll, and stamps `scroll_to_find`
+  diagnostics (`attempts`, `direction`, `found_after_scroll`) onto the resolved
+  target for the report.
+- **New `AppiumAdapter.scroll_screen(direction)`** — a screen-relative swipe
+  (from the live window size, with a safe fallback) that needs no element, so it
+  works even when the target isn't in the hierarchy yet. Directions:
+  `down`/`up`/`left`/`right`.
+- **Opt-in and bounded, additive by construction.** Gated by
+  `grounding.scroll_to_find` (on by default) and
+  `grounding.scroll_to_find_max_scrolls` (default 4). Mobile-only and a no-op on
+  web and on screens with nothing to scroll; only ever runs on a grounding miss,
+  so passing steps and existing behavior are untouched.
+- Coverage: `tests/unit/test_mobile_scroll_to_find.py` (fake Appium adapter —
+  resolves-after-N-scrolls, never-found cap, web no-op, no-scrollable-plan skip,
+  config-disabled skip, early stop at bottom, and `scroll_screen` geometry).
+  On-device runs via the env-gated `tests/real_env/android|ios` suites.
+
 ## 0.0.6a69 — feat: generic status assertion + modern summary report + console renderer
 
 Three additions, all framework-agnostic and self-contained.

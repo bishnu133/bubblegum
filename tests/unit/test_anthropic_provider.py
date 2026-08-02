@@ -132,8 +132,14 @@ async def test_complete_json_format_appends_instruction_to_system(monkeypatch):
         await provider.complete("Return JSON", system="Be helpful.", response_format="json")
 
     assert "system" in captured_kwargs
-    assert "JSON" in captured_kwargs["system"]
-    assert "Be helpful." in captured_kwargs["system"]
+    # The system prompt may be a plain string or a list of content blocks
+    # (structured system with cache_control for prompt caching) — flatten both.
+    system = captured_kwargs["system"]
+    system_text = system if isinstance(system, str) else " ".join(
+        block.get("text", "") for block in system if isinstance(block, dict)
+    )
+    assert "JSON" in system_text
+    assert "Be helpful." in system_text
 
 
 @pytest.mark.asyncio
