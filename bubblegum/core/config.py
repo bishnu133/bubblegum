@@ -91,6 +91,15 @@ class GroundingConfig(BaseModel):
     # (only engages when the hierarchy has no usable text), and most effective
     # with a vision backend configured (e.g. vision_backend=rapidocr). On by default.
     canvas_auto_route: bool = True
+    # M-E: compact the mobile UI hierarchy before grounding. A complex app's
+    # page_source is mostly decorative layout containers; pruning to the nodes
+    # that can actually be a target (text / a11y id / interactive / scrollable)
+    # and their ancestors cuts the resolver's parse + graph work — important on a
+    # device farm where latency near the command timeout is a reliability risk.
+    # Parity-safe: every candidate-producing node is kept. Scoped to grounding
+    # only (detectors keep the full hierarchy). Mobile-only; on by default.
+    mobile_hierarchy_compaction: bool = True
+    mobile_hierarchy_max_nodes: int = 1500
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
     # AI execution mode (Task #8):
     #   live   — call models as needed (default)

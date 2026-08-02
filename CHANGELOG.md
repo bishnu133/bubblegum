@@ -1,5 +1,38 @@
 # Unreleased
 
+## 0.0.6a75 — perf(mobile): hierarchy compaction for grounding
+
+A complex app's `page_source` is mostly decorative layout containers — thousands
+of nodes with no text, no id, and nothing to interact with. The hierarchy
+resolver parsed and built a graph over *every* node on every grounding pass (and
+again on each scroll re-ground), so that bulk was pure latency — and on a device
+farm, latency near the command timeout is a reliability risk. Bubblegum now
+prunes the hierarchy to the nodes that can actually be a target before grounding.
+
+- **New `core.mobile.hierarchy_compaction` (pure, unit-tested).**
+  `compact_hierarchy_xml()` keeps every node carrying text / a11y description /
+  id / value, plus interactive and scrollable nodes, plus their ancestors — and
+  drops decorative textless subtrees and invisible textless nodes. Returns the
+  compacted XML + stats (`original_nodes`, `kept_nodes`, `dropped_nodes`,
+  `compacted`, `truncated`). On a 500-container screen with one real control it
+  reduces to 2 nodes.
+- **Parity-safe by construction.** Every candidate-producing node is kept, and
+  the resolver's locators are global XPaths (`//tag[@text='…']`) that don't depend
+  on the pruned structure — so the *same* candidates resolve, just faster. A
+  resolver test asserts byte-identical candidate refs with compaction on vs off,
+  including a target buried under 300 decorative nodes.
+- **Scoped to grounding only.** Applied inside `AppiumHierarchyResolver`; the full
+  `page_source` is left untouched for the readiness / system-dialog / framework
+  detectors, which legitimately rely on nodes (progress bars, dialog containers)
+  that compaction drops.
+- **Config:** `grounding.mobile_hierarchy_compaction` (on by default) and
+  `grounding.mobile_hierarchy_max_nodes` (default 1500; advisory — no groundable
+  node is ever dropped to meet the cap). Threaded to the resolver via context.
+  Mobile-only; no web change.
+- Coverage: `tests/unit/test_mobile_hierarchy_compaction.py` — subtree pruning,
+  ancestor retention, interactive/invisible handling, empty/unparseable safety,
+  large-tree reduction, and resolver candidate parity (on vs off).
+
 ## 0.0.6a74 — feat(mobile): readiness & resilience (ANR / crash / session-loss / spinners)
 
 Real apps aren't always ready the instant a screen appears, and long device-farm

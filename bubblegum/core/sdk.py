@@ -1968,6 +1968,13 @@ def _merge_context(intent: StepIntent, ui_ctx) -> None:
     intent.context.setdefault(
         "coordinate_click_fallback", _config.grounding.coordinate_click_fallback
     )
+    # M-E: mobile hierarchy compaction knobs, read by AppiumHierarchyResolver.
+    intent.context.setdefault(
+        "config_mobile_hierarchy_compaction", _config.grounding.mobile_hierarchy_compaction
+    )
+    intent.context.setdefault(
+        "config_mobile_hierarchy_max_nodes", _config.grounding.mobile_hierarchy_max_nodes
+    )
 
 
 # Resolution failures worth retrying: the element may simply not be in the DOM

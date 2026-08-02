@@ -68,6 +68,7 @@ from bubblegum.core.schemas import ResolvedTarget, StepIntent
 from bubblegum.core.grounding.signals import make_signals
 from bubblegum.core.mobile.repeated_structure import disambiguate_within_repeated_region
 from bubblegum.core.mobile.icon_detection import resolve_icon_target_hint
+from bubblegum.core.mobile.hierarchy_compaction import compact_hierarchy_xml
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,24 @@ class AppiumHierarchyResolver(Resolver):
         if not hierarchy_xml:
             logger.debug("AppiumHierarchyResolver: no hierarchy_xml in context")
             return []
+
+        # M-E: compact the hierarchy to its groundable nodes before parsing +
+        # graph-building. Parity-safe (every candidate-producing node is kept)
+        # and scoped to grounding, so it only reduces work — the same candidates
+        # resolve. Detectors still see the full page_source upstream.
+        if intent.context.get("config_mobile_hierarchy_compaction", False):
+            try:
+                max_nodes = int(intent.context.get("config_mobile_hierarchy_max_nodes", 1500) or 1500)
+            except (TypeError, ValueError):
+                max_nodes = 1500
+            compacted_xml, compaction_stats = compact_hierarchy_xml(hierarchy_xml, max_nodes=max_nodes)
+            if compaction_stats.get("compacted"):
+                logger.debug(
+                    "AppiumHierarchyResolver: compacted hierarchy %d -> %d nodes",
+                    compaction_stats.get("original_nodes", 0),
+                    compaction_stats.get("kept_nodes", 0),
+                )
+                hierarchy_xml = compacted_xml
 
         instruction_lower = intent.match_phrase.lower().strip()
 
