@@ -64,6 +64,7 @@ from bubblegum.core.mobile.canvas_routing import (
     ocr_text_present,
     select_canvas_vision_candidate,
 )
+from bubblegum.core.mobile.readiness import readiness_failure_message
 from bubblegum.core.coordinates import bbox_center, coordinate_ref
 from bubblegum.core.schemas import (
     ActionPlan,
@@ -587,6 +588,10 @@ async def act(
     # M-C: on a self-drawn surface the hierarchy can't describe (Flutter, games,
     # raw GL/Surface views), route this screen to vision/OCR + a tap coordinate.
     _maybe_route_canvas(intent, channel)
+    # M-D: bail out with a clear message if the app crashed / isn't responding.
+    blocked = _maybe_blocked_by_mobile_health(intent, channel, instruction, t0)
+    if blocked is not None:
+        return blocked
 
     # 3. Ground.
     # Table / link DOM actions first: "click the <col> value in the <row> row"
@@ -904,6 +909,10 @@ async def verify(
     # M-C2: on a canvas/Flutter screen, verify text by OCR instead of the
     # (text-less) hierarchy — and don't hard-fail at grounding below.
     _maybe_route_canvas(intent, channel)
+    # M-D: fail fast with a clear message when the app crashed / isn't responding.
+    blocked = _maybe_blocked_by_mobile_health(intent, channel, instruction, t0)
+    if blocked is not None:
+        return blocked
     canvas_verify = _maybe_verify_canvas_text(intent, channel, instruction, kwargs, t0)
     if canvas_verify is not None:
         return canvas_verify
@@ -1590,6 +1599,10 @@ async def extract(
     # M-C2: on a canvas/Flutter screen, extract text by OCR instead of the
     # (text-less) hierarchy, before falling through to element grounding.
     _maybe_route_canvas(intent, channel)
+    # M-D: fail fast with a clear message when the app crashed / isn't responding.
+    blocked = _maybe_blocked_by_mobile_health(intent, channel, instruction, t0)
+    if blocked is not None:
+        return blocked
     canvas_extract = _maybe_extract_canvas_text(intent, channel, instruction, t0)
     if canvas_extract is not None:
         return canvas_extract
@@ -2780,6 +2793,52 @@ def _maybe_resolve_canvas_vision(intent: StepIntent, channel: str) -> ResolvedTa
         confidence=round(min(0.95, float(best["score"])), 4),
         resolver_name="canvas_vision",
         metadata=metadata,
+    )
+
+
+def _maybe_blocked_by_mobile_health(
+    intent: StepIntent, channel: str, instruction: str, t0: float
+) -> "StepResult | None":
+    """M-D: fail fast with a clear message when the app is wedged.
+
+    After context collection the adapter records a ``readiness`` verdict in
+    ``app_state``. When a hard blocker is present — the app crashed (a 'has
+    stopped' dialog) or isn't responding (an ANR dialog) — grounding would only
+    fail cryptically, so return an actionable failed ``StepResult`` instead.
+    A live spinner is *not* a hard blocker here (the stability wait already
+    handles it); only ANR/crash short-circuit. Mobile-only; None otherwise.
+    """
+    if channel != "mobile":
+        return None
+    app_state = intent.context.get("app_state")
+    readiness = app_state.get("readiness") if isinstance(app_state, dict) else None
+    if not isinstance(readiness, dict):
+        return None
+    blocker = readiness.get("blocker")
+    if blocker not in ("anr", "crash"):
+        return None
+
+    message = readiness_failure_message(readiness, instruction=instruction)
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref="screen",
+        confidence=0.0,
+        resolver_name="readiness",
+        metadata={
+            "readiness": {
+                "blocker": blocker,
+                "evidence": list(readiness.get("evidence") or []),
+            }
+        },
+    )
+    return StepResult(
+        status="failed",
+        action=instruction,
+        target=target,
+        confidence=0.0,
+        duration_ms=duration_ms,
+        traces=[],
+        error=ErrorInfo(error_type="AppNotReadyError", message=message),
     )
 
 

@@ -46,6 +46,10 @@ from bubblegum.core.mobile.ui_framework_detector import detect_ui_framework
 from bubblegum.core.mobile.system_dialog import detect_system_dialog
 from bubblegum.core.mobile.system_dialog_guardrails import evaluate_system_dialog_guardrails
 from bubblegum.core.mobile.scroll_discovery import build_mobile_scroll_discovery_plan
+from bubblegum.core.mobile.readiness import (
+    classify_driver_error,
+    detect_mobile_readiness,
+)
 from bubblegum.core.mobile.system_dialog_actions import execute_system_dialog_action, resolve_system_dialog_action_candidate
 from bubblegum.core.mobile.webview_diagnostics import build_webview_switch_diagnostics
 from bubblegum.core.mobile.webview_guardrails import evaluate_webview_switch_guardrails
@@ -125,6 +129,8 @@ def _sanitize_retry_reason(exc: Exception) -> str:
         return "element_not_interactable"
     if "timeout" in lower:
         return "timeout"
+    if classify_driver_error(exc) == "session_lost":
+        return "session_lost"
     return "non_transient_error"
 
 
@@ -240,6 +246,7 @@ class AppiumAdapter(BaseAdapter):
         last_dump: str | None = None
         last_change = start
         polls = 0
+        last_blocker = "none"
 
         while time.monotonic() < deadline:
             try:
@@ -249,15 +256,41 @@ class AppiumAdapter(BaseAdapter):
                 return diag
             polls += 1
             now = time.monotonic()
+
+            # M-D: readiness gate. A crash/ANR dialog means waiting is pointless —
+            # stop now so the SDK can fail the step with a clear message. A live
+            # progress indicator means "still loading" — keep waiting (bounded by
+            # timeout) even once the hierarchy stops changing.
+            readiness = detect_mobile_readiness(hierarchy_xml=dump, platform=self.platform)
+            last_blocker = readiness["blocker"]
+            if last_blocker in ("anr", "crash"):
+                diag.update({
+                    "outcome": last_blocker,
+                    "blocker": last_blocker,
+                    "polls": polls,
+                    "waited_ms": int((now - start) * 1000),
+                })
+                return diag
+
             if dump != last_dump:
                 last_dump = dump
                 last_change = now
-            elif (now - last_change) * 1000.0 >= quiet_ms:
-                diag.update({"outcome": "stable", "polls": polls, "waited_ms": int((now - start) * 1000)})
+            elif (now - last_change) * 1000.0 >= quiet_ms and not readiness["progress_active"]:
+                diag.update({
+                    "outcome": "stable",
+                    "blocker": "none",
+                    "polls": polls,
+                    "waited_ms": int((now - start) * 1000),
+                })
                 return diag
             await asyncio.sleep(poll_s)
 
-        diag.update({"outcome": "timeout", "polls": polls, "waited_ms": int((time.monotonic() - start) * 1000)})
+        diag.update({
+            "outcome": "timeout",
+            "blocker": last_blocker,
+            "polls": polls,
+            "waited_ms": int((time.monotonic() - start) * 1000),
+        })
         return diag
 
     async def collect_context(self, request: ContextRequest) -> UIContext:
@@ -349,6 +382,14 @@ class AppiumAdapter(BaseAdapter):
             platform=self.platform,
             app_state=app_state,
             max_scrolls=3,
+        )
+        # M-D: is the screen ready to act on, or is a spinner / ANR / crash
+        # dialog blocking it? Surfaced so the SDK can fail a step with a clear
+        # message instead of a cryptic grounding error.
+        app_state["readiness"] = detect_mobile_readiness(
+            hierarchy_xml=hierarchy_xml,
+            platform=self.platform,
+            capabilities=self._safe_capabilities(),
         )
 
         return UIContext(

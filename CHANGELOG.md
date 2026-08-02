@@ -1,5 +1,41 @@
 # Unreleased
 
+## 0.0.6a74 — feat(mobile): readiness & resilience (ANR / crash / session-loss / spinners)
+
+Real apps aren't always ready the instant a screen appears, and long device-farm
+runs can lose the Appium session. Bubblegum now reads these conditions and reacts
+sensibly instead of failing with a cryptic grounding error: it waits out
+spinners, fails fast with an actionable message when the app crashes or stops
+responding, and labels a lost session distinctly.
+
+- **New `core.mobile.readiness` (pure, unit-tested).** `detect_mobile_readiness()`
+  classifies the current screen from the hierarchy — a live progress/loading
+  indicator (Android ProgressBar, iOS ActivityIndicator, Compose/Flutter
+  spinners), an ANR ("isn't responding") dialog, or a crash ("has stopped")
+  dialog — with hard-blocker precedence (crash > anr > progress).
+  `classify_driver_error()` sorts a driver exception into `session_lost` /
+  `transient` / `other`. Signatures are deliberately specific (e.g.
+  "unfortunately" alone is **not** treated as a crash) to avoid false positives.
+- **Progress-aware, ANR/crash-aware stability wait.** `AppiumAdapter.wait_until_stable`
+  now keeps waiting (bounded by `stability_timeout_ms`) while a spinner is up even
+  once the hierarchy stops changing, and returns early with an `anr`/`crash`
+  outcome when a blocking dialog appears — no point waiting on a wedged app. The
+  verdict is also recorded in `app_state["readiness"]` on every context snapshot.
+- **Fail fast with a clear message.** A new SDK health gate runs after context
+  collection in `act()`, `verify()`, and `extract()`: on a crash/ANR it returns a
+  failed `StepResult` with an `AppNotReadyError` and an actionable message
+  ("relaunch the app / restart the session", "wait for it to recover") instead of
+  letting the step fail obscurely at grounding. A spinner is not a hard blocker
+  here — the stability wait already handles it.
+- **Lost sessions are labeled.** The adapter's retry reason now reports
+  `session_lost` for invalid/terminated-session errors (which are never retried in
+  place), so reports distinguish a dead session from a transient blip.
+- Coverage: `tests/unit/test_mobile_readiness.py` — readiness classification and
+  precedence, the "unfortunately is not a crash" guard, driver-error
+  classification + retry-reason labeling, the progress-aware / ANR-early-return /
+  quiet-stable `wait_until_stable` (fake driver), and the SDK health gate
+  (crash/ANR fail, ready/progress/web pass-through).
+
 ## 0.0.6a73 — feat(mobile): OCR verify & extract on canvas/Flutter screens
 
 Completes the canvas story for assertions and reads. `verify('the screen shows
