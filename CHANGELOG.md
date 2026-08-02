@@ -1,5 +1,38 @@
 # Unreleased
 
+## 0.0.6a70 — feat(mobile): selector-less scroll-to-find
+
+A plain-English step that names an off-screen control now resolves without a
+selector. When a mobile grounding attempt finds no candidate on the current
+screen and the screen has a scrollable container, Bubblegum swipes one page,
+re-collects the UI hierarchy, and re-grounds — repeating up to a bounded number
+of times — until the named control comes into view. So `act("Tap Accept")` works
+even when "Accept" starts below the fold, on native, hybrid, Android, or iOS, and
+without naming a locator.
+
+- **Wired the existing bounded scroll-discovery plan into execution.** The
+  adapter already computed a `scroll_discovery` plan (scrollable-container
+  detection + direction) into `app_state` on every context snapshot, but nothing
+  consumed it. `sdk.act()` now calls a new `_maybe_scroll_to_target()` on a
+  grounding miss (after the deterministic DOM fallbacks, before the last-resort
+  fallback selector). It swipes → re-collects → re-grounds, stops early when the
+  fresh plan reports nothing left to scroll, and stamps `scroll_to_find`
+  diagnostics (`attempts`, `direction`, `found_after_scroll`) onto the resolved
+  target for the report.
+- **New `AppiumAdapter.scroll_screen(direction)`** — a screen-relative swipe
+  (from the live window size, with a safe fallback) that needs no element, so it
+  works even when the target isn't in the hierarchy yet. Directions:
+  `down`/`up`/`left`/`right`.
+- **Opt-in and bounded, additive by construction.** Gated by
+  `grounding.scroll_to_find` (on by default) and
+  `grounding.scroll_to_find_max_scrolls` (default 4). Mobile-only and a no-op on
+  web and on screens with nothing to scroll; only ever runs on a grounding miss,
+  so passing steps and existing behavior are untouched.
+- Coverage: `tests/unit/test_mobile_scroll_to_find.py` (fake Appium adapter —
+  resolves-after-N-scrolls, never-found cap, web no-op, no-scrollable-plan skip,
+  config-disabled skip, early stop at bottom, and `scroll_screen` geometry).
+  On-device runs via the env-gated `tests/real_env/android|ios` suites.
+
 ## 0.0.6a69 — feat: generic status assertion + modern summary report + console renderer
 
 Three additions, all framework-agnostic and self-contained.

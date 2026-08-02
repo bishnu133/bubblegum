@@ -1114,6 +1114,40 @@ class AppiumAdapter(BaseAdapter):
         except Exception as exc:
             logger.warning("swipe_from_element failed direction=%s: %s", direction, exc)
 
+    async def scroll_screen(self, direction: str = "down") -> dict:
+        """Scroll the whole screen one page in ``direction`` (M-A).
+
+        A screen-relative swipe used by selector-less scroll-to-find: it does
+        not need an element, so it works even when the target isn't in the
+        hierarchy yet. ``direction`` is the direction content moves toward the
+        viewer's intent — ``"down"`` reveals content further down the page
+        (a swipe upward). Uses the live window size so it adapts to any device;
+        falls back to a common phone size if the size query fails. Best-effort:
+        returns a small diagnostic dict and lets driver errors propagate to the
+        caller so a failed swipe ends the scroll loop rather than hanging.
+        """
+        try:
+            size = self._driver.get_window_size() or {}
+            width = int(size.get("width") or 0) or 1080
+            height = int(size.get("height") or 0) or 1920
+        except Exception:
+            width, height = 1080, 1920
+
+        cx, cy = width // 2, height // 2
+        direction = str(direction or "down").strip().lower()
+        if direction == "up":
+            start, end = (cx, int(height * 0.3)), (cx, int(height * 0.7))
+        elif direction == "left":
+            start, end = (int(width * 0.7), cy), (int(width * 0.3), cy)
+        elif direction == "right":
+            start, end = (int(width * 0.3), cy), (int(width * 0.7), cy)
+        else:  # "down" (default): reveal content below by swiping up
+            direction = "down"
+            start, end = (cx, int(height * 0.7)), (cx, int(height * 0.3))
+
+        self._driver.swipe(start[0], start[1], end[0], end[1], 400)
+        return {"direction": direction, "from": list(start), "to": list(end)}
+
     # ------------------------------------------------------------------
     # Mobile gesture vocabulary (M1)
     # ------------------------------------------------------------------

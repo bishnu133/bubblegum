@@ -642,6 +642,11 @@ async def act(
                 fallback = await _maybe_resolve_clickable(adapter, channel, instruction, intent)
             if fallback is None:
                 fallback = await _maybe_resolve_input(adapter, channel, intent)
+            # M-A: mobile selector-less scroll-to-find. When the target is simply
+            # off-screen, swipe and re-ground before giving up. Mobile-only,
+            # opt-in, bounded; a no-op on web and on screens with nothing to scroll.
+            if fallback is None:
+                fallback = await _maybe_scroll_to_target(adapter, channel, intent)
             # Last resort: the tester-provided fallback selector. Only reached
             # once every natural + AI tier AND the DOM fallbacks above have
             # failed — a deterministic safety net so one DOM change can't
@@ -2564,6 +2569,89 @@ async def _ground_with_wait(adapter, intent: StepIntent):
                 "Re-grounding '%s' after no/low-confidence match (attempt %d/%d)",
                 intent.instruction, attempt, retries,
             )
+
+
+async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
+    """M-A: selector-less scroll-to-find for the mobile channel.
+
+    Reached only after grounding found no candidate on the current screen. When
+    the screen has a scrollable container (per the ``scroll_discovery`` plan the
+    adapter computed into ``app_state``), swipe one page in the plan's direction,
+    re-collect context, and re-ground — up to ``scroll_to_find_max_scrolls``
+    times — so a control named in plain English ("Tap Accept") is found even when
+    it starts below the fold. No selector is involved: the same natural-language
+    step just works.
+
+    Returns the resolved ``ResolvedTarget`` (annotated with ``scroll_to_find``
+    diagnostics) once the target appears, or ``None`` when it stays unresolved,
+    the channel isn't mobile, the feature is off, or the screen has nothing to
+    scroll. Bounded, opt-in via ``grounding.scroll_to_find``, and a no-op on web.
+    """
+    if channel != "mobile":
+        return None
+    if not getattr(_config.grounding, "scroll_to_find", False):
+        return None
+    if intent.action_type not in ("tap", "click", "type", "select", "verify", "extract"):
+        return None
+    scroll = getattr(adapter, "scroll_screen", None)
+    if not callable(scroll):
+        return None
+
+    app_state = intent.context.get("app_state")
+    plan = app_state.get("scroll_discovery") if isinstance(app_state, dict) else None
+    if not isinstance(plan, dict) or str(plan.get("status")) != "candidate" or plan.get("scroll_needed") is not True:
+        return None
+
+    direction = str(plan.get("scroll_direction") or "down").lower()
+    try:
+        max_scrolls = max(1, min(int(getattr(_config.grounding, "scroll_to_find_max_scrolls", 4)), 10))
+    except (TypeError, ValueError):
+        max_scrolls = 4
+
+    attempts = 0
+    for i in range(1, max_scrolls + 1):
+        try:
+            await scroll(direction)
+        except Exception as exc:
+            logger.debug("scroll_to_find: swipe failed on attempt %d: %s", i, exc)
+            break
+        attempts = i
+
+        # Re-snapshot so the next grounding pass sees the newly revealed nodes.
+        ctx_request = context_request()
+        ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
+        try:
+            ui_ctx = await adapter.collect_context(ctx_request)
+        except Exception as exc:
+            logger.debug("scroll_to_find: context collect failed on attempt %d: %s", i, exc)
+            break
+        _merge_context(intent, ui_ctx)
+        _maybe_inject_vision_candidates(intent)
+
+        try:
+            target, _traces = await _ground_with_wait(adapter, intent)
+        except BubblegumError:
+            # Still not found. Stop early only if the fresh plan says there is
+            # nothing left to scroll (bottom reached / no scrollable container).
+            fresh_state = intent.context.get("app_state")
+            fresh_plan = fresh_state.get("scroll_discovery") if isinstance(fresh_state, dict) else None
+            if isinstance(fresh_plan, dict) and str(fresh_plan.get("status")) == "unsupported":
+                break
+            continue
+
+        meta = dict(target.metadata)
+        meta["scroll_to_find"] = {
+            "attempted": True,
+            "attempts": attempts,
+            "direction": direction,
+            "max_scrolls": max_scrolls,
+            "found_after_scroll": True,
+        }
+        logger.debug("scroll_to_find: resolved '%s' after %d scroll(s)", intent.instruction, attempts)
+        return target.model_copy(update={"metadata": meta})
+
+    logger.debug("scroll_to_find: '%s' not found after %d scroll(s)", intent.instruction, attempts)
+    return None
 
 
 def _vision_privacy_ok() -> bool:

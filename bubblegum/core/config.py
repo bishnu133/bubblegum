@@ -64,6 +64,14 @@ class GroundingConfig(BaseModel):
     # clicking the bounding-box center coordinate. Opt-in — a blind coordinate
     # click is riskier than an element click, so it is OFF by default.
     coordinate_click_fallback: bool = False
+    # M-A: selector-less scroll-to-find (mobile). When a mobile grounding attempt
+    # finds no candidate on the current screen but the screen has a scrollable
+    # container (per the scroll_discovery plan), swipe and re-ground up to
+    # scroll_to_find_max_scrolls times so an off-screen control named in plain
+    # English ("Tap Accept") is discovered without a selector. Mobile-only and a
+    # no-op on web; only runs on a grounding miss, and is bounded. On by default.
+    scroll_to_find: bool = True
+    scroll_to_find_max_scrolls: int = 4
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
     # AI execution mode (Task #8):
     #   live   — call models as needed (default)
