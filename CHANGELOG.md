@@ -1,5 +1,43 @@
 # Unreleased
 
+## 0.0.6a72 — feat(mobile): Flutter/canvas auto-routing to vision
+
+Bubblegum now recognises a self-drawn screen and grounds it by pixels
+automatically — the tester never has to know what technology an app was built
+with. On a Flutter screen (or a game/engine, a raw GL/Surface view, or any screen
+whose accessibility hierarchy exposes no usable text), a plain-English
+`act("Tap Play")` resolves by OCR/vision and taps the matched text's coordinate,
+while ordinary native screens keep resolving precisely from the hierarchy exactly
+as before.
+
+- **New `core.mobile.canvas_routing`.** `evaluate_canvas_routing()` classifies the
+  current screen from the hierarchy alone — Flutter (via the UI-framework
+  detector), a canvas/engine surface class (FlutterView / GLSurfaceView /
+  TextureView / UnityPlayer / …), a hierarchy with nodes but no text, or no
+  hierarchy at all — and decides whether to route to vision.
+  `select_canvas_vision_candidate()` picks the on-screen OCR/vision candidate
+  whose text best matches the step's target. Both are pure and unit-tested.
+- **Two SDK hooks, both additive.** `_maybe_route_canvas()` runs after context
+  collection: on a routed screen it turns on the coordinate-tap fallback *for that
+  step only* (the global default stays off for ordinary screens) and records the
+  decision for the report. `_maybe_resolve_canvas_vision()` runs only after
+  hierarchy grounding finds nothing — it taps the best OCR match by coordinate,
+  bypassing the confidence bands that would otherwise make a vision-only screen
+  un-actionable (a perfect OCR match on a canvas screen scores mid-band because it
+  has no role/hierarchy support). Tap/click only; typing still needs a real
+  element.
+- **Degrades honestly.** When a screen routes to vision but no vision backend is
+  configured, the decision carries a `vision_backend_not_configured` warning and
+  the SDK logs an actionable hint to enable `vision_backend=rapidocr`. Pairs
+  directly with the a71 offline OCR backend.
+- **Config:** `grounding.canvas_auto_route` (on by default). Mobile-only; a no-op
+  on web and on any native screen that exposes text.
+- Coverage: `tests/unit/test_canvas_routing.py` — Flutter/canvas/opaque/native/
+  absent-hierarchy classification, vision-unavailable warning, candidate selection
+  (exact/none/dict inputs), and the SDK hooks (coordinate fallback enabled on
+  Flutter but not native, web no-op, config disable, coordinate tap of the best
+  match, and the not-routed / typing / no-candidate skips).
+
 ## 0.0.6a71 — feat(vision): offline on-device OCR grounding (RapidOCR)
 
 Bubblegum can now ground a step from the **pixels on screen, entirely on the

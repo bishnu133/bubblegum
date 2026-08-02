@@ -59,6 +59,11 @@ from bubblegum.core.parser import decompose, extract_expected, infer_action_type
 from bubblegum.core.planner import build_options, build_validation_plan, context_request, make_intent
 from bubblegum.core.recovery import remove_explicit_selector, used_explicit_selector
 from bubblegum.core.mobile.memory_signature import build_mobile_memory_signature
+from bubblegum.core.mobile.canvas_routing import (
+    evaluate_canvas_routing,
+    select_canvas_vision_candidate,
+)
+from bubblegum.core.coordinates import bbox_center, coordinate_ref
 from bubblegum.core.schemas import (
     ActionPlan,
     ArtifactRef,
@@ -578,6 +583,9 @@ async def act(
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
     _maybe_inject_vision_candidates(intent)
+    # M-C: on a self-drawn surface the hierarchy can't describe (Flutter, games,
+    # raw GL/Surface views), route this screen to vision/OCR + a tap coordinate.
+    _maybe_route_canvas(intent, channel)
 
     # 3. Ground.
     # Table / link DOM actions first: "click the <col> value in the <row> row"
@@ -642,6 +650,11 @@ async def act(
                 fallback = await _maybe_resolve_clickable(adapter, channel, instruction, intent)
             if fallback is None:
                 fallback = await _maybe_resolve_input(adapter, channel, intent)
+            # M-C: on a canvas/Flutter screen the hierarchy has no element to pin,
+            # so tap the best on-screen OCR/vision match by its coordinate. Only
+            # engages when this screen was routed to vision; a no-op otherwise.
+            if fallback is None:
+                fallback = _maybe_resolve_canvas_vision(intent, channel)
             # M-A: mobile selector-less scroll-to-find. When the target is simply
             # off-screen, swipe and re-ground before giving up. Mobile-only,
             # opt-in, bounded; a no-op on web and on screens with nothing to scroll.
@@ -2652,6 +2665,109 @@ async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
 
     logger.debug("scroll_to_find: '%s' not found after %d scroll(s)", intent.instruction, attempts)
     return None
+
+
+def _maybe_route_canvas(intent: StepIntent, channel: str) -> dict | None:
+    """M-C: decide whether this mobile screen is a self-drawn/canvas surface.
+
+    Runs after context collection. When the screen is Flutter / a game engine /
+    a raw GL-Surface view (the hierarchy exposes no grounding text), it stores a
+    routing decision on ``intent.context["canvas_routing"]`` and turns on the
+    coordinate-tap fallback for *this step only* — so a vision/OCR hit can be
+    tapped by coordinate. A no-op on web, on native screens with real text, and
+    when disabled. Returns the decision dict (or None when not applicable).
+    """
+    if channel != "mobile":
+        return None
+    if not getattr(_config.grounding, "canvas_auto_route", True):
+        return None
+
+    app_state = intent.context.get("app_state")
+    ui_framework = app_state.get("ui_framework") if isinstance(app_state, dict) else None
+    decision = evaluate_canvas_routing(
+        hierarchy_xml=intent.context.get("hierarchy_xml"),
+        ui_framework=ui_framework if isinstance(ui_framework, dict) else None,
+        vision_available=_vision_provider is not None,
+        platform=intent.platform,
+    )
+    intent.context["canvas_routing"] = decision
+    if decision.get("route_to_vision"):
+        # Precise where possible, coordinate-tap only where the hierarchy can't
+        # help: enable the fallback for this screen regardless of the global
+        # default (which stays off for ordinary screens).
+        intent.context["coordinate_click_fallback"] = True
+        if decision.get("warnings"):
+            logger.info(
+                "Canvas routing (%s): screen routed to vision but %s — configure a "
+                "vision backend (e.g. grounding.vision_backend=rapidocr) to ground it.",
+                decision.get("reason"),
+                ",".join(decision["warnings"]),
+            )
+        else:
+            logger.debug("Canvas routing: screen routed to vision (%s)", decision.get("reason"))
+    return decision
+
+
+def _maybe_resolve_canvas_vision(intent: StepIntent, channel: str) -> ResolvedTarget | None:
+    """M-C: tap the best on-screen OCR/vision match on a canvas/Flutter screen.
+
+    Reached only after hierarchy grounding found nothing AND this screen was
+    routed to vision by ``_maybe_route_canvas``. Picks the injected vision/OCR
+    candidate whose text best matches the step's target and returns a
+    coordinate ``ResolvedTarget`` (``point://x,y`` + structured point) that the
+    adapter taps directly — bypassing the confidence bands that make a
+    vision-only screen otherwise un-actionable. Tap/click only (typing needs a
+    real element). Returns None when not routed, no candidates, or no match.
+    """
+    if channel != "mobile":
+        return None
+    decision = intent.context.get("canvas_routing")
+    if not isinstance(decision, dict) or not decision.get("route_to_vision"):
+        return None
+    if intent.action_type not in ("tap", "click"):
+        return None
+    candidates = intent.context.get("vision_candidates")
+    if not candidates:
+        return None
+
+    best = select_canvas_vision_candidate(
+        target_phrase=intent.target_phrase,
+        instruction=intent.instruction,
+        vision_candidates=candidates,
+    )
+    if best is None:
+        return None
+    center = bbox_center(best["bbox"])
+    if center is None:
+        return None
+    x, y = center
+
+    safe_decision = {
+        "surface_type": decision.get("surface_type", "unknown"),
+        "reason": decision.get("reason", "unknown"),
+        "framework": decision.get("framework", "unknown"),
+    }
+    metadata = {
+        "source": "canvas_vision",
+        "matched_text": best["text"],
+        "bbox": best["bbox"],
+        "coordinate_point": [x, y],
+        "coordinate_click": True,
+        "canvas_routing": safe_decision,
+        "match_score": best["score"],
+        "vision_confidence": best["confidence"],
+    }
+    logger.debug(
+        "canvas_vision: tapping %r at (%d, %d) on %s surface",
+        best["text"], x, y, safe_decision["surface_type"],
+    )
+    return ResolvedTarget(
+        ref=coordinate_ref(x, y),
+        point=[x, y],
+        confidence=round(min(0.95, float(best["score"])), 4),
+        resolver_name="canvas_vision",
+        metadata=metadata,
+    )
 
 
 def _vision_backend_is_local() -> bool:

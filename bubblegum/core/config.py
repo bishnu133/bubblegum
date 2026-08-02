@@ -82,6 +82,15 @@ class GroundingConfig(BaseModel):
     # no-op on web; only runs on a grounding miss, and is bounded. On by default.
     scroll_to_find: bool = True
     scroll_to_find_max_scrolls: int = 4
+    # M-C: Flutter/canvas auto-routing (mobile). When the current screen is a
+    # self-drawn surface the accessibility hierarchy can't describe (Flutter,
+    # games/engines, raw GL/Surface views), automatically ground it by vision/OCR
+    # and a tap coordinate instead of by the hierarchy — no per-app config. Turns
+    # on the coordinate-tap fallback for that screen only, and taps the best
+    # on-screen OCR match when hierarchy grounding is empty. Mobile-only, additive
+    # (only engages when the hierarchy has no usable text), and most effective
+    # with a vision backend configured (e.g. vision_backend=rapidocr). On by default.
+    canvas_auto_route: bool = True
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
     # AI execution mode (Task #8):
     #   live   — call models as needed (default)
