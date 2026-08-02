@@ -61,6 +61,7 @@ from bubblegum.core.recovery import remove_explicit_selector, used_explicit_sele
 from bubblegum.core.mobile.memory_signature import build_mobile_memory_signature
 from bubblegum.core.mobile.canvas_routing import (
     evaluate_canvas_routing,
+    ocr_text_present,
     select_canvas_vision_candidate,
 )
 from bubblegum.core.coordinates import bbox_center, coordinate_ref
@@ -900,6 +901,12 @@ async def verify(
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
     _maybe_inject_vision_candidates(intent)
+    # M-C2: on a canvas/Flutter screen, verify text by OCR instead of the
+    # (text-less) hierarchy — and don't hard-fail at grounding below.
+    _maybe_route_canvas(intent, channel)
+    canvas_verify = _maybe_verify_canvas_text(intent, channel, instruction, kwargs, t0)
+    if canvas_verify is not None:
+        return canvas_verify
 
     try:
         target, traces = await _ground_with_wait(adapter, intent)
@@ -1580,6 +1587,12 @@ async def extract(
     ui_ctx = await adapter.collect_context(ctx_request)
     _merge_context(intent, ui_ctx)
     _maybe_inject_vision_candidates(intent)
+    # M-C2: on a canvas/Flutter screen, extract text by OCR instead of the
+    # (text-less) hierarchy, before falling through to element grounding.
+    _maybe_route_canvas(intent, channel)
+    canvas_extract = _maybe_extract_canvas_text(intent, channel, instruction, t0)
+    if canvas_extract is not None:
+        return canvas_extract
 
     # Ground — find the target element
     try:
@@ -2767,6 +2780,129 @@ def _maybe_resolve_canvas_vision(intent: StepIntent, channel: str) -> ResolvedTa
         confidence=round(min(0.95, float(best["score"])), 4),
         resolver_name="canvas_vision",
         metadata=metadata,
+    )
+
+
+def _maybe_verify_canvas_text(
+    intent: StepIntent, channel: str, instruction: str, kwargs: dict, t0: float
+) -> "StepResult | None":
+    """M-C2: verify a ``text_visible`` assertion by OCR on a canvas/Flutter screen.
+
+    Reached before hierarchy grounding in ``verify()``. When this screen was
+    routed to vision (``_maybe_route_canvas``), the accessibility hierarchy has no
+    text to check, so the expected phrase is verified against the on-screen
+    OCR/vision candidates instead. Returns a finished ``StepResult`` (so the
+    caller returns immediately and never hard-fails at grounding), or ``None`` to
+    let the normal path run. Only handles the default ``text_visible`` assertion;
+    specialized assertions were already dispatched earlier.
+    """
+    if channel != "mobile":
+        return None
+    decision = intent.context.get("canvas_routing")
+    if not isinstance(decision, dict) or not decision.get("route_to_vision"):
+        return None
+    if kwargs.get("assertion_type", "text_visible") != "text_visible":
+        return None
+
+    explicit = kwargs.get("expected_value")
+    quoted = _quoted_segments(instruction) if explicit is None else []
+    if len(quoted) >= 2:
+        expected_list = quoted
+    else:
+        expected_list = [explicit if explicit is not None else (quoted[0] if quoted else extract_expected(instruction))]
+    expected_list = [e for e in expected_list if isinstance(e, str) and e.strip()]
+    if not expected_list:
+        return None
+
+    candidates = intent.context.get("vision_candidates") or []
+    surface = str(decision.get("surface_type", "unknown"))
+    checks = [(e, ocr_text_present(e, candidates)) for e in expected_list]
+    passed = all(c["found"] for _, c in checks)
+    matched = "; ".join(
+        f"{e!r}={'ok' if c['found'] else 'not visible'}" for e, c in checks
+    )
+
+    if passed:
+        error = None
+    elif not candidates:
+        error = ErrorInfo(
+            error_type="ValidationFailedError",
+            message=(
+                f"Canvas screen ({surface}): no on-screen text was captured to verify "
+                f"{expected_list!r}. Configure a vision backend (grounding.vision_backend=rapidocr)."
+            ),
+        )
+    else:
+        error = ErrorInfo(
+            error_type="ValidationFailedError",
+            message=f"Text not visible on {surface} screen: {matched}",
+        )
+
+    return _page_scoped_result(
+        instruction=instruction,
+        t0=t0,
+        passed=passed,
+        message=matched if candidates else "no on-screen text captured",
+        error=error,
+        metadata={
+            "source": "canvas_ocr",
+            "surface_type": surface,
+            "expected": expected_list,
+            "matched": [c["matched_text"] for _, c in checks if c["found"]],
+        },
+        ref="screen",
+        resolver_name="canvas_ocr",
+    )
+
+
+def _maybe_extract_canvas_text(
+    intent: StepIntent, channel: str, instruction: str, t0: float
+) -> "StepResult | None":
+    """M-C2: extract text by OCR on a canvas/Flutter screen.
+
+    Reached before hierarchy grounding in ``extract()``. When the screen was
+    routed to vision, returns the on-screen OCR/vision text best matching the
+    target phrase as the extracted value. Returns ``None`` (let the normal path
+    run) when not routed or when no candidate matches.
+    """
+    if channel != "mobile":
+        return None
+    decision = intent.context.get("canvas_routing")
+    if not isinstance(decision, dict) or not decision.get("route_to_vision"):
+        return None
+    candidates = intent.context.get("vision_candidates")
+    if not candidates:
+        return None
+
+    best = select_canvas_vision_candidate(
+        target_phrase=intent.target_phrase,
+        instruction=intent.instruction,
+        vision_candidates=candidates,
+    )
+    if best is None:
+        return None
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    target = ResolvedTarget(
+        ref="screen",
+        confidence=round(min(0.95, float(best["score"])), 4),
+        resolver_name="canvas_ocr",
+        metadata={
+            "source": "canvas_ocr",
+            "surface_type": str(decision.get("surface_type", "unknown")),
+            "matched_text": best["text"],
+            "bbox": best["bbox"],
+            "extracted_value": best["text"],
+        },
+    )
+    logger.debug("canvas_ocr extract: %r -> %r", instruction, best["text"])
+    return StepResult(
+        status="passed",
+        action=instruction,
+        target=target,
+        confidence=target.confidence,
+        duration_ms=duration_ms,
+        traces=[],
     )
 
 

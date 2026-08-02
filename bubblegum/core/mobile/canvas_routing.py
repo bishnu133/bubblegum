@@ -146,6 +146,37 @@ def _candidate_field(candidate: Any, name: str) -> Any:
     return getattr(candidate, name, None)
 
 
+def _candidate_text(candidate: Any) -> str:
+    text = _candidate_field(candidate, "text") or _candidate_field(candidate, "label") or ""
+    return text.strip() if isinstance(text, str) else ""
+
+
+def ocr_text_present(expected: str | None, vision_candidates: Any) -> dict[str, Any]:
+    """Is ``expected`` text visible among the on-screen OCR/vision candidates?
+
+    Used to verify a ``text_visible`` assertion on a canvas/Flutter screen, where
+    the accessibility hierarchy has no text to check. Matches an exact/substring
+    hit in any single candidate, and also against the whole screen's OCR text
+    joined together (so a phrase split across boxes — "Level 2" as "Level" +
+    "2" — still matches). Returns ``{found, matched_text}``; pure and engine-free.
+    """
+    want = _norm(expected)
+    if not want or not vision_candidates:
+        return {"found": False, "matched_text": ""}
+
+    texts = [_candidate_text(c) for c in vision_candidates]
+    for original in texts:
+        norm = _norm(original)
+        if norm and (want == norm or want in norm):
+            return {"found": True, "matched_text": original}
+
+    # Fall back to the whole-screen OCR text so a multi-box phrase still matches.
+    haystack = _norm(" ".join(t for t in texts if t))
+    if want in haystack:
+        return {"found": True, "matched_text": expected.strip() if isinstance(expected, str) else ""}
+    return {"found": False, "matched_text": ""}
+
+
 def select_canvas_vision_candidate(
     *,
     target_phrase: str | None,

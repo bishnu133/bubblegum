@@ -1,5 +1,37 @@
 # Unreleased
 
+## 0.0.6a73 — feat(mobile): OCR verify & extract on canvas/Flutter screens
+
+Completes the canvas story for assertions and reads. `verify('the screen shows
+"Level 2"')` and `extract('Get the score')` now work on a Flutter/game/canvas
+screen, where the accessibility hierarchy has no text to check — the expected
+phrase is verified, and text is extracted, from the on-screen OCR/vision
+candidates instead. Native screens are unchanged: they still verify/extract from
+the hierarchy exactly as before.
+
+- **`verify()` — OCR `text_visible` on routed screens.** After context
+  collection, `verify()` runs the same canvas routing as `act()`; on a routed
+  screen a new `_maybe_verify_canvas_text()` checks the expected phrase(s) against
+  the OCR candidates and returns a finished result — so a canvas screen no longer
+  hard-fails at hierarchy grounding. Multiple quoted phrases must all be visible.
+  Matching handles a phrase split across OCR boxes (e.g. "Level 2" as "Level" +
+  "2") via a whole-screen text fallback.
+- **`extract()` — OCR text on routed screens.** `_maybe_extract_canvas_text()`
+  returns the on-screen text best matching the target phrase as the extracted
+  value, before falling through to element grounding.
+- **`ocr_text_present()`** added to `core.mobile.canvas_routing` (pure, unit
+  tested): exact/substring per box plus a joined whole-screen match.
+- **Honest failures.** On a routed screen with no vision backend configured, the
+  verify result carries an actionable message pointing at
+  `grounding.vision_backend=rapidocr`.
+- Scope: `text_visible` verify and text extract (tap/click stay in a72). No web
+  behaviour change; specialized assertions (a11y/network/visual/table/status)
+  are dispatched earlier and untouched.
+- Coverage: `tests/unit/test_canvas_verify_extract.py` — `ocr_text_present`
+  (exact/substring/spanning/absent/empty) and both SDK hooks (pass/fail,
+  all-quoted-required, no-candidate actionable error, not-routed/web/non-text
+  skips for verify; matched/none/not-routed/no-match for extract).
+
 ## 0.0.6a72 — feat(mobile): Flutter/canvas auto-routing to vision
 
 Bubblegum now recognises a self-drawn screen and grounds it by pixels
