@@ -45,7 +45,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from bubblegum.core.config import BubblegumConfig
+from bubblegum.core.config import LOCAL_VISION_BACKENDS, BubblegumConfig
 from bubblegum.core.grounding.engine import GroundingEngine
 from bubblegum.core.grounding.errors import (
     BubblegumError,
@@ -2654,13 +2654,26 @@ async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
     return None
 
 
+def _vision_backend_is_local() -> bool:
+    """True when the configured vision backend runs entirely on this machine.
+
+    An on-device backend (e.g. rapidocr) never sends pixels anywhere, so it
+    raises no privacy concern and is exempt from the hosted-vision opt-ins.
+    """
+    return _config.grounding.vision_backend in LOCAL_VISION_BACKENDS
+
+
 def _vision_privacy_ok() -> bool:
     """Is the vision pipeline allowed to process this screenshot?
 
-    process_screenshots_for_vision is the master opt-in. Sending pixels to a
-    HOSTED model additionally requires send_screenshots; a self-hosted grounder
-    (vision_is_local) keeps them in-network and needs no third-party consent.
+    An on-device backend (rapidocr) keeps pixels in-process, so it satisfies the
+    gate on its own. Otherwise process_screenshots_for_vision is the master
+    opt-in, and sending pixels to a HOSTED model additionally requires
+    send_screenshots; a self-hosted grounder (vision_is_local) keeps them
+    in-network and needs no third-party consent.
     """
+    if _vision_backend_is_local():
+        return True
     if not _config.privacy.process_screenshots_for_vision:
         return False
     return bool(_config.privacy.send_screenshots or _config.privacy.vision_is_local)
@@ -2680,10 +2693,11 @@ def _should_request_vision_screenshot(intent: StepIntent) -> bool:
 
 def _allows_provider_vision_cost(intent: StepIntent) -> bool:
     # Hosted vision is a "high"-cost operation. A self-hosted grounder in your
-    # network is effectively free, so it is reachable under the default policy —
-    # important on mobile, where the a11y hierarchy is often too thin to resolve
-    # from and screenshot grounding is the primary path.
-    if _config.privacy.vision_is_local:
+    # network — or an on-device OCR backend (rapidocr) — is effectively free, so
+    # it is reachable under the default policy. Important on mobile, where the
+    # a11y hierarchy is often too thin to resolve from and screenshot grounding
+    # is the primary path.
+    if _config.privacy.vision_is_local or _vision_backend_is_local():
         return True
     return str(intent.options.max_cost_level).lower() == "high"
 

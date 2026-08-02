@@ -1,5 +1,39 @@
 # Unreleased
 
+## 0.0.6a71 — feat(vision): offline on-device OCR grounding (RapidOCR)
+
+Bubblegum can now ground a step from the **pixels on screen, entirely on the
+machine running the test** — no network, no hosted model, no per-call cost. This
+is the "works on any technology" path: screens the accessibility hierarchy
+cannot describe (Flutter and other canvas-drawn UIs, games, custom-rendered
+widgets, DRM-masked views) still resolve a plain-English step, because OCR reads
+the visible text and the existing visual-ref hydrator maps a matched box to a tap
+coordinate. Screenshots never leave the process, so it is the privacy-clean
+default for enterprise apps and the low-latency default on a device farm (only
+the screenshot travels back over the wire; OCR runs on the runner).
+
+- **New `rapidocr` vision backend.** A `RapidOCRVisionProvider` implements the
+  same `VisionProvider.detect_targets` contract as the hosted backends, returning
+  on-screen text candidates (`text`/`label` + axis-aligned `bbox` + score) that
+  flow through the already-shipped `VisionModelResolver` → visual-ref hydrator →
+  coordinate tap. No resolver, adapter, or hydrator change was needed.
+- **Local by construction — one switch to turn on.** `rapidocr` inference runs
+  in-process, so it is exempt from the hosted-vision privacy opt-ins: setting
+  `grounding.vision_backend: rapidocr` + `grounding.enable_vision: true` is
+  enough. `config.vision_enabled` and the SDK privacy/cost gates recognise
+  on-device backends (new `LOCAL_VISION_BACKENDS` set), so no `send_screenshots`
+  / `vision_is_local` / `process_screenshots_for_vision` flags are required.
+- **Optional dependency, fail-safe when absent.** RapidOCR is pulled by the new
+  `localvision` extra (`pip install "bubblegum-ai[localvision]"`). When it isn't
+  installed the provider stays dormant and returns no candidates, so the
+  deterministic + hierarchy tiers are unaffected. Any engine/inference error is
+  swallowed to `[]` — a bad frame never fails a step.
+- Coverage: `tests/unit/test_rapidocr_vision_backend.py` — polygon→bbox
+  conversion, confidence filter, candidate cap, malformed-item skipping, injected
+  tuple/bare engines, empty-image and engine-absent fail-safes, factory
+  selection, and the config/SDK local-gate behaviour (no privacy opt-in needed
+  for `rapidocr`; hosted backends still require it).
+
 ## 0.0.6a70 — feat(mobile): selector-less scroll-to-find
 
 A plain-English step that names an off-screen control now resolves without a

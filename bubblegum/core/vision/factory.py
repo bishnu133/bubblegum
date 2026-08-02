@@ -22,6 +22,7 @@ def get_vision_provider(config):
 
     backends:
       none      -> None (dormant)
+      rapidocr  -> local, on-device OCR (offline; no model id / endpoint / network)
       anthropic -> Claude vision   (needs ai.vision_model, hosted)
       openai    -> GPT vision      (needs ai.vision_model, hosted)
       http      -> self-hosted grounder at grounding.vision_endpoint
@@ -32,6 +33,11 @@ def get_vision_provider(config):
         return None
 
     try:
+        if backend == "rapidocr":
+            # Offline, on-device OCR — no model id, no endpoint, no network.
+            from bubblegum.core.vision.backends.rapidocr import RapidOCRVisionProvider
+            return RapidOCRVisionProvider(create_engine=True)
+
         if backend == "http":
             endpoint = getattr(config.grounding, "vision_endpoint", None)
             if not endpoint:

@@ -22,6 +22,13 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG_PATH = Path("bubblegum.yaml")
 
+# Vision backends whose inference runs entirely on the machine running the test
+# (no screenshot ever leaves the process). These satisfy the vision privacy gate
+# on their own — no ``send_screenshots`` / ``vision_is_local`` opt-in required —
+# so ``vision_backend="rapidocr"`` + ``enable_vision`` is enough to turn on
+# offline, on-device screenshot grounding.
+LOCAL_VISION_BACKENDS: frozenset[str] = frozenset({"rapidocr"})
+
 
 # ---------------------------------------------------------------------------
 # Config section models
@@ -41,6 +48,9 @@ class GroundingConfig(BaseModel):
     # Screenshot grounding backend (Task #6). Selects the model that turns a
     # screenshot + instruction into on-screen element candidates:
     #   none      — dormant (default)
+    #   rapidocr  — offline, on-device OCR (no network/model/endpoint; local by
+    #               construction, so enable_vision alone turns it on). The
+    #               "works on any technology" path for Flutter/canvas/games.
     #   anthropic — Claude vision (hosted; needs ai.vision_model + send_screenshots)
     #   openai    — GPT vision   (hosted; needs ai.vision_model + send_screenshots)
     #   http      — self-hosted grounder (OmniParser / UI-TARS server) at
@@ -401,10 +411,14 @@ class BubblegumConfig(BaseModel):
     @property
     def vision_enabled(self) -> bool:
         # A self-hosted grounder (vision_is_local) keeps screenshots in-network,
-        # so it satisfies the privacy gate without sending to a third party.
-        return self.grounding.enable_vision and (
-            self.privacy.send_screenshots or self.privacy.vision_is_local
-        )
+        # so it satisfies the privacy gate without sending to a third party. A
+        # purely on-device backend (rapidocr) is local by construction and needs
+        # no privacy opt-in at all.
+        if not self.grounding.enable_vision:
+            return False
+        if self.grounding.vision_backend in LOCAL_VISION_BACKENDS:
+            return True
+        return self.privacy.send_screenshots or self.privacy.vision_is_local
 
     @property
     def ocr_enabled(self) -> bool:
