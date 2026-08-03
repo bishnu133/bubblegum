@@ -800,15 +800,18 @@ class TestAppiumHierarchyResolverSignalsPhase6G:
 class TestXPathBuilder:
 
     def test_simple_value_no_quotes(self):
+        # Text-like attributes now match via normalize-space() so trailing /
+        # collapsible whitespace (universal in React Native) still resolves.
         from bubblegum.core.grounding.resolvers.appium_hierarchy import _build_xpath
         assert _build_xpath("android.widget.Button", "text", "Login") == \
-               "//android.widget.Button[@text='Login']"
+               "//android.widget.Button[normalize-space(@text)='Login']"
 
-    def test_value_with_single_quote_uses_concat(self):
+    def test_value_with_single_quote_is_safely_quoted(self):
         from bubblegum.core.grounding.resolvers.appium_hierarchy import _build_xpath
         result = _build_xpath("android.widget.TextView", "text", "Don't press")
-        assert "concat" in result
-        assert "Don" in result
+        assert "normalize-space(@text)" in result
+        # A single quote is handled by wrapping in double quotes (or concat).
+        assert '"Don\'t press"' in result or "concat" in result
 
     def test_empty_tag_uses_wildcard(self):
         from bubblegum.core.grounding.resolvers.appium_hierarchy import _build_xpath
