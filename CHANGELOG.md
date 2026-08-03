@@ -1,5 +1,15 @@
 # Unreleased
 
+## 0.0.6a76 — fix(packaging): installable `localvision` extra (RapidOCR pin)
+
+The a75 `localvision` extra pinned `rapidocr-onnxruntime>=1.3`, a version that
+does not exist on PyPI (the `rapidocr-onnxruntime` line tops out at 1.2.x), so
+`pip install "bubblegum-ai[localvision]"` failed with "No matching distribution
+found". Corrected the pin to `rapidocr-onnxruntime>=1.2.3,<2` in both the
+`localvision` and `all` extras. The v1.x `RapidOCR().__call__` → `(result, elapse)`
+API the provider consumes is unchanged, so no code change is needed. No engine
+behavior change; packaging metadata only.
+
 ## 0.0.6a75 — perf(mobile): hierarchy compaction for grounding
 
 A complex app's `page_source` is mostly decorative layout containers — thousands
