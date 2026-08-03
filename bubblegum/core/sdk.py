@@ -65,6 +65,7 @@ from bubblegum.core.mobile.canvas_routing import (
     select_canvas_vision_candidate,
 )
 from bubblegum.core.mobile.readiness import readiness_failure_message
+from bubblegum.core.mobile.field_association import resolve_field_ref
 from bubblegum.core.coordinates import bbox_center, coordinate_ref
 from bubblegum.core.schemas import (
     ActionPlan,
@@ -656,6 +657,11 @@ async def act(
                 fallback = await _maybe_resolve_clickable(adapter, channel, instruction, intent)
             if fallback is None:
                 fallback = await _maybe_resolve_input(adapter, channel, intent)
+            # Mobile: associate a labelled field with its control — type into the
+            # input described by a visible label, or tap the nearest clickable
+            # ancestor of a text node. Generic across native/RN/Compose/Flutter.
+            if fallback is None:
+                fallback = _maybe_resolve_mobile_field(channel, intent)
             # M-C: on a canvas/Flutter screen the hierarchy has no element to pin,
             # so tap the best on-screen OCR/vision match by its coordinate. Only
             # engages when this screen was routed to vision; a no-op otherwise.
@@ -665,7 +671,7 @@ async def act(
             # off-screen, swipe and re-ground before giving up. Mobile-only,
             # opt-in, bounded; a no-op on web and on screens with nothing to scroll.
             if fallback is None:
-                fallback = await _maybe_scroll_to_target(adapter, channel, intent)
+                fallback = await _maybe_scroll_to_target(adapter, channel, intent, exc)
             # Last resort: the tester-provided fallback selector. Only reached
             # once every natural + AI tier AND the DOM fallbacks above have
             # failed — a deterministic safety net so one DOM change can't
@@ -2617,7 +2623,7 @@ async def _ground_with_wait(adapter, intent: StepIntent):
             )
 
 
-async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
+async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent, ground_error=None):
     """M-A: selector-less scroll-to-find for the mobile channel.
 
     Reached only after grounding found no candidate on the current screen. When
@@ -2628,6 +2634,13 @@ async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
     it starts below the fold. No selector is involved: the same natural-language
     step just works.
 
+    Only runs when grounding found *nothing* (``ResolutionFailedError``). A
+    low-confidence or ambiguous miss means a candidate WAS on the current screen
+    (grounding just couldn't pin it confidently), so scrolling can't help — and
+    on an attached/shared Appium session a pointless scroll loop would tie up the
+    session behind the bridge's commands. Also stops as soon as a swipe stops
+    changing the screen (nothing left to scroll).
+
     Returns the resolved ``ResolvedTarget`` (annotated with ``scroll_to_find``
     diagnostics) once the target appears, or ``None`` when it stays unresolved,
     the channel isn't mobile, the feature is off, or the screen has nothing to
@@ -2636,6 +2649,10 @@ async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
     if channel != "mobile":
         return None
     if not getattr(_config.grounding, "scroll_to_find", False):
+        return None
+    # Only scroll when the target was genuinely not found. An on-screen
+    # low-confidence/ambiguous candidate won't be helped by scrolling.
+    if ground_error is not None and not isinstance(ground_error, ResolutionFailedError):
         return None
     if intent.action_type not in ("tap", "click", "type", "select", "verify", "extract"):
         return None
@@ -2655,6 +2672,7 @@ async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
         max_scrolls = 4
 
     attempts = 0
+    prev_signature = intent.context.get("screen_signature")
     for i in range(1, max_scrolls + 1):
         try:
             await scroll(direction)
@@ -2671,6 +2689,15 @@ async def _maybe_scroll_to_target(adapter, channel: str, intent: StepIntent):
         except Exception as exc:
             logger.debug("scroll_to_find: context collect failed on attempt %d: %s", i, exc)
             break
+
+        # If the swipe didn't change the screen, there is nothing left to scroll —
+        # stop rather than burn the remaining attempts (and the shared session).
+        new_signature = getattr(ui_ctx, "screen_signature", None)
+        if new_signature is not None and new_signature == prev_signature:
+            logger.debug("scroll_to_find: screen unchanged after swipe %d — stopping", i)
+            break
+        prev_signature = new_signature
+
         _merge_context(intent, ui_ctx)
         _maybe_inject_vision_candidates(intent)
 
@@ -2799,6 +2826,37 @@ def _maybe_resolve_canvas_vision(intent: StepIntent, channel: str) -> ResolvedTa
         point=[x, y],
         confidence=round(min(0.95, float(best["score"])), 4),
         resolver_name="canvas_vision",
+        metadata=metadata,
+    )
+
+
+def _maybe_resolve_mobile_field(channel: str, intent: StepIntent) -> ResolvedTarget | None:
+    """Mobile grounding fallback: associate a labelled field with its control.
+
+    Reached only after name-based grounding missed. For a ``type`` step it maps a
+    visible label ("NRIC or FIN") to the adjacent input the label describes; for a
+    ``tap`` step it redirects a non-clickable text node to its nearest clickable
+    ancestor. Generic across native / React Native / Compose / Flutter forms —
+    the field's visible label being a separate node from the input is universal.
+    Returns a ``ResolvedTarget`` (executable xpath ref) or ``None``.
+    """
+    if channel != "mobile":
+        return None
+    result = resolve_field_ref(
+        hierarchy_xml=intent.context.get("hierarchy_xml"),
+        target_phrase=intent.target_phrase or intent.instruction,
+        action_type=intent.action_type,
+        platform=intent.platform or "android",
+    )
+    if not result:
+        return None
+    metadata = {"strategy": result.get("strategy")}
+    if result.get("label"):
+        metadata["label"] = result["label"]
+    return ResolvedTarget(
+        ref=result["ref"],
+        confidence=0.8,
+        resolver_name="mobile_field_association",
         metadata=metadata,
     )
 

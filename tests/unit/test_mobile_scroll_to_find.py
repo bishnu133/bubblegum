@@ -18,7 +18,7 @@ import pytest
 
 from bubblegum.adapters.mobile.appium.adapter import AppiumAdapter
 from bubblegum.core import sdk
-from bubblegum.core.grounding.errors import ResolutionFailedError
+from bubblegum.core.grounding.errors import LowConfidenceError, ResolutionFailedError
 from bubblegum.core.schemas import ExecutionOptions, ResolvedTarget, StepIntent, UIContext
 
 
@@ -160,6 +160,56 @@ def test_scroll_to_find_disabled_by_config(monkeypatch):
 
     assert target is None
     assert adapter.scrolls == 0
+
+
+def test_scroll_skipped_on_low_confidence_miss(monkeypatch):
+    # An on-screen but low-confidence candidate means the target is already
+    # visible — scrolling can't help and would tie up an attached Appium session.
+    adapter = _ScrollFakeAdapter()
+    intent = _mobile_intent()
+    _patch_ground_reveal_after(monkeypatch, adapter, reveal_after=1)
+
+    err = LowConfidenceError(step="Tap Accept", candidates=[], best_confidence=0.4)
+    target = _run(sdk._maybe_scroll_to_target(adapter, "mobile", intent, err))
+
+    assert target is None
+    assert adapter.scrolls == 0  # never scrolled
+
+
+def test_scroll_runs_on_resolution_failed_miss(monkeypatch):
+    adapter = _ScrollFakeAdapter()
+    intent = _mobile_intent()
+    _patch_ground_reveal_after(monkeypatch, adapter, reveal_after=2)
+
+    err = ResolutionFailedError(step="Tap Accept", message="nothing found")
+    target = _run(sdk._maybe_scroll_to_target(adapter, "mobile", intent, err))
+
+    assert target is not None
+    assert adapter.scrolls == 2
+
+
+def test_scroll_stops_when_screen_does_not_change(monkeypatch):
+    # A screen whose signature never changes after a swipe = nothing left to
+    # scroll → stop after the first swipe instead of burning all attempts.
+    class _StaticScreenAdapter(_ScrollFakeAdapter):
+        async def collect_context(self, request):
+            self.collect_calls += 1
+            return UIContext(
+                hierarchy_xml="<hierarchy/>",
+                screen_signature="constant-sig",
+                app_state={"channel": "mobile", "scroll_discovery": dict(_CANDIDATE_PLAN)},
+            )
+
+    adapter = _StaticScreenAdapter()
+    intent = _mobile_intent()
+    intent.context["screen_signature"] = "constant-sig"
+    _patch_ground_reveal_after(monkeypatch, adapter, reveal_after=999)
+
+    err = ResolutionFailedError(step="Tap Accept", message="nothing found")
+    target = _run(sdk._maybe_scroll_to_target(adapter, "mobile", intent, err))
+
+    assert target is None
+    assert adapter.scrolls == 1  # stopped after the first unchanged swipe
 
 
 def test_scroll_to_find_stops_early_when_nothing_left_to_scroll(monkeypatch):

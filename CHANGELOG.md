@@ -1,5 +1,42 @@
 # Unreleased
 
+## 0.0.6a77 — fix(mobile): React-Native real-device grounding (whitespace / hang / labelled fields)
+
+Fixes from real-device testing against a React Native app (Healthy 365) where a
+plain-English login flow stalled. All three fixes are generic — they hold for any
+tech stack, not just RN.
+
+- **Whitespace-tolerant xpath (Bug 3/4).** The hierarchy resolver stripped a text
+  node's value for matching but built an exact `@text='…'` locator, which then
+  failed on the raw attribute — RN text nodes almost always carry trailing
+  whitespace (`"Log in with OTP "`). Generated locators now use
+  `normalize-space(@attr)='…'` for text-like attributes (text / content-desc /
+  label / name / value), trimming and collapsing whitespace on both sides;
+  id-like attributes keep an exact match. Both UiAutomator2 and XCUITest evaluate
+  XPath server-side with a full XPath 1.0 engine, so this is supported on both.
+- **Type into a labelled field (Bug 1 root).** A field's visible label is
+  usually a separate node next to the input (RN, native, Compose, Flutter). New
+  `core.mobile.field_association` associates the label named in the step with the
+  adjacent input — same-container first, then nearest input below — so
+  `Enter "…" into "NRIC or FIN"` targets the right `EditText` (disambiguating
+  between multiple inputs by container). It also redirects a `tap` on a
+  non-clickable text node to its nearest clickable ancestor. Wired as a mobile
+  grounding fallback (`_maybe_resolve_mobile_field`) that runs only on a
+  name-based miss.
+- **No more session-wedging scroll loop (Bug 1/2).** Scroll-to-find now runs only
+  when grounding found *nothing* (`ResolutionFailedError`) — a low-confidence or
+  ambiguous miss means the target is already on screen, so scrolling can't help
+  and, on an attached/shared Appium session, a pointless scroll+OCR loop tied up
+  the session behind the bridge's commands (the observed hang). It also stops as
+  soon as a swipe stops changing the screen. This removes the runaway that made a
+  failed `type` stall the whole session.
+- Coverage: `tests/unit/test_mobile_field_association.py` (label→input incl.
+  container disambiguation, self-labelled inputs, clickable-ancestor, guards, SDK
+  wrapper), `tests/unit/test_rn_whitespace_xpath.py` (normalize-space for text
+  attrs, exact for ids, resolver end-to-end on trailing-space text), and new
+  scroll-gating cases in `tests/unit/test_mobile_scroll_to_find.py`
+  (skip-on-low-confidence, run-on-resolution-failed, stop-on-unchanged-screen).
+
 ## 0.0.6a76 — fix(packaging): installable `localvision` extra (RapidOCR pin)
 
 The a75 `localvision` extra pinned `rapidocr-onnxruntime>=1.3`, a version that

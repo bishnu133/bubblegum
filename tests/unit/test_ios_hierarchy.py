@@ -88,7 +88,7 @@ def test_label_match_builds_ios_xpath():
     ref = json.loads(labels[0].ref)
     assert ref["by"] == "xpath"
     # iOS xpath uses the element type and the @label attribute.
-    assert ref["value"] == "//XCUIElementTypeButton[@label='View Summary']"
+    assert ref["value"] == "//XCUIElementTypeButton[normalize-space(@label)='View Summary']"
 
 
 def test_label_match_case_insensitive():
@@ -111,7 +111,7 @@ def test_value_match_on_textfield():
     values = [c for c in candidates if c.metadata.get("matched_attr") == "value"]
     assert values, "expected a value match on the iOS text field"
     ref = json.loads(values[0].ref)
-    assert ref["value"] == "//XCUIElementTypeTextField[@value='Search items']"
+    assert ref["value"] == "//XCUIElementTypeTextField[normalize-space(@value)='Search items']"
 
 
 def test_verify_static_text_by_label():

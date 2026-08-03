@@ -543,26 +543,52 @@ class AppiumHierarchyResolver(Resolver):
         return None
 
 
+# Attributes that carry human-readable text (vs. ids). These are matched with
+# normalize-space() so whitespace differences don't break the locator.
+_TEXT_LIKE_ATTRS = frozenset({"text", "content-desc", "label", "name", "value"})
+
+
+def _xpath_string_literal(value: str) -> str:
+    """Quote ``value`` as an XPath 1.0 string, handling embedded quotes.
+
+    Uses a bare single/double quote when possible; falls back to concat() when
+    the value contains both quote characters.
+    """
+    if "'" not in value:
+        return f"'{value}'"
+    if '"' not in value:
+        return f'"{value}"'
+    parts = value.split("'")
+    return "concat(" + ", \"'\", ".join(f"'{p}'" for p in parts) + ")"
+
+
 def _build_xpath(tag: str, attr: str, value: str) -> str:
     """
     Build an XPath expression to locate an element by attribute value.
 
+    Text-like attributes (text / content-desc / label / name / value) are matched
+    with ``normalize-space()`` rather than an exact ``@attr='...'`` comparison,
+    because many UI toolkits — React Native especially, but also others — emit
+    trailing or collapsible whitespace in text nodes (e.g. ``"Log in with OTP "``).
+    An exact match against the stripped value would then find nothing.
+    ``normalize-space()`` trims and collapses whitespace on both sides, so the
+    locator is robust across whitespace differences. Both UiAutomator2 and
+    XCUITest evaluate XPath server-side with a full XPath 1.0 engine, so the
+    function is supported on both platforms. Id-like attributes (resource-id)
+    keep an exact match. Embedded quotes are handled via ``_xpath_string_literal``.
+
     Example:
       tag="android.widget.TextView", attr="text", value="Animation"
-      → //android.widget.TextView[@text='Animation']
-
-    Single quotes in value are handled via XPath concat() to prevent injection.
+      → //android.widget.TextView[normalize-space(@text)='Animation']
     """
     if not tag:
         tag = "*"
 
-    if "'" not in value:
-        return f"//{tag}[@{attr}='{value}']"
+    if attr in _TEXT_LIKE_ATTRS:
+        normalized = " ".join(value.split())
+        return f"//{tag}[normalize-space(@{attr})={_xpath_string_literal(normalized)}]"
 
-    # Escape single quotes: split and rejoin with XPath concat()
-    parts = value.split("'")
-    concat_args = ", \"'\", ".join(f"'{p}'" for p in parts)
-    return f"//{tag}[@{attr}=concat({concat_args})]"
+    return f"//{tag}[@{attr}={_xpath_string_literal(value)}]"
 
 _GENERIC_VIEW_TAGS = ("view", "viewgroup", "composeview")
 # Frameworks whose tappable controls render as generic clickable View nodes.
