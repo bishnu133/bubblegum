@@ -581,6 +581,10 @@ async def act(
 
     # 2. Collect context
     await _maybe_wait_until_stable(adapter, options)
+    # Clear any blocking native OS alert (iOS permission dialogs, etc.) before we
+    # snapshot the screen — they live in a separate process and often aren't in
+    # the page source. No-op on web and when system_alert_handling is "ignore".
+    await _maybe_handle_system_alert(adapter, channel)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -907,6 +911,10 @@ async def verify(
     )
 
     await _maybe_wait_until_stable(adapter, options)
+    # Clear any blocking native OS alert (iOS permission dialogs, etc.) before we
+    # snapshot the screen — they live in a separate process and often aren't in
+    # the page source. No-op on web and when system_alert_handling is "ignore".
+    await _maybe_handle_system_alert(adapter, channel)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -1597,6 +1605,10 @@ async def extract(
 
     # Collect context (no screenshot needed for extract)
     await _maybe_wait_until_stable(adapter, options)
+    # Clear any blocking native OS alert (iOS permission dialogs, etc.) before we
+    # snapshot the screen — they live in a separate process and often aren't in
+    # the page source. No-op on web and when system_alert_handling is "ignore".
+    await _maybe_handle_system_alert(adapter, channel)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -1726,6 +1738,10 @@ async def recover(
     )
 
     await _maybe_wait_until_stable(adapter, options)
+    # Clear any blocking native OS alert (iOS permission dialogs, etc.) before we
+    # snapshot the screen — they live in a separate process and often aren't in
+    # the page source. No-op on web and when system_alert_handling is "ignore".
+    await _maybe_handle_system_alert(adapter, channel)
     ctx_request = context_request()
     ctx_request.include_screenshot = _should_request_vision_screenshot(step_intent)
     ui_ctx = await adapter.collect_context(ctx_request)
@@ -2859,6 +2875,35 @@ def _maybe_resolve_mobile_field(channel: str, intent: StepIntent) -> ResolvedTar
         resolver_name="mobile_field_association",
         metadata=metadata,
     )
+
+
+async def _maybe_handle_system_alert(adapter, channel: str) -> dict | None:
+    """Accept/dismiss a blocking native OS alert before a mobile step.
+
+    iOS permission dialogs (notifications, location, camera, ATT, …) — and
+    Android native alerts — appear asynchronously and often aren't in the app's
+    page source, so they can silently block the next step. When
+    ``grounding.system_alert_handling`` is ``"accept"`` / ``"dismiss"``, clear any
+    present alert via the adapter's W3C alert handler. No-op on web, when the mode
+    is ``"ignore"`` (default), or when the adapter can't handle alerts. Returns
+    the handler result dict (or ``None``); never raises.
+    """
+    if channel != "mobile":
+        return None
+    mode = str(getattr(_config.grounding, "system_alert_handling", "ignore") or "ignore").strip().lower()
+    if mode not in ("accept", "dismiss"):
+        return None
+    handler = getattr(adapter, "handle_system_alert", None)
+    if not callable(handler):
+        return None
+    try:
+        result = handler(mode)
+    except Exception as exc:  # noqa: BLE001 — best-effort; never fail the step
+        logger.debug("system alert handling skipped after error: %s", exc)
+        return None
+    if isinstance(result, dict) and result.get("handled"):
+        logger.info("Cleared a native system alert (%s): %r", mode, result.get("text"))
+    return result if isinstance(result, dict) else None
 
 
 def _maybe_blocked_by_mobile_health(
