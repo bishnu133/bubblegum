@@ -1,5 +1,15 @@
 # Unreleased
 
+## 0.0.6 — first stable (non-prerelease) release
+
+Graduates `0.0.6a77` to a final release — identical code, a version string with
+no pre-release (`a`) suffix. Enterprise package repositories (e.g. Nexus) and pip
+skip pre-releases for range specifiers and some proxy policies filter them, so a
+stable version resolves cleanly through those toolchains for UAT/production
+pipelines (`bubblegum-ai==0.0.6`, no `--pre` needed). No functional change from
+a77; supersedes every `0.0.6aNN` alpha (`0.0.6a77 < 0.0.6`). Next development
+iteration continues from `0.0.7aN`.
+
 ## 0.0.6a77 — fix(mobile): React-Native real-device grounding (whitespace / hang / labelled fields)
 
 Fixes from real-device testing against a React Native app (Healthy 365) where a
