@@ -1,5 +1,29 @@
 # Unreleased
 
+## 0.0.7 — feat(mobile): iOS / native system-alert auto-handling
+
+iOS permission dialogs (notifications, location, camera, ATT, Bluetooth, …) — and
+Android native alerts — are presented by the OS in a separate process, so they
+frequently do **not** appear in the app's page source and can't be tapped by
+name-based grounding. They also pop up asynchronously, blocking whatever step
+runs next. Bubblegum can now clear them generically via the W3C alert API,
+regardless of the app's tech stack.
+
+- **New `AppiumAdapter.handle_system_alert(mode)`** — accepts (affirmative
+  button: Allow / OK / While Using the App) or dismisses (negative button) a
+  native alert through the standard `/session/{id}/alert/*` endpoints, which
+  reach system alerts that hierarchy grounding cannot see. Returns
+  `{handled, text, mode}`; never raises (no alert present is a normal outcome).
+- **Config `grounding.system_alert_handling`** — `"ignore"` (default), `"accept"`,
+  or `"dismiss"`. When set to accept/dismiss, the engine clears any present
+  native alert **before every mobile `act`/`verify`/`extract`/`recover`**, so an
+  alert that appears mid-flow is handled automatically instead of stalling the
+  next step. Mobile-only; a no-op on web and when set to `ignore`.
+- Coverage: `tests/unit/test_ios_system_alert.py` — accept/dismiss when present,
+  no-alert and action-failure are non-errors, config default, and the SDK gate
+  (ignore skips, accept/dismiss call through, web no-op, adapter-without-handler
+  safe).
+
 ## 0.0.6 — first stable (non-prerelease) release
 
 Graduates `0.0.6a77` to a final release — identical code, a version string with

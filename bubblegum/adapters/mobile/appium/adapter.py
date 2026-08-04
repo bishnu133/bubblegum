@@ -1273,6 +1273,37 @@ class AppiumAdapter(BaseAdapter):
                 {"elementId": element.id, "endX": end_x, "endY": end_y},
             )
 
+    def handle_system_alert(self, mode: str = "accept") -> dict:
+        """Accept or dismiss a native OS alert via the W3C alert API.
+
+        iOS permission dialogs (notifications, location, camera, ATT, Bluetooth,
+        …) — and Android native alerts — are presented by the system in a
+        separate process, so they frequently do NOT appear in the app's page
+        source and can't be tapped by name-based grounding. The W3C alert
+        endpoints (``GET/POST /session/{id}/alert/*``, exposed here via Selenium's
+        ``switch_to.alert``) reach them directly, regardless of the app's tech
+        stack.
+
+        ``mode``: ``"accept"`` taps the affirmative button (Allow / OK / While
+        Using the App), ``"dismiss"`` the negative one (Don't Allow). Returns a
+        small dict ``{handled, text, mode}`` and never raises — no alert present
+        is a normal, non-error outcome (``handled=False``).
+        """
+        try:
+            alert = self._driver.switch_to.alert
+            text = alert.text  # raises when no alert is present
+        except Exception:
+            return {"handled": False, "text": None, "mode": mode}
+        try:
+            if str(mode).strip().lower() == "dismiss":
+                alert.dismiss()
+            else:
+                alert.accept()
+            return {"handled": True, "text": text, "mode": mode}
+        except Exception as exc:  # noqa: BLE001 — alert handling must never break a step
+            logger.debug("handle_system_alert(%s) failed: %s", mode, exc)
+            return {"handled": False, "text": text, "mode": mode, "error": str(exc)}
+
     # ------------------------------------------------------------------
     # Mobile system / hardware actions (M2)
     # ------------------------------------------------------------------

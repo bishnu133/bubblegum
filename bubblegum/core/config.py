@@ -100,6 +100,16 @@ class GroundingConfig(BaseModel):
     # only (detectors keep the full hierarchy). Mobile-only; on by default.
     mobile_hierarchy_compaction: bool = True
     mobile_hierarchy_max_nodes: int = 1500
+    # iOS / native system-alert handling. OS permission dialogs (notifications,
+    # location, camera, ATT, Bluetooth, …) are presented by the system in a
+    # separate process and frequently do NOT appear in the app's page source, so
+    # name-based grounding can't reliably tap them — and they pop up
+    # asynchronously, blocking whatever step runs next. When set to "accept" or
+    # "dismiss", the engine clears any native alert via the W3C alert API before
+    # each mobile step (accept = the affirmative button e.g. "Allow"/"OK";
+    # dismiss = the negative one). "ignore" (default) leaves alerts untouched.
+    # Primary use is iOS; also works for Android native alerts.
+    system_alert_handling: str = "ignore"
     ai_first:           bool  = False      # try AI (vision/LLM) tier before deterministic tiers
     # AI execution mode (Task #8):
     #   live   — call models as needed (default)
