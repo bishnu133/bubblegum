@@ -1231,16 +1231,22 @@ _FIND_DATE_RANGE_JS = r"""
   let matches = cands.filter((e) => side(e) === which);
   if (!matches.length) return null;
 
-  // Multiple range pickers on one page: pick the one whose form-item label best
-  // overlaps the phrase (e.g. "... into the Visibility Period start date").
+  // Multiple range pickers (often in one modal): pick the one whose form-item
+  // label AND placeholder best overlap the phrase. The placeholder is what
+  // separates a TIME range picker (placeholder "Start time") from a sibling DATE
+  // range picker (placeholder "Start date") when a modal holds both — a phrase of
+  // "... Start time" then lands on the time inputs, not the date ones. Generic:
+  // no field/widget names, just token overlap against the label + placeholder.
   if (matches.length > 1 && tokens.length) {
     const labelText = (e) => {
       const fi = __bgField(e, '.ant-form-item, .ant-row, [class*="form-item"], [class*="field"]');
       const l = fi && fi.querySelector('label:not(.ant-checkbox-wrapper):not(.ant-radio-wrapper):not([class*="checkbox"]):not([class*="radio"]), .ant-form-item-label, [class*="label"]:not([class*="ql-"]):not([class*="picker"]):not([class*="tox-"]):not([class*="ck-"]):not([class*="checkbox"]):not([class*="radio"]):not([class*="select"])');
       return norm(l ? l.textContent : '');
     };
-    const overlap = (txt) => { let n = 0; tokens.forEach((t) => { if (txt.includes(t)) n++; }); return n; };
-    matches.sort((a, b) => overlap(labelText(b)) - overlap(labelText(a)));
+    const placeholder = (e) => norm(e.getAttribute('placeholder') || '');
+    const overlap = (txt) => { let n = 0; tokens.forEach((t) => { if (txt && txt.includes(t)) n++; }); return n; };
+    const rank = (e) => overlap(labelText(e)) + overlap(placeholder(e));
+    matches.sort((a, b) => rank(b) - rank(a));
   }
 
   const best = matches[0];

@@ -44,27 +44,36 @@ _RADIO_PAGE = """
 </body></html>
 """
 
-# Background form checkbox + a blocking modal with a same-labelled checkbox and a
-# plain time input, plus a date RANGE picker on the page behind the modal.
+# Mirrors the real Ant "Add Sessions" modal: a date RANGE picker on the page
+# behind the mask (the Activity Period), and INSIDE the modal BOTH a date range
+# picker ("Creating session(s) from") and a *time* range picker (Start time / End
+# time) — so the resolver must pick the modal's TIME range, not the background
+# picker and not the modal's own date range. Plus a "Mon" checkbox in each place.
 _MODAL_PAGE = """
 <!doctype html><html><body style="font-family:Helvetica">
   <div id="root"><form id="bg-form">
     <label class="ant-checkbox-wrapper"><span class="ant-checkbox">
       <input type="checkbox" id="bg-mon"></span><span>Mon</span></label>
     <div class="ant-picker ant-picker-range">
-      <input date-range="start" data-testid="bg-period-start" placeholder="Start date">
-      <input date-range="end" data-testid="bg-period-end" placeholder="End date">
+      <input date-range="start" id="activityStart" placeholder="Start date">
+      <input date-range="end" id="activityEnd" placeholder="End date">
     </div>
   </form></div>
   <div class="ant-modal-root"><div class="ant-modal-mask"></div>
     <div class="ant-modal-wrap"><div role="dialog" aria-modal="true" class="ant-modal" style="z-index:1000">
       <div class="ant-modal-content">
-        <div class="ant-modal-header">Add sessions</div>
+        <div class="ant-modal-header">Add Sessions</div>
         <div class="ant-modal-body"><form id="session-form">
-          <div class="ant-form-item"><div class="ant-form-item-label"><label>Activity Start time</label></div>
-            <div class="ant-picker"><input data-testid="m-start-time" placeholder="Select time"></div></div>
-          <div class="ant-form-item"><div class="ant-form-item-label"><label>Activity End time</label></div>
-            <div class="ant-picker"><input data-testid="m-end-time" placeholder="Select time"></div></div>
+          <div class="ant-form-item"><div class="ant-form-item-label"><label>Creating session(s) from</label></div>
+            <div class="ant-picker ant-picker-range">
+              <input date-range="start" id="sessionDateStart" placeholder="Start date">
+              <input date-range="end" id="sessionDateEnd" placeholder="End date">
+            </div></div>
+          <div class="ant-form-item"><div class="ant-form-item-label"><label>Session time</label></div>
+            <div class="ant-picker ant-picker-range">
+              <input date-range="start" id="sessionTimeStart" placeholder="Start time">
+              <input date-range="end" id="sessionTimeEnd" placeholder="End time">
+            </div></div>
           <label class="ant-checkbox-wrapper"><span class="ant-checkbox">
             <input type="checkbox" id="m-mon"></span><span>Mon</span></label>
         </form></div>
@@ -142,31 +151,52 @@ async def test_checkbox_targets_modal_not_background():
             await browser.close()
 
 
-async def test_daterange_ignores_background_picker_when_modal_open():
-    """With a modal open and no range picker in it, the range resolver yields
-    nothing (so it can't grab the background period picker)."""
+async def test_time_range_in_modal_wins_over_background_and_date_range():
+    """With the modal open, "Activity Start time" resolves to the modal's TIME
+    range start — not the background Activity Period picker (behind the mask) and
+    not the modal's own "Creating session(s) from" DATE range."""
     aw = pytest.importorskip("playwright.async_api")
     async with aw.async_playwright() as p:
         browser, page = await _page(p, _MODAL_PAGE)
         try:
             adapter = PlaywrightAdapter(page)
             ref = await adapter.find_date_range_input("start", "Activity Start time")
-            assert ref is None, f"range resolver grabbed a background picker ({ref})"
+            assert ref, "no range input resolved"
+            which = await page.eval_on_selector(ref, "e => e.id")
+            assert which == "sessionTimeStart", (
+                f"resolved to {which!r}, expected the modal's time-range start"
+            )
         finally:
             await browser.close()
 
 
-async def test_time_field_in_modal_resolves_via_input_finder():
-    """The modal's "Start time" field is found by the (modal-scoped) input finder."""
+async def test_end_time_range_in_modal_resolves_to_time_end():
+    """The end side likewise lands on the modal's time-range end input."""
     aw = pytest.importorskip("playwright.async_api")
     async with aw.async_playwright() as p:
         browser, page = await _page(p, _MODAL_PAGE)
         try:
             adapter = PlaywrightAdapter(page)
-            ref = await adapter.find_input("Activity Start time")
-            assert ref, "no input resolved for the modal time field"
-            which = await page.eval_on_selector(ref, "e => e.getAttribute('data-testid')")
-            assert which == "m-start-time", f"resolved to {which!r}, expected the modal's start-time input"
+            ref = await adapter.find_date_range_input("end", "Activity End time")
+            assert ref, "no range input resolved"
+            which = await page.eval_on_selector(ref, "e => e.id")
+            assert which == "sessionTimeEnd", f"resolved to {which!r}, expected time-range end"
+        finally:
+            await browser.close()
+
+
+async def test_date_range_in_modal_still_resolves_to_date_when_named():
+    """A phrase naming a DATE side still lands on the modal's date range, proving
+    the placeholder tiebreak separates the two range pickers both ways."""
+    aw = pytest.importorskip("playwright.async_api")
+    async with aw.async_playwright() as p:
+        browser, page = await _page(p, _MODAL_PAGE)
+        try:
+            adapter = PlaywrightAdapter(page)
+            ref = await adapter.find_date_range_input("start", "session start date")
+            assert ref, "no range input resolved"
+            which = await page.eval_on_selector(ref, "e => e.id")
+            assert which == "sessionDateStart", f"resolved to {which!r}, expected the date-range start"
         finally:
             await browser.close()
 

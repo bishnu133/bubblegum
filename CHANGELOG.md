@@ -20,14 +20,17 @@ application on any web tech stack.
   page behind the mask must not win. Both resolvers now scope to the topmost open
   dialog first (falling back to the whole document only when the dialog has none),
   so every control in a modal is reachable for selection *and* verification.
-- **Modal-scoped date-range picker (no time-field hijack).** A "Start time" /
-  "End time" field inside a modal was hijacked by a date **range** picker on the
-  page behind it — the range resolver scanned the whole document, grabbed the
-  background period picker, and typed the time into a date field (slow, wrong
-  value). The range resolver is now scoped to the open dialog and yields nothing
-  when the dialog has no range picker, so the (also modal-scoped) input finder
-  claims the modal's plain/time field instead. Non-modal range pickers are
-  unchanged.
+- **Modal-scoped date-range picker + date-vs-time disambiguation.** A "Start
+  time" / "End time" range inside a modal was hijacked by a date **range** picker
+  on the page behind the mask — the resolver scanned the whole document and
+  clicked/filled an input covered by the modal mask, which blocks on the browser's
+  actionability check until timeout (the ~15s-per-step + hang seen in the wild).
+  The range resolver is now scoped to the topmost open dialog, so the background
+  picker is never considered. When a single modal holds **both** a date range
+  ("… from") and a time range ("Start time" / "End time"), the two are separated
+  generically by token overlap against each input's **placeholder** as well as its
+  form-item label — so "… Start time" lands on the time inputs and "… start date"
+  on the date inputs. Non-modal range pickers are unchanged.
 - Coverage: `tests/integration/test_modal_radio_checkbox_time_web.py` — exact
   "Required" over "Not Required" (and the superset still reachable when named), a
   modal checkbox over a background copy, the range resolver declining a background
