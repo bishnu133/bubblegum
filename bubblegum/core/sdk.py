@@ -899,6 +899,25 @@ async def verify(
     if _looks_like_status_assertion(instruction, kwargs):
         return await _verify_status(adapter, channel, instruction, kwargs, options, t0)
 
+    # Page-scoped UI assertions — each reads the page generically (no selector,
+    # any stack) and is ordered most-specific first so the broad element-present
+    # check never steals a more precise one:
+    #  * page header/title text;
+    #  * alert/notification message or description;
+    #  * a dropdown's option items;
+    #  * a nav/menu/tab/step item being highlighted/active;
+    #  * an element of a named kind (button/textbox/table/…) being present.
+    if _looks_like_header_assertion(instruction, kwargs):
+        return await _verify_header(adapter, channel, instruction, kwargs, options, t0)
+    if _looks_like_alert_assertion(instruction, kwargs):
+        return await _verify_alert(adapter, channel, instruction, kwargs, options, t0)
+    if _looks_like_dropdown_assertion(instruction, kwargs):
+        return await _verify_dropdown_options(adapter, channel, instruction, kwargs, t0)
+    if _looks_like_active_assertion(instruction, kwargs):
+        return await _verify_active(adapter, channel, instruction, kwargs, t0)
+    if _looks_like_present_assertion(instruction, kwargs):
+        return await _verify_present(adapter, channel, instruction, kwargs, options, t0)
+
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
         instruction=instruction,
@@ -1230,6 +1249,401 @@ async def _verify_status(adapter, channel: str, instruction: str, kwargs: dict, 
         ),
         metadata={"expected_status": expected, "statuses_found": texts[:12]},
         ref="status", resolver_name="status_dom",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Page-scoped element/UI assertions (present / active / dropdown / alert / header)
+# ---------------------------------------------------------------------------
+
+# Spoken element kinds -> the canonical kind the adapter's count_elements knows.
+_ELEMENT_KINDS = {
+    "button": "button", "buttons": "button", "textbox": "textbox", "text box": "textbox",
+    "text field": "textbox", "input field": "textbox", "input box": "textbox", "input": "textbox",
+    "textarea": "textbox", "listbox": "listbox", "list box": "listbox",
+    "dropdown": "dropdown", "drop-down": "dropdown", "drop down": "dropdown",
+    "combobox": "combobox", "combo box": "combobox", "table": "table", "grid": "grid",
+    "hyperlink": "link", "link": "link", "checkbox": "checkbox", "check box": "checkbox",
+    "radio button": "radio", "radio": "radio", "image": "image", "picture": "image",
+    "icon": "icon", "heading": "heading", "tab": "tab", "menu": "menu",
+    "menu item": "menuitem", "menuitem": "menuitem", "dialog": "dialog", "modal": "dialog",
+    "alert": "alert", "tooltip": "tooltip", "switch": "switch", "toggle": "switch",
+    "progress bar": "progressbar", "progressbar": "progressbar", "radio group": "radiogroup",
+}
+_PRESENCE_WORDS = (
+    "present", "visible", "displayed", "shown", "is there", "are there", "exists",
+    "exist", "appears", "appear", "available", "can be seen", "is showing", "on the page",
+)
+
+
+def _norm_txt(s: str | None) -> str:
+    return " ".join((s or "").split()).strip().lower()
+
+
+def _element_kind(instruction: str) -> str | None:
+    """Return the canonical element kind named in the phrase (longest match)."""
+    low = _norm_txt(instruction)
+    best = None
+    for word, kind in _ELEMENT_KINDS.items():
+        if re.search(rf"(^|[^a-z]){re.escape(word)}([^a-z]|$)", low):
+            if best is None or len(word) > best[0]:
+                best = (len(word), kind)
+    return best[1] if best else None
+
+
+def _looks_like_present_assertion(instruction: str, kwargs: dict) -> bool:
+    """True for "the X <kind> is present/visible" element-presence assertions."""
+    at = kwargs.get("assertion_type")
+    if at in ("present", "element_present"):
+        return True
+    if at:
+        return False
+    low = _norm_txt(instruction)
+    if not any(w in low for w in _PRESENCE_WORDS):
+        return False
+    return _element_kind(instruction) is not None
+
+
+def _looks_like_active_assertion(instruction: str, kwargs: dict) -> bool:
+    """True for "the X menu/tab/step is highlighted/active/selected/bold"."""
+    at = kwargs.get("assertion_type")
+    if at in ("active", "highlighted", "selected_nav"):
+        return True
+    if at:
+        return False
+    low = _norm_txt(instruction)
+    if any(w in low for w in ("highlighted", "in bold", "bold", "emphasised", "emphasized")):
+        return True
+    state = any(w in low for w in ("active", "selected", "current", "highlighted"))
+    nav = any(w in low for w in ("menu", "tab", "step", "nav", "sidebar", "item",
+                                 "link", "option", "breadcrumb"))
+    return state and nav and bool(_quoted_segments(instruction))
+
+
+def _looks_like_dropdown_assertion(instruction: str, kwargs: dict) -> bool:
+    """True for "the X dropdown contains/has options A, B, C"."""
+    at = kwargs.get("assertion_type")
+    if at in ("dropdown_options", "options"):
+        return True
+    if at:
+        return False
+    low = _norm_txt(instruction)
+    kind = any(w in low for w in ("dropdown", "drop-down", "drop down", "listbox",
+                                  "list box", "combobox", "combo box", "select"))
+    listing = any(w in low for w in ("option", "options", "contain", "contains",
+                                     "has ", "have ", "include", "includes", "values",
+                                     "items", "list of", "choices")) or bool(kwargs.get("options"))
+    has_expected = bool(kwargs.get("options")) or len(_quoted_segments(instruction)) >= 2
+    return kind and listing and has_expected
+
+
+def _looks_like_alert_assertion(instruction: str, kwargs: dict) -> bool:
+    """True for "the alert says/description contains ..." assertions."""
+    at = kwargs.get("assertion_type")
+    if at == "alert":
+        return True
+    if at:
+        return False
+    low = _norm_txt(instruction)
+    kind = any(w in low for w in ("alert", "notification", "toast", "banner"))
+    cue = any(w in low for w in ("say", "says", "message", "description", "text",
+                                 "contain", "contains", "shows", "reads", "displays",
+                                 "detail", "details"))
+    return kind and cue
+
+
+def _looks_like_header_assertion(instruction: str, kwargs: dict) -> bool:
+    """True for "the page header/title is X" assertions."""
+    at = kwargs.get("assertion_type")
+    if at in ("page_header", "header"):
+        return True
+    if at:
+        return False
+    low = _norm_txt(instruction)
+    if "column" in low:                       # a table column header, not the page
+        return False
+    if any(p in low for p in ("page header", "page title", "page heading",
+                              "page name", "screen title", "screen header")):
+        return True
+    # A generic "the header is X" only counts with exactly one quoted value — two
+    # or more quoted segments is the "all of these are visible" text check.
+    return bool(
+        re.search(r"\b(header|heading|title)\b\s+(?:is|reads|says|=|should)", low)
+        and len(_quoted_segments(instruction)) == 1
+    )
+
+
+def _expected_and_extra(instruction: str, kwargs: dict) -> tuple[str, list[str]]:
+    """Return (primary expected text, [all quoted segments]) for an assertion.
+
+    Prefers ``expected_value``; otherwise the first quoted segment. The full
+    quoted list is returned too (used by the dropdown/options check).
+    """
+    quoted = _quoted_segments(instruction)
+    explicit = kwargs.get("expected_value")
+    primary = explicit if explicit is not None else (quoted[0] if quoted else "")
+    return (primary or "", quoted)
+
+
+async def _verify_present(adapter, channel: str, instruction: str, kwargs: dict, options, t0: float) -> StepResult:
+    """Assert an element of a named kind (button/textbox/table/…) is present.
+
+    Page-scoped: counts visible elements of the kind (optionally filtered by an
+    accessible name — the quoted text), so a tester can assert presence without a
+    selector on any stack. An unrecognised kind (or "any text") falls back to a
+    page-wide text_visible check.
+    """
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="element-present assertion is only supported on the web channel",
+            error=ErrorInfo(error_type="UnsupportedChannelError",
+                            message="present assertion is web-only"),
+            ref="page", resolver_name="present_dom",
+        )
+    kind = kwargs.get("element_kind") or _element_kind(instruction)
+    name, quoted = _expected_and_extra(instruction, kwargs)
+    # Element name is a quoted label only — not the kind word itself.
+    if _norm_txt(name) in _ELEMENT_KINDS:
+        name = ""
+    counter = getattr(adapter, "count_elements", None)
+    res = None
+    if kind and callable(counter):
+        try:
+            res = await counter(kind, name)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("count_elements errored: %s", exc)
+    # Unknown kind, "text", or no counter -> page-wide text presence on the label.
+    if res is None or res.get("count", -1) < 0:
+        text = name or _extract_present_text(instruction)
+        vp = build_validation_plan(assertion_type="text_visible", expected_value=text,
+                                   timeout_ms=kwargs.get("timeout_ms", options.timeout_ms))
+        vr = await adapter.validate(vp) if text else None
+        passed = bool(vr and vr.passed)
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=passed,
+            message=(f"{text!r} is visible" if passed else f"{text!r} not found on page"),
+            error=None if passed else ErrorInfo(error_type="ValidationFailedError",
+                                                message=f"expected text {text!r} on the page"),
+            metadata={"kind": kind, "name": name, "matched": "text_visible"},
+            ref="page", resolver_name="present_dom",
+        )
+    count = int(res.get("count", 0))
+    passed = count > 0
+    sample = res.get("sample") or []
+    named = f" matching {name!r}" if name else ""
+    msg = (f"{count} {kind}(s) present{named}" + (f"; e.g. {sample}" if sample else "")
+           if passed else f"no {kind}{named} present on the page")
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=msg,
+        error=None if passed else ErrorInfo(error_type="ValidationFailedError",
+                                            message=f"expected a {kind}{named} to be present"),
+        metadata={"kind": kind, "name": name, "count": count, "sample": sample},
+        ref="page", resolver_name="present_dom",
+    )
+
+
+def _extract_present_text(instruction: str) -> str:
+    """Best-effort subject of a presence assertion when nothing is quoted."""
+    low = instruction.strip()
+    m = re.search(r"^(?:the|a|an)\s+(.+?)\s+(?:is|are|should)\b", low, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    for w in _PRESENCE_WORDS:
+        low = re.sub(rf"\b{re.escape(w)}\b", "", low, flags=re.IGNORECASE)
+    return low.strip(" .\t")
+
+
+async def _verify_active(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Assert a nav/menu/tab/step item is highlighted / active / selected."""
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="active/highlighted assertion is only supported on the web channel",
+            error=ErrorInfo(error_type="UnsupportedChannelError", message="active assertion is web-only"),
+            ref="page", resolver_name="active_dom",
+        )
+    text, _ = _expected_and_extra(instruction, kwargs)
+    if not text:
+        m = re.search(r"(?:the\s+)?(.+?)\s+(?:menu|tab|step|item|link|option|nav\w*|breadcrumb)\b",
+                      instruction, re.IGNORECASE)
+        text = (m.group(1).strip() if m else "").strip('"\'' )
+    finder = getattr(adapter, "is_item_active", None)
+    res = None
+    if text and callable(finder):
+        try:
+            res = await finder(text)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("is_item_active errored: %s", exc)
+    if res is None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"no nav/menu/tab item matching {text!r} was found",
+            error=ErrorInfo(error_type="ValidationFailedError",
+                            message=f"no item matching {text!r}"),
+            metadata={"target": text}, ref="page", resolver_name="active_dom",
+        )
+    passed = bool(res.get("active"))
+    why = [k for k in ("byClass", "byAria", "byBold") if res.get(k)]
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed,
+        message=(f"{res.get('text', text)!r} is highlighted/active ({', '.join(why)})"
+                 if passed else f"{res.get('text', text)!r} is not highlighted/active"),
+        error=None if passed else ErrorInfo(error_type="ValidationFailedError",
+                                            message=f"{text!r} is not active/highlighted"),
+        metadata={"target": text, **res}, ref="page", resolver_name="active_dom",
+    )
+
+
+async def _verify_dropdown_options(adapter, channel: str, instruction: str, kwargs: dict, t0: float) -> StepResult:
+    """Assert a dropdown/listbox offers the expected option items."""
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="dropdown-options assertion is only supported on the web channel",
+            error=ErrorInfo(error_type="UnsupportedChannelError", message="dropdown assertion is web-only"),
+            ref="page", resolver_name="dropdown_dom",
+        )
+    quoted = _quoted_segments(instruction)
+    trigger = kwargs.get("target") or (quoted[0] if quoted else "")
+    expected = kwargs.get("options")
+    if expected is None:
+        expected = quoted[1:] if len(quoted) >= 2 else _split_option_list(instruction)
+    expected = [e for e in (expected or []) if str(e).strip()]
+    reader = getattr(adapter, "read_dropdown_options", None)
+    opts = None
+    if trigger and callable(reader):
+        try:
+            opts = await reader(trigger)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("read_dropdown_options errored: %s", exc)
+    if opts is None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message=f"no dropdown matching {trigger!r} was found",
+            error=ErrorInfo(error_type="ValidationFailedError", message=f"no dropdown {trigger!r}"),
+            metadata={"target": trigger}, ref="page", resolver_name="dropdown_dom",
+        )
+    have = [_norm_txt(o) for o in opts]
+    missing = [e for e in expected if _norm_txt(e) not in have
+               and not any(_norm_txt(e) in h for h in have)]
+    passed = not missing if expected else bool(opts)
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed,
+        message=(f"dropdown {trigger!r} options: {opts}" if passed
+                 else f"dropdown {trigger!r} missing {missing}; found {opts}"),
+        error=None if passed else ErrorInfo(error_type="ValidationFailedError",
+                                            message=f"dropdown missing options {missing}"),
+        metadata={"target": trigger, "expected": expected, "options": opts, "missing": missing},
+        ref="page", resolver_name="dropdown_dom",
+    )
+
+
+def _split_option_list(instruction: str) -> list[str]:
+    """Pull a comma/and-separated option list after a 'contains/options' cue."""
+    m = re.search(r"(?:contains?|options?|includes?|values?|items?|:)\s+(.+)$",
+                  instruction, re.IGNORECASE)
+    if not m:
+        return []
+    tail = m.group(1)
+    parts = re.split(r"\s*(?:,|;|/| and )\s*", tail)
+    return [p.strip().strip('"\'').strip() for p in parts if p.strip().strip('"\'').strip()]
+
+
+async def _verify_alert(adapter, channel: str, instruction: str, kwargs: dict, options, t0: float) -> StepResult:
+    """Assert an alert/notification banner shows the expected message/description."""
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="alert assertion is only supported on the web channel",
+            error=ErrorInfo(error_type="UnsupportedChannelError", message="alert assertion is web-only"),
+            ref="page", resolver_name="alert_dom",
+        )
+    expected, _ = _expected_and_extra(instruction, kwargs)
+    if not expected:
+        expected = extract_expected(instruction)
+    reader = getattr(adapter, "read_alerts", None)
+    alerts: list[dict] = []
+    if callable(reader):
+        try:
+            alerts = await reader()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("read_alerts errored: %s", exc)
+    low = _norm_txt(instruction)
+    want_desc = "description" in low or "detail" in low
+    exp = _norm_txt(expected)
+    hit = None
+    for a in alerts:
+        field = _norm_txt(a.get("description")) if want_desc else _norm_txt(a.get("text"))
+        if not field:
+            field = _norm_txt(a.get("text"))
+        if exp and exp in field:
+            hit = a
+            break
+    if hit is not None:
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=True,
+            message=f"alert shows {expected!r}", error=None,
+            metadata={"expected": expected, "alert": hit, "alerts": alerts[:6]},
+            ref="page", resolver_name="alert_dom",
+        )
+    # Fall back to a page-wide text check so a non-standard alert still validates.
+    if expected:
+        vp = build_validation_plan(assertion_type="text_visible", expected_value=expected,
+                                   timeout_ms=kwargs.get("timeout_ms", options.timeout_ms))
+        try:
+            vr = await adapter.validate(vp)
+        except Exception:  # noqa: BLE001
+            vr = None
+        if vr is not None and vr.passed:
+            return _page_scoped_result(
+                instruction=instruction, t0=t0, passed=True,
+                message=f"{expected!r} is visible", error=None,
+                metadata={"expected": expected, "matched": "text_visible"},
+                ref="page", resolver_name="alert_dom",
+            )
+    found = "; ".join(repr(a.get("text", "")) for a in alerts[:4]) if alerts else "no alerts on page"
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=False,
+        message=f"alert {expected!r} not present (found: {found})",
+        error=ErrorInfo(error_type="ValidationFailedError",
+                        message=f"expected alert {expected!r}; page shows: {found}"),
+        metadata={"expected": expected, "alerts": alerts[:6]},
+        ref="page", resolver_name="alert_dom",
+    )
+
+
+async def _verify_header(adapter, channel: str, instruction: str, kwargs: dict, options, t0: float) -> StepResult:
+    """Assert the page's primary header/title matches the expected text."""
+    if channel != "web":
+        return _page_scoped_result(
+            instruction=instruction, t0=t0, passed=False,
+            message="page-header assertion is only supported on the web channel",
+            error=ErrorInfo(error_type="UnsupportedChannelError", message="header assertion is web-only"),
+            ref="page", resolver_name="header_dom",
+        )
+    expected, _ = _expected_and_extra(instruction, kwargs)
+    if not expected:
+        expected = extract_expected(instruction)
+    reader = getattr(adapter, "read_page_header", None)
+    head = None
+    if callable(reader):
+        try:
+            head = await reader()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("read_page_header errored: %s", exc)
+    actual = _norm_txt(head.get("text")) if head else ""
+    exp = _norm_txt(expected)
+    passed = bool(exp) and bool(actual) and (exp == actual or exp in actual or actual in exp)
+    actual_text = head.get("text") if head else None
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed,
+        message=(f"page header is {actual_text!r}" if passed
+                 else f"page header is {actual_text!r} (expected {expected!r})" if head
+                 else f"no page header found (expected {expected!r})"),
+        error=None if passed else ErrorInfo(error_type="ValidationFailedError",
+                                            message=f"expected page header {expected!r}, got {actual!r}"),
+        metadata={"expected": expected, "actual": head}, ref="page", resolver_name="header_dom",
     )
 
 
@@ -2028,11 +2442,18 @@ async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, 
             resolver_name = "link_dom"
         else:
             finder = getattr(adapter, "find_table_cell", None)
-            ref = await finder(
-                column=spec["column"],
-                row_index=spec.get("row_index"),
-                row_match=spec.get("row_match"),
-            ) if finder else None
+            cell_kwargs = {
+                "column": spec.get("column", ""),
+                "row_index": spec.get("row_index"),
+                "row_match": spec.get("row_match"),
+            }
+            # Only forward the row-control kwargs when the spec uses them, so
+            # adapters/test doubles predating them keep working.
+            if spec.get("control"):
+                cell_kwargs["control"] = spec["control"]
+            if spec.get("control_text"):
+                cell_kwargs["control_text"] = spec["control_text"]
+            ref = await finder(**cell_kwargs) if finder else None
             resolver_name = "table_cell_dom"
     except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
         logger.debug("table/link DOM resolution errored: %s", exc)

@@ -164,6 +164,237 @@ _READ_STATUS_JS = r"""
 }
 """
 
+
+# Shared JS snippet: a visibility predicate (`__bgVis`) used by the readers below.
+_VIS_JS = (
+    "const __bgVis=(e)=>{ if(!e) return false;"
+    " const r=e.getBoundingClientRect(); if(r.width<=0||r.height<=0) return false;"
+    " const s=window.getComputedStyle(e);"
+    " return s.visibility!=='hidden'&&s.display!=='none'&&s.opacity!=='0'; };"
+)
+
+
+# JS: count visible elements of a given *kind* (button/textbox/listbox/table/…),
+# optionally filtered by an accessible name. Lets a tester assert an element is
+# present on the page without naming a selector or a specific label — framework
+# agnostic (native roles, ARIA roles, and the common Ant/MUI class conventions).
+# Returns {count, sample:[names…]} so the caller can report what it saw.
+_COUNT_ELEMENTS_JS = r"""
+(args) => {
+  __VIS_JS
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const kind = norm(args && args.kind);
+  const name = norm(args && args.name);
+  // Map a spoken element kind to the selectors that realise it across stacks.
+  const MAP = {
+    button: "button,[role='button'],input[type='submit'],input[type='button'],input[type='reset'],a[role='button']",
+    link: "a[href],[role='link']",
+    textbox: "input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([type='submit']):not([type='button']):not([type='reset']):not([type='file']),textarea,[role='textbox'],[contenteditable=''],[contenteditable='true']",
+    listbox: "select,[role='listbox'],[role='combobox'],.ant-select,.MuiSelect-select,[class*='select__control']",
+    dropdown: "select,[role='listbox'],[role='combobox'],.ant-select,.MuiSelect-select,[class*='select__control']",
+    combobox: "select,[role='combobox'],.ant-select,[class*='select__control']",
+    table: "table,[role='table'],[role='grid'],.ant-table,.MuiTable-root",
+    grid: "table,[role='grid'],[role='table'],.ant-table",
+    checkbox: "input[type='checkbox'],[role='checkbox']",
+    radio: "input[type='radio'],[role='radio']",
+    image: "img,[role='img'],svg[aria-label],picture",
+    heading: "h1,h2,h3,h4,h5,h6,[role='heading']",
+    tab: "[role='tab'],.ant-tabs-tab",
+    menu: "[role='menu'],[role='menubar'],.ant-menu",
+    menuitem: "[role='menuitem'],.ant-menu-item",
+    radiogroup: "[role='radiogroup'],.ant-radio-group",
+    alert: "[role='alert'],.ant-alert,.MuiAlert-root",
+    dialog: "[role='dialog'],[role='alertdialog'],.ant-modal,.MuiDialog-root",
+    tooltip: "[role='tooltip'],.ant-tooltip",
+    progressbar: "[role='progressbar'],progress,.ant-progress",
+    switch: "[role='switch'],.ant-switch",
+    icon: "svg,[class*='icon' i],[class*='anticon' i]"
+  };
+  const sel = MAP[kind] || null;
+  // The accessible-ish name of an element: aria-label, associated label text,
+  // title/alt/placeholder/value, else its own trimmed text.
+  const nameOf = (e) => {
+    const parts = [];
+    if (e.getAttribute && e.getAttribute('aria-label')) parts.push(e.getAttribute('aria-label'));
+    const lb = e.getAttribute && e.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    if (e.id) { const l = document.querySelector('label[for="' + (window.CSS ? CSS.escape(e.id) : e.id) + '"]'); if (l) parts.push(l.textContent); }
+    for (const a of ['title','alt','placeholder','value']) { const v = e.getAttribute && e.getAttribute(a); if (v) parts.push(v); }
+    parts.push(e.textContent || '');
+    return norm(parts.join(' '));
+  };
+  let els;
+  if (sel) { try { els = Array.from(document.querySelectorAll(sel)); } catch (e) { els = []; } }
+  else { els = null; }   // unknown kind -> caller falls back to a text check
+  if (els === null) return { count: -1, sample: [] };
+  els = els.filter(__bgVis);
+  // De-duplicate nested matches of the SAME kind (a role=button inside a <button>).
+  els = els.filter((e) => !els.some((o) => o !== e && o.contains(e)));
+  if (name) els = els.filter((e) => nameOf(e).indexOf(name) >= 0);
+  const sample = [];
+  for (const e of els.slice(0, 8)) { const n = nameOf(e).slice(0, 60); if (n) sample.push(n); }
+  return { count: els.length, sample };
+}
+""".replace("__VIS_JS", _VIS_JS)
+
+
+# JS: read visible alert/notification banners (Ant `.ant-alert`, MUI `.MuiAlert`,
+# ARIA `role=alert`, Bootstrap/Chakra `.alert`, toast/notification/banner class
+# conventions). Splits each into its short message/title and its longer
+# description when the widget separates them (Ant `.ant-alert-message` /
+# `.ant-alert-description`; MUI `.MuiAlertTitle-root`). Framework-agnostic so a
+# tester can validate an alert's text without a hand-written selector.
+_READ_ALERTS_JS = r"""
+() => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const SEL = "[role='alert'],.ant-alert,.MuiAlert-root,.chakra-alert,.alert,"
+    + "[class*='alert' i],[class*='Alert' i],[class*='notification' i],"
+    + "[class*='Notification' i],[class*='toast' i],[class*='Toast' i],[class*='banner' i]";
+  const vis = (e) => { const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0'; };
+  const out = [], seen = new Set();
+  let els; try { els = Array.from(document.querySelectorAll(SEL)); } catch (e) { els = []; }
+  for (const el of els) {
+    if (!vis(el)) continue;
+    // Keep the innermost alert carrier (skip an outer wrapper that holds another).
+    if (el.querySelector && el.querySelector(SEL)) continue;
+    const msgN = el.querySelector(".ant-alert-message,[class*='alert-message' i],.MuiAlertTitle-root,[class*='title' i]");
+    const descN = el.querySelector(".ant-alert-description,[class*='alert-description' i],[class*='description' i]");
+    const message = norm(msgN ? msgN.textContent : '');
+    const description = norm(descN ? descN.textContent : '');
+    const text = norm(el.textContent);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ message: message || text, description, text });
+  }
+  return out;
+}
+"""
+
+
+# JS: read the page's primary heading. Prefers a semantic H1 / aria-level-1
+# heading, then common "page title / page header" class conventions, then the
+# current breadcrumb item, then the first visible heading. Returns {text, tag} or
+# null. Lets a tester assert the page header without a selector, on any stack.
+_READ_PAGE_HEADER_JS = r"""
+() => {
+  __VIS_JS
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const pick = (sel) => {
+    let els; try { els = Array.from(document.querySelectorAll(sel)); } catch (e) { return null; }
+    for (const e of els) { if (__bgVis(e)) { const t = norm(e.textContent); if (t && t.length <= 200) return { text: t, tag: (e.tagName || '').toLowerCase() }; } }
+    return null;
+  };
+  return pick("h1")
+    || pick("[role='heading'][aria-level='1']")
+    || pick("[class*='page-title' i]")
+    || pick("[class*='page-header' i] h1, [class*='page-header' i] h2, [class*='PageHeader' i] [class*='title' i]")
+    || pick("[class*='PageHeader' i]")
+    || pick("header h1, header h2")
+    || pick(".ant-breadcrumb li:last-child, [class*='breadcrumb' i] [aria-current], [aria-current='page']")
+    || pick("h1,h2,[role='heading']");
+}
+""".replace("__VIS_JS", _VIS_JS)
+
+
+# JS: report whether the nav/menu/tab/step item whose label matches `text` is in
+# an ACTIVE / highlighted / selected state — by an active/selected/current class,
+# `aria-current` / `aria-selected`, the common Ant "…-selected/…-active" classes,
+# or a font-weight heavier than its sibling items (the "bold" a UI uses to mark
+# the current item). Framework-agnostic. Returns {active, byClass, byAria,
+# byBold, weight, text} for the matched item, or null when no item matches.
+_ITEM_ACTIVE_JS = r"""
+(args) => {
+  __VIS_JS
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const target = norm(args && args.text);
+  if (!target) return null;
+  const ITEMS = "[role='menuitem'],[role='tab'],[role='treeitem'],[role='option'],"
+    + "[role='link'],[role='button'],a,li,button,"
+    + ".ant-menu-item,.ant-menu-submenu-title,.ant-tabs-tab,.ant-steps-item,"
+    + "[class*='menu-item' i],[class*='MenuItem' i],[class*='nav-item' i],[class*='NavItem' i],"
+    + "[class*='tab' i],[class*='step' i]";
+  let els; try { els = Array.from(document.querySelectorAll(ITEMS)); } catch (e) { els = []; }
+  els = els.filter(__bgVis);
+  // Candidate items whose own trimmed label equals or tightly contains the target
+  // (short items only, so a big container that merely includes the word is skipped).
+  const cands = [];
+  for (const e of els) {
+    const own = norm(e.textContent);
+    if (!own) continue;
+    if (own === target || (own.indexOf(target) >= 0 && own.length <= target.length + 24)) cands.push(e);
+  }
+  if (!cands.length) return null;
+  // Prefer the innermost / shortest-label match (the item itself, not a wrapper).
+  cands.sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
+  const e = cands[0];
+  const cn = (e.className && e.className.toString()) || '';
+  const ACTIVE_CN = /(^|[\s-])(active|selected|current|highlighted|checked)([\s-]|$)/i;
+  const ANT_CN = /ant-(menu-item-selected|menu-submenu-selected|tabs-tab-active|steps-item-active|steps-item-process|steps-item-finish)/i;
+  const byClass = ACTIVE_CN.test(cn) || ANT_CN.test(cn)
+    || !!e.closest(".ant-menu-item-selected,.ant-tabs-tab-active,.ant-steps-item-active,.ant-steps-item-process,[class*='active' i][class*='item' i],[class*='selected' i][class*='item' i]");
+  const cur = e.getAttribute('aria-current');
+  const sel = e.getAttribute('aria-selected');
+  const byAria = (!!cur && cur !== 'false') || sel === 'true'
+    || !!e.closest("[aria-current]:not([aria-current='false']),[aria-selected='true']");
+  const weight = parseInt(window.getComputedStyle(e).fontWeight, 10) || 400;
+  // Bold relative to sibling items: the current item is often just heavier.
+  let sibMax = 0;
+  const parent = e.parentElement && e.parentElement.parentElement;
+  if (parent) {
+    for (const s of Array.from(parent.querySelectorAll('*'))) {
+      if (s === e || s.contains(e) || e.contains(s)) continue;
+      const st = norm(s.textContent);
+      if (!st || st.length > target.length + 24) continue;
+      const w = parseInt(window.getComputedStyle(s).fontWeight, 10);
+      if (!isNaN(w)) sibMax = Math.max(sibMax, w);
+    }
+  }
+  const byBold = weight >= 600 || (sibMax > 0 && weight > sibMax);
+  return { active: !!(byClass || byAria || byBold), byClass: !!byClass, byAria: !!byAria, byBold: !!byBold, weight, text: norm(e.textContent) };
+}
+""".replace("__VIS_JS", _VIS_JS)
+
+
+# JS: read the visible option labels of an already-open dropdown/listbox popup.
+# Used after the resolver opens the combobox; scoped to the open popup so it reads
+# THIS dropdown's options, not a closed one elsewhere. Covers ARIA options, Ant
+# rc-select rows, MUI menu items, and native <option>.
+_READ_OPEN_OPTIONS_JS = r"""
+() => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const vis = (e) => { const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none'; };
+  const POPUP = ".ant-select-dropdown:not(.ant-select-dropdown-hidden),[class*='dropdown']:not([class*='hidden']),"
+    + "[class*='menu']:not([class*='hidden']),[class*='popup']:not([class*='hidden']),[role='listbox'],ul[role='menu']";
+  const OPT = "[role='option'],[role='menuitemradio'],[role='menuitem'],.ant-select-item-option,"
+    + ".MuiMenuItem-root,.MuiAutocomplete-option,li[class*='option' i],[class*='option' i]";
+  const out = [], seen = new Set();
+  const push = (t) => { t = norm(t); if (!t || t.length > 120) return; const k = t.toLowerCase(); if (seen.has(k)) return; seen.add(k); out.push(t); };
+  let popups; try { popups = Array.from(document.querySelectorAll(POPUP)).filter(vis); } catch (e) { popups = []; }
+  for (const pop of popups) {
+    let opts; try { opts = Array.from(pop.querySelectorAll(OPT)).filter(vis); } catch (e) { opts = []; }
+    for (const o of opts) {
+      if (o.querySelector && o.querySelector(OPT)) continue;   // innermost row
+      const content = o.querySelector('.ant-select-item-option-content, [class*="option-content" i]');
+      push(o.getAttribute('title') || (content ? content.textContent : o.textContent));
+    }
+  }
+  // Native <select> that happens to be focused/open.
+  for (const s of Array.from(document.querySelectorAll('select'))) {
+    if (!vis(s)) continue;
+    for (const o of Array.from(s.options || [])) push(o.textContent);
+  }
+  return out;
+}
+"""
+
 # Fallback used when ExecutionOptions.nav_wait_ms is unavailable (e.g. an older
 # ActionPlan). Bounds how long a non-navigating click waits before concluding
 # the click was an in-page action rather than a navigation.
@@ -1544,6 +1775,11 @@ _FIND_TABLE_CELL_JS = r"""
   const rowIndex = (args && args.rowIndex != null) ? args.rowIndex : null;
   const rowMatch = (args && args.rowMatch) || null;
   const preferClickable = !(args && args.preferClickable === false);
+  // Row-scoped control modes: target a checkbox in the matched row, or a
+  // clickable (link/button) in the row whose text matches — neither needs a
+  // named column, only a way to pick the row.
+  const control = key(args && args.control);         // '' | 'checkbox'
+  const controlText = key(args && args.controlText); // link/button text in the row
 
   const findHeaderIdx = (headers) => {
     let i = headers.findIndex((h) => key(h) === colWant);
@@ -1589,10 +1825,12 @@ _FIND_TABLE_CELL_JS = r"""
     tables.push({ headers, rows });
   });
 
-  // Pick the first table that has the column and a usable row.
+  // Pick the first table that has a usable row (and the column, when one is
+  // named — the row-control modes don't need a named column).
   for (const tbl of tables) {
-    const ci = findHeaderIdx(tbl.headers);
-    if (ci < 0 || !tbl.rows.length) continue;
+    if (!tbl.rows.length) continue;
+    const ci = colWant ? findHeaderIdx(tbl.headers) : -1;
+    if (colWant && ci < 0) continue;
 
     let row = null;
     if (rowMatch) {
@@ -1607,14 +1845,35 @@ _FIND_TABLE_CELL_JS = r"""
       if (idx < 0) idx = tbl.rows.length + idx + 1; // -1 => last
       if (idx >= 1 && idx <= tbl.rows.length) row = tbl.rows[idx - 1];
     }
-    if (!row || !row[ci]) continue;
+    if (!row) continue;
 
-    const cell = row[ci];
-    let target = cell;
-    if (preferClickable) {
-      const click = cell.querySelector('a, button, [role="link"], [role="button"], input, [onclick], [tabindex]');
-      if (click) target = click;
+    let target = null;
+    if (control === 'checkbox') {
+      // The row's checkbox (usually in a selection column with no header). Prefer
+      // the clickable wrapper/label over the hidden input so the click registers.
+      for (const cell of row) {
+        const cb = cell.querySelector("input[type='checkbox'], [role='checkbox']");
+        if (cb) { target = cb.closest('label, .ant-checkbox-wrapper, [class*="checkbox-wrapper"], [class*="CheckboxWrapper"]') || cb; break; }
+      }
+    } else if (controlText) {
+      // A link/button inside the row whose visible text matches (exact then
+      // contains) — lets a tester name the link text instead of a column.
+      let clickables = [];
+      for (const cell of row) clickables = clickables.concat(
+        Array.from(cell.querySelectorAll("a, button, [role='link'], [role='button'], [onclick]")));
+      target = clickables.find((e) => norm(e.textContent).toLowerCase() === controlText)
+            || clickables.find((e) => norm(e.textContent).toLowerCase().includes(controlText))
+            || null;
+    } else {
+      if (ci < 0 || !row[ci]) continue;
+      const cell = row[ci];
+      target = cell;
+      if (preferClickable) {
+        const click = cell.querySelector('a, button, [role="link"], [role="button"], input, [onclick], [tabindex]');
+        if (click) target = click;
+      }
     }
+    if (!target) continue;
     document.querySelectorAll('[data-bg-cell]').forEach((n) => n.removeAttribute('data-bg-cell'));
     target.setAttribute('data-bg-cell', '1');
     return { selector: '[data-bg-cell="1"]', text: norm(target.textContent), tag: target.tagName };
@@ -3080,6 +3339,111 @@ class PlaywrightAdapter(BaseAdapter):
             return []
         return list(texts or [])
 
+    async def count_elements(self, kind: str, name: str = "") -> dict:
+        """Count visible elements of ``kind`` (button/textbox/listbox/table/…).
+
+        Optionally filtered by an accessible ``name``. Returns
+        ``{"count": int, "sample": [str]}``; ``count == -1`` means the kind was
+        not recognised (the caller should fall back to a plain text check). Used
+        by the element-present assertion so a tester can assert an element exists
+        without a selector, on any tech stack.
+        """
+        try:
+            res = await self._page.evaluate(_COUNT_ELEMENTS_JS, {"kind": kind or "", "name": name or ""})
+        except Exception as exc:  # noqa: BLE001 — never let a probe break a verify
+            logger.debug("count_elements errored: %s", exc)
+            return {"count": -1, "sample": []}
+        return res or {"count": -1, "sample": []}
+
+    async def read_alerts(self) -> list[dict]:
+        """Return visible alert/notification banners as ``[{message, description,
+        text}]``.
+
+        Framework-agnostic (Ant ``.ant-alert``, MUI ``.MuiAlert``, ARIA
+        ``role=alert``, Bootstrap/Chakra ``.alert``, toast/notification/banner
+        conventions), splitting the short message/title from the longer
+        description when the widget separates them. Lets a tester validate an
+        alert's text without a selector.
+        """
+        try:
+            alerts = await self._page.evaluate(_READ_ALERTS_JS)
+        except Exception as exc:  # noqa: BLE001 — never let a probe break a verify
+            logger.debug("read_alerts errored: %s", exc)
+            return []
+        return list(alerts or [])
+
+    async def read_page_header(self) -> dict | None:
+        """Return the page's primary heading as ``{text, tag}`` (or ``None``).
+
+        Prefers a semantic ``h1`` / aria-level-1 heading, then page-title/header
+        class conventions, then the current breadcrumb item — so a tester can
+        assert the page header without naming a selector, on any stack.
+        """
+        try:
+            head = await self._page.evaluate(_READ_PAGE_HEADER_JS)
+        except Exception as exc:  # noqa: BLE001 — never let a probe break a verify
+            logger.debug("read_page_header errored: %s", exc)
+            return None
+        return head or None
+
+    async def is_item_active(self, text: str) -> dict | None:
+        """Report whether the nav/menu/tab/step item labelled ``text`` is active.
+
+        Returns ``{active, byClass, byAria, byBold, weight, text}`` for the
+        matched item, or ``None`` when no item matches. "Active" is detected
+        generically: an active/selected/current class, ``aria-current`` /
+        ``aria-selected``, the Ant selected/active classes, or a font-weight
+        heavier than the item's siblings (the bold a UI uses for the current
+        item). Used by the highlighted/active assertion, on any framework.
+        """
+        try:
+            res = await self._page.evaluate(_ITEM_ACTIVE_JS, {"text": text or ""})
+        except Exception as exc:  # noqa: BLE001 — never let a probe break a verify
+            logger.debug("is_item_active errored: %s", exc)
+            return None
+        return res or None
+
+    async def read_dropdown_options(self, target_phrase: str, timeout_ms: int = 10_000) -> list[str] | None:
+        """Open the dropdown named by ``target_phrase`` and return its option labels.
+
+        Resolves the trigger by its label/placeholder (like a select step),
+        opens it, reads the option texts from the open popup (scoped so it reads
+        THIS dropdown), then closes it with Escape. Returns ``None`` when no
+        dropdown trigger matches (so the caller can fall back). Framework-agnostic
+        (native ``<select>``, Ant, MUI, react-select).
+        """
+        trigger_sel = await self.find_select_trigger(target_phrase, "")
+        if not trigger_sel:
+            return None
+        trigger = self._page.locator(trigger_sel).first
+        # Native <select>: read <option>s directly without opening a popup.
+        tag = await self._safe_tag_name(trigger)
+        if tag == "select":
+            try:
+                opts = await trigger.evaluate(
+                    "(s)=>Array.from(s.options||[]).map(o=>(o.textContent||'').replace(/\\s+/g,' ').trim()).filter(Boolean)"
+                )
+                return list(opts or [])
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("read_dropdown_options native errored: %s", exc)
+                return []
+        try:
+            await self._open_combobox(trigger, timeout_ms)
+        except Exception as exc:  # noqa: BLE001 — treat "couldn't open" as no options
+            logger.debug("read_dropdown_options open errored: %s", exc)
+            return []
+        try:
+            opts = await self._page.evaluate(_READ_OPEN_OPTIONS_JS)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("read_dropdown_options read errored: %s", exc)
+            opts = []
+        # Close the popup so it doesn't cover the next step's target.
+        try:
+            await self._page.keyboard.press("Escape")
+        except Exception:  # noqa: BLE001 — best-effort cleanup
+            pass
+        return list(opts or [])
+
     async def find_clickable(self, text: str, *, exact: bool = False) -> str | None:
         """Return a selector for a single interactive element named ``text``.
 
@@ -3129,25 +3493,37 @@ class PlaywrightAdapter(BaseAdapter):
         return result.get("selector")
 
     async def find_table_cell(
-        self, *, column: str, row_index: int | None = None,
+        self, *, column: str = "", row_index: int | None = None,
         row_match: dict | None = None, prefer_clickable: bool = True,
+        control: str = "", control_text: str = "",
     ) -> str | None:
-        """Return a selector for an element in a table cell.
+        """Return a selector for an element in a table row/cell.
 
-        Locates the table whose header matches ``column``, selects the row by
-        ``row_index`` (1-based; -1 = last) or by ``row_match`` ({column: value}),
-        and returns the clickable element inside that cell (a/button/input) when
-        ``prefer_clickable``, else the cell itself. Handles native ``<table>``,
-        Ant Design ``.ant-table`` (header/body split), and ARIA grids.
+        Selects the row by ``row_index`` (1-based; -1 = last) or ``row_match``
+        ({column: value}), then targets one of:
+
+        * ``control="checkbox"`` — the row's checkbox (e.g. an Ant selection
+          column) — no ``column`` needed;
+        * ``control_text="<link/button text>"`` — a clickable in the row whose
+          text matches — no ``column`` needed;
+        * otherwise the cell under ``column`` (its clickable child when
+          ``prefer_clickable``, else the cell).
+
+        Handles native ``<table>``, Ant ``.ant-table`` (header/body split), and
+        ARIA grids.
         """
         result = await self._page.evaluate(
             _FIND_TABLE_CELL_JS,
             {"column": column or "", "rowIndex": row_index,
-             "rowMatch": row_match or None, "preferClickable": bool(prefer_clickable)},
+             "rowMatch": row_match or None, "preferClickable": bool(prefer_clickable),
+             "control": control or "", "controlText": control_text or ""},
         )
         if not result:
             return None
-        logger.debug("find_table_cell col=%r row=%r/%r -> %s", column, row_index, row_match, result)
+        logger.debug(
+            "find_table_cell col=%r row=%r/%r control=%r/%r -> %s",
+            column, row_index, row_match, control, control_text, result,
+        )
         return result.get("selector")
 
     async def find_select_trigger(self, target_phrase: str, value: str) -> str | None:

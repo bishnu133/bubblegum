@@ -345,6 +345,72 @@ def _parse_row_spec(text: str):
     return None
 
 
+def _row_frag(rv: str) -> str:
+    """A row-selector fragment: "row where <col> is <val>", "<ordinal> row", or
+    "row <n>". ``rv`` is the value sub-pattern (``.+?`` when the row clause is at
+    the end of the string; ``[^,;]+?`` when a control clause follows it)."""
+    return (
+        r"(?:the\s+)?(?:" + _ROW_NOISE + r")?(?:"
+        r"row\s+(?:where|with|for)\s+(?P<rk>.+?)\s+(?:is|=|equals?)\s+(?P<rv>" + rv + r")"
+        r"|(?P<ridx>\d+(?:st|nd|rd|th)?|first|second|third|fourth|fifth|last)\s+(?:" + _ROW_NOISE + r")?row"
+        r"|row\s+(?P<ridx2>\d+))"
+    )
+
+
+_ROW_END = _row_frag(r".+?")        # row clause runs to end of string
+_ROW_LEAD = _row_frag(r"[^,;]+?")   # row clause is followed by a control clause
+
+
+def _apply_row(spec: dict, m) -> bool:
+    """Fill ``spec`` with row_match/row_index from a ``_row_frag`` match."""
+    d = m.groupdict()
+    if d.get("rk") and d.get("rv") is not None:
+        spec["row_match"] = {_strip_quotes(d["rk"]): _strip_quotes(d["rv"])}
+        return True
+    idx = d.get("ridx") or d.get("ridx2")
+    if idx:
+        rs = _parse_row_spec(idx)
+        if rs and rs[0] == "index":
+            spec["row_index"] = rs[1]
+            return True
+    return False
+
+
+def _parse_row_control(text: str) -> dict | None:
+    """Parse a row-scoped control action (checkbox toggle / named link in a row).
+
+    Returns ``{"kind":"cell","control":"checkbox", row…}`` or
+    ``{"kind":"cell","control_text":<text>, row…}`` — no column needed, the row
+    is picked by another column's value (``row where Date is 10/08/2026``) or by
+    index. Both clause orders are accepted. None when not matched.
+    """
+    # Checkbox in a matched row (control-clause-first, then row-first).
+    for pat in (
+        rf"(?:select|check|tick|toggle|click|tap|press)\s+(?:on\s+)?(?:the\s+)?(?:row\s+)?checkbox\s+(?:in|of|for|on)\s+{_ROW_END}\s*$",
+        rf"(?:in|for|on)\s+{_ROW_LEAD}\s*[,;]?\s*(?:select|check|tick|toggle|click|tap|press)\s+(?:on\s+)?(?:the\s+)?(?:row\s+)?checkbox\s*$",
+    ):
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            spec: dict[str, Any] = {"kind": "cell", "control": "checkbox"}
+            if _apply_row(spec, m):
+                return spec
+    # A named link/button within a matched row.
+    for pat in (
+        rf"(?:click|tap|press|open|follow|select)\s+(?:on\s+)?(?:the\s+)?(?P<lt>.+?)\s+(?:link|button)\s+(?:in|of|for|on)\s+{_ROW_END}\s*$",
+        rf"(?:in|for|on)\s+{_ROW_LEAD}\s*[,;]?\s*(?:click|tap|press|open|follow|select)\s+(?:on\s+)?(?:the\s+)?(?P<lt>.+?)\s+(?:link|button)\s*$",
+    ):
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            lt = _strip_quotes(m.group("lt"))
+            spec = {"kind": "cell", "control_text": lt}
+            # Link-by-text only applies to a VALUE-matched row ("row where X is
+            # Y"); when the row is given by index the phrase "click the COL link
+            # in the Nth row" is the existing column-cell action, so defer to it.
+            if lt and _apply_row(spec, m) and "row_match" in spec:
+                return spec
+    return None
+
+
 def _cell_spec(column: str, row_text: str) -> dict | None:
     column = re.sub(rf"\s+{_CELL_NOUN}$", "", _strip_quotes(column), flags=re.IGNORECASE).strip()
     rs = _parse_row_spec(row_text)
@@ -391,6 +457,14 @@ def parse_table_action(instruction: str, kwargs: dict[str, Any] | None = None) -
 
     text = (instruction or "").strip()
     low = text.casefold()
+
+    # --- Row-scoped controls: a checkbox, or a named link/button, inside the row
+    # matched by another column's value (or by index). These need no column name,
+    # so they're parsed before the column-and-row cell patterns below.
+    if "row" in low and ("checkbox" in low or "link" in low or "button" in low):
+        rc = _parse_row_control(text)
+        if rc:
+            return rc
 
     # --- Cell actions (require both a column and a row in the phrase) ----------
     if "column" in low or "row" in low:

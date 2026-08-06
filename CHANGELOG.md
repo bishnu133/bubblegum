@@ -1,5 +1,46 @@
 # Unreleased
 
+## 0.0.9 — feat(web): selector-free UI validations & row-scoped table actions
+
+Six new plain-English capabilities for validating and acting on a page, all
+framework-agnostic (native / ARIA / Ant Design / MUI) with no selectors and no
+project-specific names in the library. Each `verify(...)` below is page-scoped
+(reads the page generically) and detected from natural language; an explicit
+`assertion_type` also routes directly.
+
+- **Element presence** — `verify('the "Save" button is present')`,
+  `verify('a table is present on the page')`, `verify('the Username textbox is
+  visible')`. Counts visible elements of a spoken *kind* (button, textbox,
+  listbox/dropdown, table/grid, link, checkbox, radio, image, heading, tab,
+  menu, dialog, alert, switch, …), optionally filtered by a quoted accessible
+  name. An unrecognised kind falls back to a page-wide text check.
+  (`assertion_type="present"`.)
+- **Highlighted / active nav** — `verify('the "Activities" menu is
+  highlighted')`, `verify('the "Date and Time" step is active')`. Detects the
+  current item by an active/selected/current class, `aria-current` /
+  `aria-selected`, the Ant selected/active classes, or a font-weight heavier
+  than sibling items. (`assertion_type="active"`.)
+- **Dropdown options** — `verify('the "Programme" dropdown contains "Wellness
+  Programme", "Steps Challenge"')`. Opens the dropdown by its label, reads the
+  option items (native `<select>`, Ant, MUI, react-select), asserts the expected
+  ones are present, then closes it. (`assertion_type="dropdown_options"`, or pass
+  `options=[…]`.)
+- **Alert message / description** — `verify('the alert description contains
+  "cardio dance workout"')`, `verify('the alert says "Saved"')`. Reads
+  alert/notification/toast banners and matches the message or the description.
+  (`assertion_type="alert"`.)
+- **Page header** — `verify('the page header is "General Information"')`. Reads
+  the page's primary heading (`h1` / aria-level-1 / page-title conventions /
+  current breadcrumb). (`assertion_type="page_header"`.)
+- **Row-scoped table actions** — `act('In the row where Date is "10/08/2026",
+  select the checkbox')` and `act('In the row where Date is "10/08/2026", click
+  the "Add Assessment" link')`. Picks the row by another column's value (or by
+  index for the checkbox) and targets that row's checkbox or a link/button named
+  by its text — no column name needed. Ordinary column-cell clicks
+  ("click the RecordID link in the first row") are unchanged.
+- Coverage: `tests/integration/test_ui_validations_web.py` (real browser, all six)
+  and `tests/unit/test_ui_validation_detectors.py` (NL detection + row parsing).
+
 ## 0.0.8 — fix(web): modal-scoped time/checkbox resolution & exact-label radios
 
 Fixes from real-world testing of an Ant Design portal where three plain-English

@@ -39,6 +39,15 @@ def test_dialog_scoped_resolvers_inline_the_helper():
         assert "__bgTopDialog" in js, f"{name} is missing the __bgTopDialog helper"
 
 
+def test_reader_js_has_visibility_helper_inlined():
+    # The page-reader templates inline the shared __bgVis helper via
+    # .replace("__VIS_JS", …); a forgotten replace would ship a bare token.
+    for name in ("_COUNT_ELEMENTS_JS", "_READ_PAGE_HEADER_JS", "_ITEM_ACTIVE_JS"):
+        js = getattr(adapter, name)
+        assert "__VIS_JS" not in js, f"{name} has an unsubstituted __VIS_JS placeholder"
+        assert "__bgVis" in js, f"{name} is missing the __bgVis helper"
+
+
 def test_radio_and_checkbox_have_exactness_tiebreak():
     # The exact-label preference (fewest extra words) must be present so a phrase
     # that is a whole-word subset of two labels ("Required" ⊂ "Not Required")
