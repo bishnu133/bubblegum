@@ -1,5 +1,39 @@
 # Unreleased
 
+## 0.0.8 — fix(web): modal-scoped time/checkbox resolution & exact-label radios
+
+Fixes from real-world testing of an Ant Design portal where three plain-English
+steps failed inside a modal/dialog. All three fixes are generic — no
+project-specific field or element names in the library — so they hold for any
+application on any web tech stack.
+
+- **Exact-label preference for radios & checkboxes.** A phrase can be a whole-word
+  *subset* of two option labels — `Select "Required" radio` matched both
+  "Required" and "Not Required" equally, so DOM order decided and the wrong one
+  ("Not Required") was selected. Both resolvers now add a bounded exactness
+  tiebreak: among options whose labels cover the phrase equally, the one whose
+  visible label carries the fewest **extra** words wins, so the exact "Required"
+  is chosen. The penalty is smaller than the section-context weight, so it only
+  breaks otherwise-equal ties and never overrides which option or section matches.
+- **Modal-scoped radio & checkbox resolution.** When a blocking modal is open, the
+  radio/checkbox the tester means is inside it; a same-labelled control on the
+  page behind the mask must not win. Both resolvers now scope to the topmost open
+  dialog first (falling back to the whole document only when the dialog has none),
+  so every control in a modal is reachable for selection *and* verification.
+- **Modal-scoped date-range picker (no time-field hijack).** A "Start time" /
+  "End time" field inside a modal was hijacked by a date **range** picker on the
+  page behind it — the range resolver scanned the whole document, grabbed the
+  background period picker, and typed the time into a date field (slow, wrong
+  value). The range resolver is now scoped to the open dialog and yields nothing
+  when the dialog has no range picker, so the (also modal-scoped) input finder
+  claims the modal's plain/time field instead. Non-modal range pickers are
+  unchanged.
+- Coverage: `tests/integration/test_modal_radio_checkbox_time_web.py` — exact
+  "Required" over "Not Required" (and the superset still reachable when named), a
+  modal checkbox over a background copy, the range resolver declining a background
+  picker while a modal is open, the modal time field resolving via the input
+  finder, and the no-modal range picker still resolving.
+
 ## 0.0.7 — feat(mobile): iOS / native system-alert auto-handling
 
 iOS permission dialogs (notifications, location, camera, ATT, Bluetooth, …) — and

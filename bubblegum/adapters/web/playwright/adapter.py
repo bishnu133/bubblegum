@@ -808,6 +808,7 @@ _FIND_RICH_TEXT_JS = r"""
 # is unreliable — click the wrapper/label instead. Works for native + Ant + MUI.
 _FIND_RADIO_JS = r"""
 (args) => {
+  __DIALOG_JS
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const phrase = norm(args && args.phrase);
   const tokens = phrase.split(' ').filter((t) => t.length > 1);
@@ -823,7 +824,14 @@ _FIND_RADIO_JS = r"""
     .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))   // strip quotes/punctuation edges
     .filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
 
-  const els = Array.from(document.querySelectorAll('input[type=radio], [role=radio]'));
+  // Modal scoping: when a blocking modal is open, the radio the tester means is
+  // inside it — a same-labelled radio on the page behind the mask must not win.
+  // Scope to the topmost open dialog; fall back to the whole document only when
+  // the dialog has no radio (or no dialog is open), so ordinary flows are
+  // unchanged and every control in a modal stays reachable for select/verify.
+  const __dlg = __bgTopDialog();
+  let els = Array.from((__dlg || document).querySelectorAll('input[type=radio], [role=radio]'));
+  if (!els.length && __dlg) els = Array.from(document.querySelectorAll('input[type=radio], [role=radio]'));
   if (!els.length) return null;
 
   const wrapperOf = (e) => e.closest(
@@ -876,6 +884,15 @@ _FIND_RADIO_JS = r"""
   // "eligibilityRules_male" / "recommendationRules_male"), which is far more
   // reliable than headings alone.
   const sectionHaystack = (e) => sectionHaystackOf(e);
+  // Exactness tiebreak: an option label can be a whole-word SUPERSET of the
+  // phrase — "required" is a whole word in BOTH "Required" and "Not Required", so
+  // both cover the phrase equally and DOM order alone decides (picking the wrong
+  // one). Prefer the option whose VISIBLE label carries the fewest EXTRA words, so
+  // "Required" beats "Not Required". Bounded below the section-context weight (0.5)
+  // so it only breaks otherwise-equal ties — never overrides option or section.
+  const cleanLabel = (e) => { const w = wrapperOf(e); return norm((w && w.textContent) || e.getAttribute('aria-label') || e.value || ''); };
+  const phraseWords = new Set(tokens);
+  const extraWords = (txt) => (txt || '').split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !phraseWords.has(t)).length;
 
   let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
@@ -883,7 +900,9 @@ _FIND_RADIO_JS = r"""
     // Option label is the dominant signal (weight 1.0); the section context is a
     // bounded tiebreak (weight 0.5 < 1.0) so it can never override which OPTION
     // is chosen — only which of two equally-matching sections it lives in.
-    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sectionHaystack(e)) + i * 0.0001;
+    const cov = overlap(labelText(e));
+    const tight = cov > 0 ? -0.05 * Math.min(extraWords(cleanLabel(e)), 4) : 0;
+    const score = cov + tight + 0.5 * ctxOverlap(sectionHaystack(e)) + i * 0.0001;
     if (score > bestScore) { bestScore = score; best = e; bestSection = sec; }
   });
   if (!best || bestScore <= 0) return null;
@@ -914,7 +933,7 @@ _FIND_RADIO_JS = r"""
   }
   return { selector: stable, checked, name: displayName, section: bestSection, score: bestScore };
 }
-""".replace("__SECTION_JS", _SECTION_HEADING_JS)
+""".replace("__SECTION_JS", _SECTION_HEADING_JS).replace("__DIALOG_JS", _DIALOG_ROOT_JS)
 
 
 # JS: resolve a checkbox by its label text — mirror of _FIND_RADIO_JS. Ant/MUI
@@ -925,6 +944,7 @@ _FIND_RADIO_JS = r"""
 # the caller can toggle idempotently.
 _FIND_CHECKBOX_JS = r"""
 (args) => {
+  __DIALOG_JS
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const phrase = norm(args && args.phrase);
   const tokens = phrase.split(' ').filter((t) => t.length > 1);
@@ -935,7 +955,14 @@ _FIND_CHECKBOX_JS = r"""
     .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
     .filter((t) => t.length > 2 && !STOP.has(t) && tokens.indexOf(t) < 0);
 
-  const els = Array.from(document.querySelectorAll('input[type=checkbox], [role=checkbox]'));
+  // Modal scoping: when a blocking modal is open, the checkbox the tester means is
+  // inside it — a same-labelled checkbox on the page behind the mask must not win.
+  // Scope to the topmost open dialog; fall back to the whole document only when the
+  // dialog has no checkbox (or none is open), so ordinary flows are unchanged and
+  // every control in a modal stays reachable for select/verify.
+  const __dlg = __bgTopDialog();
+  let els = Array.from((__dlg || document).querySelectorAll('input[type=checkbox], [role=checkbox]'));
+  if (!els.length && __dlg) els = Array.from(document.querySelectorAll('input[type=checkbox], [role=checkbox]'));
   if (!els.length) return null;
 
   const wrapperOf = (e) => e.closest(
@@ -978,13 +1005,21 @@ _FIND_CHECKBOX_JS = r"""
   // that is only a prefix inside a camelCase id/name still counts.
   const ctxOverlap = (txt) => { if (!ctxTokens.length || !txt) return 0; let n = 0; ctxTokens.forEach((t) => { if (txt.indexOf(t) >= 0) n++; }); return n / ctxTokens.length; };
   const sectionHaystack = (e) => sectionHaystackOf(e);
+  // Exactness tiebreak (see the radio resolver): prefer the option whose visible
+  // label carries the fewest EXTRA words, so a phrase that is a whole-word subset
+  // of two labels ("Food" in "Food" and "Food and Drink") picks the exact one.
+  const cleanLabel = (e) => { const w = wrapperOf(e); return norm((w && w.textContent) || e.getAttribute('aria-label') || e.value || ''); };
+  const phraseWords = new Set(tokens);
+  const extraWords = (txt) => (txt || '').split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !phraseWords.has(t)).length;
 
   let best = null, bestScore = -1, bestSection = '';
   els.filter(shown).forEach((e, i) => {
     const sec = sectionText(e);
     // Option label dominates (weight 1.0); section context is a bounded tiebreak
     // (0.5) that only decides between equally-matching sections.
-    const score = overlap(labelText(e)) + 0.5 * ctxOverlap(sectionHaystack(e)) - i * 0.0001;
+    const cov = overlap(labelText(e));
+    const tight = cov > 0 ? -0.05 * Math.min(extraWords(cleanLabel(e)), 4) : 0;
+    const score = cov + tight + 0.5 * ctxOverlap(sectionHaystack(e)) - i * 0.0001;
     if (score > bestScore) { bestScore = score; best = e; bestSection = sec; }
   });
   if (!best || bestScore <= 0) return null;
@@ -1011,7 +1046,7 @@ _FIND_CHECKBOX_JS = r"""
   }
   return { selector: stable, checked, name: displayName, section: bestSection, score: bestScore };
 }
-""".replace("__SECTION_JS", _SECTION_HEADING_JS)
+""".replace("__SECTION_JS", _SECTION_HEADING_JS).replace("__DIALOG_JS", _DIALOG_ROOT_JS)
 
 
 # JS: resolve a collapsible/accordion section header ("Food"/"Drink" panel,
@@ -1137,6 +1172,7 @@ _FIND_COLLAPSE_HEADER_JS = r"""
 # "type into Start date" step to the wrong element. Deterministic by construction.
 _FIND_DATE_RANGE_JS = r"""
 (args) => {
+  __DIALOG_JS
   // Nearest form-item-ish ancestor that actually CONTAINS a label — see the
   // note in _FIND_SELECT_TRIGGER_JS (Ant's nested control wrapper otherwise
   // swallows closest() and the label disambiguation returns nothing).
@@ -1159,11 +1195,20 @@ _FIND_DATE_RANGE_JS = r"""
     return s.visibility !== 'hidden' && s.display !== 'none';
   };
 
+  // Modal scoping: when a blocking modal is open, a range picker the tester means
+  // is inside it — and a range picker on the page BEHIND the mask (e.g. a period
+  // "Start date" while the modal exposes its own "Start time") must never win.
+  // Scope the search to the topmost open dialog; when the dialog has no range
+  // picker, return null rather than reaching behind it, so the input finder (also
+  // modal-scoped) can claim the modal's plain/time field instead. Falls back to
+  // the whole document only when no modal is open (ordinary flows unchanged).
+  const __dlg = __bgTopDialog();
+  const __root = __dlg || document;
   // Candidate range inputs: explicit [date-range] first, else inputs inside an
   // .ant-picker-range (tagged with their DOM position: 0=start, 1=end).
-  let cands = Array.from(document.querySelectorAll('input[date-range]')).filter(visible);
+  let cands = Array.from(__root.querySelectorAll('input[date-range]')).filter(visible);
   if (!cands.length) {
-    document.querySelectorAll('.ant-picker-range').forEach((p) => {
+    __root.querySelectorAll('.ant-picker-range').forEach((p) => {
       Array.from(p.querySelectorAll('input')).filter(visible).forEach((e, i) => {
         e.__bgRangePos = i; cands.push(e);
       });
@@ -1203,7 +1248,7 @@ _FIND_DATE_RANGE_JS = r"""
   best.setAttribute('data-bg-daterange', '1');
   return { selector: '[data-bg-daterange="1"]', which };
 }
-"""
+""".replace("__DIALOG_JS", _DIALOG_ROOT_JS)
 
 
 # JS: resolve a file `<input type=file>` for an upload step by its surrounding
