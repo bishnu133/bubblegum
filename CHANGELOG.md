@@ -1,5 +1,17 @@
 # Unreleased
 
+## 0.0.10 — fix(web): page-header assertion finds styled non-`<h1>` titles
+
+The page-header reader (0.0.9) only fell back to `<h1>`/`<h2>`, so an app that
+styles its page/section title as an `<h3>`–`<h6>` (or a `role=heading` div)
+returned an empty header and `verify('the page header is "…"')` failed with
+`got ''`. The reader now adds a generic fallback: after the semantic/`page-title`
+selectors it picks the **most prominent visible heading** — the one with the
+largest rendered font-size (ties broken by document order) — across `h1`–`h6`
+and `role=heading`. It also drops the over-broad bare `[aria-current="page"]`
+match (which could return a nav item instead of the title). No API change.
+Coverage: `tests/integration/test_ui_validations_web.py::test_page_header_styled_non_h1`.
+
 ## 0.0.9 — feat(web): selector-free UI validations & row-scoped table actions
 
 Six new plain-English capabilities for validating and acting on a page, all

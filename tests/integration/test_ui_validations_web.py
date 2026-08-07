@@ -171,6 +171,38 @@ async def test_page_header():
             await browser.close()
 
 
+async def test_page_header_styled_non_h1():
+    """The page title is often a styled <h4>/role=heading, not a semantic <h1>;
+    the reader picks the most prominent visible heading (largest font-size)."""
+    aw = pytest.importorskip("playwright.async_api")
+    _STYLED = """
+    <!doctype html><html><body>
+      <nav><div role="menuitem" aria-current="page">General Info &amp; Location</div></nav>
+      <main>
+        <h4 style="font-size:20px;font-weight:800">General Information</h4>
+        <h5 style="font-size:14px">Programme</h5>
+      </main>
+    </body></html>
+    """
+    async with aw.async_playwright() as p:
+        launch_kwargs = {}
+        exe = os.environ.get("BG_CHROMIUM_EXECUTABLE")
+        if exe:
+            launch_kwargs["executable_path"] = exe
+        try:
+            browser = await p.chromium.launch(**launch_kwargs)
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"No usable Chromium binary: {exc}")
+        try:
+            page = await browser.new_page()
+            await page.set_content(_STYLED)
+            configure_runtime()
+            r = await verify('the page header is "General Information"', channel="web", page=page)
+            assert r.status == "passed", r.error and r.error.message
+        finally:
+            await browser.close()
+
+
 # --- V6: row-scoped checkbox + link ------------------------------------------
 
 async def test_row_checkbox_by_matching_value():

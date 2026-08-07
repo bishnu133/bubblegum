@@ -289,14 +289,30 @@ _READ_PAGE_HEADER_JS = r"""
     for (const e of els) { if (__bgVis(e)) { const t = norm(e.textContent); if (t && t.length <= 200) return { text: t, tag: (e.tagName || '').toLowerCase() }; } }
     return null;
   };
+  // The most prominent visible heading — largest rendered font-size, then
+  // earliest in the document. Finds the page/section title even when the app
+  // styles it as an <h3>-<h6> (or a role=heading div) rather than a semantic
+  // <h1>, which the selectors above would miss.
+  const prominent = () => {
+    let bestText = null, bestEl = null, bestFs = -1;
+    let els; try { els = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6,[role='heading']")); } catch (e) { els = []; }
+    for (const e of els) {
+      if (!__bgVis(e)) continue;
+      const t = norm(e.textContent);
+      if (!t || t.length > 200) continue;
+      const fs = parseFloat(window.getComputedStyle(e).fontSize) || 0;
+      if (fs > bestFs) { bestFs = fs; bestText = t; bestEl = e; }
+    }
+    return bestText ? { text: bestText, tag: (bestEl.tagName || '').toLowerCase() } : null;
+  };
   return pick("h1")
     || pick("[role='heading'][aria-level='1']")
     || pick("[class*='page-title' i]")
     || pick("[class*='page-header' i] h1, [class*='page-header' i] h2, [class*='PageHeader' i] [class*='title' i]")
     || pick("[class*='PageHeader' i]")
     || pick("header h1, header h2")
-    || pick(".ant-breadcrumb li:last-child, [class*='breadcrumb' i] [aria-current], [aria-current='page']")
-    || pick("h1,h2,[role='heading']");
+    || prominent()
+    || pick(".ant-breadcrumb li:last-child, [class*='breadcrumb' i] [aria-current]");
 }
 """.replace("__VIS_JS", _VIS_JS)
 
