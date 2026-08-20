@@ -2237,6 +2237,44 @@ class PlaywrightAdapter(BaseAdapter):
             return locator
         return locator.nth(idx)
 
+    @staticmethod
+    def _is_click_intercepted(exc: Exception) -> bool:
+        """True when a click failed because another element covers the target.
+
+        A sticky header/overlay sits over the target's hit point, or the target is
+        pinned at the viewport edge under a fixed bar — the element itself is
+        visible and enabled, just visually obscured. Detected from Playwright's
+        actionability message so we can retry past it with a forced/dispatched click.
+        """
+        msg = str(exc).lower()
+        return (
+            "intercepts pointer events" in msg
+            or "click intercepted" in msg
+            or "element is outside of the viewport" in msg
+        )
+
+    async def _click_resilient(self, locator, timeout: int) -> None:
+        """Click, retrying past a sticky-header/overlay interception.
+
+        Normal click first (full actionability). If it fails because another
+        element intercepts the hit point (common with fixed/sticky headers on CI),
+        fire the ``click`` event straight at the element with ``dispatch_event`` —
+        that bypasses hit-testing entirely and triggers the element's own handler
+        (React/Ant menus, links, buttons listen for a bubbling ``click``), so the
+        overlay can't swallow it. A plain force click is deliberately not used
+        here: it skips the interception check but still dispatches at the hit
+        point, so it can land on the overlay and "succeed" without firing the
+        target's handler. Any non-interception failure is re-raised unchanged.
+        """
+        try:
+            await locator.click(timeout=timeout)
+            return
+        except Exception as exc:  # noqa: BLE001
+            if not self._is_click_intercepted(exc):
+                raise
+            logger.debug("click intercepted by an overlay; dispatching a DOM click instead")
+        await locator.dispatch_event("click")
+
     async def _do_click(
         self, plan: ActionPlan, locator, timeout: int, target: ResolvedTarget | None = None
     ) -> None:
@@ -2251,7 +2289,7 @@ class PlaywrightAdapter(BaseAdapter):
         locator = await self._pick_click_by_visible_text(locator, plan.target_hint)
         # Record URL before click so we can detect navigation afterwards.
         url_before = self._page.url
-        await locator.click(timeout=timeout)
+        await self._click_resilient(locator, timeout)
         # Toggle-style roles (radio, checkbox, tab, ...) flip in-page state
         # and never navigate, so the URL probe below would always burn its
         # full 5 s timeout. Skip it for those roles.

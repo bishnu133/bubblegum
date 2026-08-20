@@ -50,6 +50,37 @@ async def test_failed_click_attaches_screenshot():
             await browser.close()
 
 
+async def test_failed_execution_attaches_screenshot():
+    """A step that RESOLVES but fails to execute (disabled button click) also
+    carries a screenshot — the grounding-failure path isn't the only one."""
+    aw = pytest.importorskip("playwright.async_api")
+    from bubblegum import act, configure_runtime
+
+    configure_runtime()
+    async with aw.async_playwright() as p:
+        launch_kwargs = {}
+        exe = os.environ.get("BG_CHROMIUM_EXECUTABLE")
+        if exe:
+            launch_kwargs["executable_path"] = exe
+        try:
+            browser = await p.chromium.launch(**launch_kwargs)
+        except Exception as exc:  # pragma: no cover
+            pytest.skip(f"No usable Chromium binary: {exc}")
+        try:
+            page = await browser.new_page()
+            await page.set_content(
+                "<button disabled>Blocked</button>",
+            )
+            res = await act('Click the "Blocked" button', channel="web", page=page,
+                            timeout_ms=2500)
+            assert res.status == "failed"
+            shots = [a for a in (res.artifacts or []) if getattr(a, "type", None) == "screenshot"]
+            assert shots, "no screenshot attached to the failed execution step"
+            assert Path(shots[0].path).is_file()
+        finally:
+            await browser.close()
+
+
 async def test_failed_verify_attaches_screenshot():
     aw = pytest.importorskip("playwright.async_api")
     from bubblegum import verify, configure_runtime

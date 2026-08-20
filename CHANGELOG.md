@@ -1,5 +1,26 @@
 # Unreleased
 
+## 0.0.13 — fix(web): click through a sticky-header overlay + screenshot on execution failure
+
+- **Click intercepted by a fixed/sticky header (CI failure).** After 0.0.12
+  resolved the "My Account" menu, the click itself timed out on CI because a
+  fixed `<header>` overlays the item's hit point (`"<header> intercepts pointer
+  events"`), and Playwright just retried the same blocked click until timeout.
+  The engine now detects an interception (or an at-the-viewport-edge item under a
+  fixed bar) and fires the `click` event straight at the element via
+  `dispatch_event`, which bypasses hit-testing and triggers the element's own
+  handler (React/Ant menus, links, buttons). A plain force click is deliberately
+  not used — it can land on the overlay and "succeed" without firing the target.
+  Non-interception click failures are re-raised unchanged.
+- **Screenshot on execution failure.** 0.0.12 attached a screenshot on *grounding*
+  failures; a step that resolved but failed to *execute* (e.g. the intercepted
+  click above, or a disabled control) still returned with no image. Those failures
+  now capture and attach a screenshot too, so every failed step in the report
+  carries the screen.
+- Coverage: `tests/integration/test_click_intercept_web.py` (menu under a sticky
+  header — fails on the old single-click path, passes with the dispatch fallback)
+  and an execution-failure case in `tests/integration/test_failure_screenshot_web.py`.
+
 ## 0.0.12 — fix(web): menu-click grounding + screenshots on failure + opt-in video
 
 - **Low-confidence menu/click resolution (CI failure).** A step like `Click on

@@ -754,6 +754,10 @@ async def act(
     duration_ms = int((time.monotonic() - t0) * 1000)
 
     if not exec_result.success:
+        # Capture a screenshot for the report: the element resolved but the action
+        # failed (e.g. a click intercepted by a sticky header), which the
+        # grounding-failure screenshot path above doesn't cover.
+        artifacts = await _capture_screenshot(adapter, instruction)
         return StepResult(
             status="failed",
             action=instruction,
@@ -766,6 +770,7 @@ async def act(
                 message=exec_result.error or "Execution failed",
                 resolver_name=target.resolver_name,
             ),
+            artifacts=artifacts,
         )
 
     # Self-healing advisory: a fuzzy/synonym match means the literal step did
