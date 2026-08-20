@@ -1,5 +1,28 @@
 # Unreleased
 
+## 0.0.11 — fix(web): robust date/time picker entry (headless/CI commit flake)
+
+A "type into a date/time picker" step (Ant `RangePicker`, MUI pickers) worked
+when run headed (local) but intermittently entered **nothing** headless (CI), so
+a dependent step — e.g. adding a session after entering start/end time — failed.
+A picker is a React-controlled widget whose value lives in component state and is
+only kept when a commit lands; a single-shot `fill()` + Enter can be dropped in
+the race with the widget's open/close animation, and headless timing exposes it.
+
+`_do_type` now enters picker inputs robustly and generically (any stack):
+activate the field (so a range picker routes to the intended side), clear it,
+type the value with **real keystrokes** (trusted key/input events the widget
+commits, vs a programmatic fill), press Enter, then **verify the value actually
+stuck and retry once** (select-all + backspace + re-type) if it didn't. Ordinary
+text inputs keep the plain `fill()` path. Coverage:
+`tests/integration/test_picker_keystroke_web.py` (a dropped-first-commit picker
+in a modal, headless) and updated `tests/unit/test_picker_type_commit.py`.
+
+> Note: if a picker step fails in a pipeline but passes locally, first confirm
+> the pipeline's `BRIDGE ENGINE:` banner matches your local engine version — a
+> stale/cached older engine (missing the modal date-vs-time disambiguation from
+> 0.0.9) is the other common cause of this exact symptom.
+
 ## 0.0.10 — fix(web): page-header assertion finds styled non-`<h1>` titles
 
 The page-header reader (0.0.9) only fell back to `<h1>`/`<h2>`, so an app that

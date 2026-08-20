@@ -2311,22 +2311,84 @@ class PlaywrightAdapter(BaseAdapter):
 
     async def _do_type(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
-        # Date/time picker inputs (e.g. Ant RangePicker) need an explicit
-        # activate + commit: click to make this field the active editor, fill it,
-        # then press Enter to commit — otherwise the widget keeps routing text to
-        # the previously-active field (both range values land in "start").
+        # Date/time picker inputs (Ant RangePicker, MUI pickers, …) need real
+        # keystrokes, not fill(). A picker is a React-controlled component whose
+        # value lives in component state; fill() sets the DOM `.value` and fires a
+        # single *non-trusted* input event, which rc-picker/MUI routinely ignore or
+        # revert on blur — so the field ends up empty. Headed runs often mask this
+        # (real focus + slower timing); headless CI does not, which is why "enter
+        # the time" works locally but silently no-ops on the pipeline. Typing the
+        # value key-by-key fires trusted key/input events the widget commits.
         if await self._is_picker_input(locator):
-            try:
-                await locator.click(timeout=timeout)
-            except Exception:  # noqa: BLE001 — focus via fill() is the fallback
-                pass
-            await locator.fill(value, timeout=timeout)
-            try:
-                await locator.press("Enter", timeout=timeout)
-            except Exception:  # noqa: BLE001 — value is already set; commit is best-effort
-                pass
+            await self._type_into_picker(locator, value, timeout)
             return
         await locator.fill(value, timeout=timeout)
+
+    async def _type_into_picker(self, locator, value: str, timeout: int) -> None:
+        """Enter ``value`` into a date/time picker input via real keystrokes.
+
+        Activate the field (so a range picker routes to THIS side, not the
+        previously-active one), clear it, type character-by-character (trusted
+        events the controlled widget commits), then press Enter to confirm. If the
+        value didn't stick (a headless race with the picker's open animation), one
+        keystroke retry with an explicit select-all clear. Every step is
+        best-effort so a widget that doesn't support one of them still proceeds.
+        """
+        async def _press_keys(text: str) -> bool:
+            # Prefer press_sequentially (Playwright >=1.38); fall back to type().
+            for method in ("press_sequentially", "type"):
+                fn = getattr(locator, method, None)
+                if fn is None:
+                    continue
+                try:
+                    await fn(text, delay=15, timeout=timeout)
+                    return True
+                except TypeError:
+                    try:
+                        await fn(text, delay=15)
+                        return True
+                    except Exception:  # noqa: BLE001
+                        continue
+                except Exception:  # noqa: BLE001
+                    continue
+            return False
+
+        try:
+            await locator.click(timeout=timeout)
+        except Exception:  # noqa: BLE001 — typing focuses the field anyway
+            pass
+        try:
+            await locator.fill("", timeout=timeout)     # clear any prior text
+        except Exception:  # noqa: BLE001
+            pass
+        typed = await _press_keys(value)
+        if not typed:                                    # last resort
+            try:
+                await locator.fill(value, timeout=timeout)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            await locator.press("Enter", timeout=timeout)
+        except Exception:  # noqa: BLE001 — commit is best-effort
+            pass
+        # Verify the value committed; retry once if the widget dropped it.
+        if not value:
+            return
+        try:
+            current = await locator.input_value(timeout=1_000)
+        except Exception:  # noqa: BLE001 — some widgets hide the real input
+            return
+        if current and value in current:
+            return
+        try:
+            await locator.click(timeout=timeout)
+            await locator.press("ControlOrMeta+a")
+            await locator.press("Backspace")
+            if not await _press_keys(value):
+                await locator.fill(value, timeout=timeout)
+            await locator.press("Enter", timeout=timeout)
+        except Exception:  # noqa: BLE001 — bounded single retry
+            pass
 
     async def _do_select(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
