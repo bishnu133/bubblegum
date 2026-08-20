@@ -1,5 +1,31 @@
 # Unreleased
 
+## 0.0.12 — fix(web): menu-click grounding + screenshots on failure + opt-in video
+
+- **Low-confidence menu/click resolution (CI failure).** A step like `Click on
+  the My Account menu` could ground below the acceptance threshold (best 0.61)
+  because the phrase carries a widget-kind word ("menu") that isn't part of the
+  element's accessible name ("My Account"), and the clickable fallback matched
+  the whole phrase too. The fallback now strips leading fillers and a trailing
+  kind word (menu / submenu / button / icon / link / tab / option / …) and tries
+  the cleaned phrase first, so a menu title resolves by its real name. Generic;
+  the raw phrase is still tried as a second attempt.
+- **Screenshot on failure.** The success path always screenshotted, but a failed
+  `act`/`verify` returned with no artifact — so the report had no image for the
+  step that actually failed. Failures now capture a screenshot and attach it as
+  an `ArtifactRef(type="screenshot")`; the HTML/Allure reports already embed it.
+  Covers grounding failures and page-scoped assertion failures (header, element
+  present, alert, dropdown options, highlighted, status).
+- **Opt-in per-session video recording (engine-owned browser).** Set
+  `BUBBLEGUM_RECORD_VIDEO=1` to record a `.webm` per session; `BUBBLEGUM_VIDEO_DIR`
+  (default `artifacts/videos`) and `BUBBLEGUM_VIDEO_SIZE` ("1280x720") tune it.
+  Off by default; env-toggled so no config-file or client change is needed. Only
+  applies when the engine launches the browser — a CDP-attached (client-owned)
+  session must enable `recordVideo` on its own Playwright context.
+- Coverage: `tests/unit/test_click_clean_fallback.py`,
+  `tests/integration/test_failure_screenshot_web.py`,
+  `tests/integration/test_session_video_web.py`.
+
 ## 0.0.11 — fix(web): robust date/time picker entry (headless/CI commit flake)
 
 A "type into a date/time picker" step (Ant `RangePicker`, MUI pickers) worked

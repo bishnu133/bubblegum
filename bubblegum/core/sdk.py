@@ -684,7 +684,8 @@ async def act(
                 fallback = _fallback_selector_target(intent)
             if fallback is None:
                 duration_ms = int((time.monotonic() - t0) * 1000)
-                return _failed_result(instruction, exc, duration_ms)
+                shots = await _capture_screenshot(adapter, instruction)
+                return _failed_result(instruction, exc, duration_ms, artifacts=shots)
             target, traces = fallback, []
 
     target, hydration_error, _hydration_meta = _maybe_hydrate_visual_target(intent=intent, target=target)
@@ -897,7 +898,8 @@ async def verify(
     # Live"): read status pills/badges/chips generically and match the value —
     # page-scoped, no element grounding, works on any UI framework.
     if _looks_like_status_assertion(instruction, kwargs):
-        return await _verify_status(adapter, channel, instruction, kwargs, options, t0)
+        return await _attach_failure_shot(
+            adapter, await _verify_status(adapter, channel, instruction, kwargs, options, t0))
 
     # Page-scoped UI assertions — each reads the page generically (no selector,
     # any stack) and is ordered most-specific first so the broad element-present
@@ -907,16 +909,23 @@ async def verify(
     #  * a dropdown's option items;
     #  * a nav/menu/tab/step item being highlighted/active;
     #  * an element of a named kind (button/textbox/table/…) being present.
+    # Each attaches a screenshot when it fails, so an assertion mismatch shows the
+    # actual screen in the report.
     if _looks_like_header_assertion(instruction, kwargs):
-        return await _verify_header(adapter, channel, instruction, kwargs, options, t0)
+        return await _attach_failure_shot(
+            adapter, await _verify_header(adapter, channel, instruction, kwargs, options, t0))
     if _looks_like_alert_assertion(instruction, kwargs):
-        return await _verify_alert(adapter, channel, instruction, kwargs, options, t0)
+        return await _attach_failure_shot(
+            adapter, await _verify_alert(adapter, channel, instruction, kwargs, options, t0))
     if _looks_like_dropdown_assertion(instruction, kwargs):
-        return await _verify_dropdown_options(adapter, channel, instruction, kwargs, t0)
+        return await _attach_failure_shot(
+            adapter, await _verify_dropdown_options(adapter, channel, instruction, kwargs, t0))
     if _looks_like_active_assertion(instruction, kwargs):
-        return await _verify_active(adapter, channel, instruction, kwargs, t0)
+        return await _attach_failure_shot(
+            adapter, await _verify_active(adapter, channel, instruction, kwargs, t0))
     if _looks_like_present_assertion(instruction, kwargs):
-        return await _verify_present(adapter, channel, instruction, kwargs, options, t0)
+        return await _attach_failure_shot(
+            adapter, await _verify_present(adapter, channel, instruction, kwargs, options, t0))
 
     _, target_phrase, _ = await _decompose_for(instruction, kwargs, force_action="verify")
     intent  = make_intent(
@@ -954,7 +963,8 @@ async def verify(
         target, traces = await _ground_with_wait(adapter, intent)
     except BubblegumError as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
-        return _failed_result(instruction, exc, duration_ms)
+        shots = await _capture_screenshot(adapter, instruction)
+        return _failed_result(instruction, exc, duration_ms, artifacts=shots)
 
     assertion_type  = kwargs.get("assertion_type", "text_visible")
     timeout_ms      = kwargs.get("timeout_ms", options.timeout_ms)
@@ -2044,7 +2054,8 @@ async def extract(
         target, traces = await _ground_with_wait(adapter, intent)
     except BubblegumError as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
-        return _failed_result(instruction, exc, duration_ms)
+        shots = await _capture_screenshot(adapter, instruction)
+        return _failed_result(instruction, exc, duration_ms, artifacts=shots)
 
     target, hydration_error, _hydration_meta = _maybe_hydrate_visual_target(intent=intent, target=target)
     if hydration_error is not None:
@@ -2881,21 +2892,58 @@ async def _maybe_resolve_clickable(adapter, channel: str, instruction: str, inte
     if finder is None:
         return None
     quoted = _quoted_segments(instruction)
-    text = quoted[0] if quoted else (intent.target_phrase or "")
-    if not text.strip():
+    raw = quoted[0] if quoted else (intent.target_phrase or "")
+    if not raw.strip():
         return None
-    try:
-        ref = await finder(text)
-    except Exception as exc:  # noqa: BLE001 — keep the original grounding error if this fails
-        logger.debug("clickable DOM fallback errored: %s", exc)
-        return None
-    if not ref:
-        return None
-    logger.debug("Resolved click '%s' via DOM clickable fallback (%s)", instruction, ref)
-    return ResolvedTarget(
-        ref=ref, confidence=0.75, resolver_name="clickable_dom",
-        metadata={"role": "button", "clickable_dom": True},
-    )
+    # Try the phrase with widget-kind noise stripped first ("the My Account menu"
+    # -> "My Account"), then the raw phrase. The kind word (menu/button/icon/…)
+    # describes the widget, not its accessible name, so a menu title named "My
+    # Account" scores far higher against "My Account" than "the My Account menu"
+    # — which is exactly the low-confidence miss this fallback exists to catch.
+    cleaned = _clean_click_phrase(raw)
+    candidates = [cleaned, raw] if (cleaned and cleaned.lower() != raw.strip().lower()) else [raw]
+    for text in candidates:
+        if not text.strip():
+            continue
+        try:
+            ref = await finder(text)
+        except Exception as exc:  # noqa: BLE001 — keep the original grounding error if this fails
+            logger.debug("clickable DOM fallback errored: %s", exc)
+            return None
+        if ref:
+            logger.debug("Resolved click '%s' via DOM clickable fallback on %r (%s)", instruction, text, ref)
+            return ResolvedTarget(
+                ref=ref, confidence=0.75, resolver_name="clickable_dom",
+                metadata={"role": "button", "clickable_dom": True},
+            )
+    return None
+
+
+def _clean_click_phrase(phrase: str) -> str:
+    """Strip leading fillers and a trailing widget-kind word from a click target.
+
+    ``"the My Account menu" -> "My Account"``, ``"the Next button" -> "Next"``.
+    Generic: the trailing noun names the *kind* of control (menu / button / icon
+    / link / tab / …), not the element, so removing it lets the accessible name
+    match cleanly. Leaves the phrase unchanged when nothing matches.
+    """
+    import re
+
+    _LEAD = r"^(?:click|tap|press|open|select|choose|on|onto|the|a|an)\s+"
+    _KIND = (r"\s+(?:sub\s*menu|submenu|menu|drop\s*down|dropdown|button|btn|icon|"
+             r"link|hyperlink|option|item|tab|field|control|element|toggle|switch)\s*$")
+    p = (phrase or "").strip().strip('"').strip("'").strip()
+    for _ in range(3):                     # peel stacked leading fillers
+        new = re.sub(_LEAD, "", p, flags=re.IGNORECASE)
+        if new == p:
+            break
+        p = new
+    for _ in range(2):                     # peel a trailing kind word (twice max)
+        new = re.sub(_KIND, "", p, flags=re.IGNORECASE).strip()
+        if new == p:
+            break
+        p = new
+    return p.strip().strip('"').strip("'").strip()
 
 
 def _clean_dropdown_phrase(phrase: str) -> str:
@@ -3605,8 +3653,11 @@ def _fallback_selector_target(intent: StepIntent) -> ResolvedTarget | None:
     )
 
 
-def _failed_result(instruction: str, exc: BubblegumError, duration_ms: int) -> StepResult:
-    """Build a failed StepResult from a BubblegumError."""
+def _failed_result(
+    instruction: str, exc: BubblegumError, duration_ms: int,
+    artifacts: list[ArtifactRef] | None = None,
+) -> StepResult:
+    """Build a failed StepResult from a BubblegumError (with optional screenshot)."""
     return StepResult(
         status="failed",
         action=instruction,
@@ -3618,7 +3669,28 @@ def _failed_result(instruction: str, exc: BubblegumError, duration_ms: int) -> S
             resolver_name=exc.resolver_name,
             candidates=exc.candidates,
         ),
+        artifacts=artifacts or [],
     )
+
+
+async def _attach_failure_shot(adapter, result: StepResult) -> StepResult:
+    """Capture a screenshot for a failed step and attach it (best-effort).
+
+    Mirrors the success path, which always screenshots — so a failure in the
+    report carries the same visual evidence. No-op when the step passed, when a
+    screenshot is already attached, or when capture isn't possible.
+    """
+    try:
+        if getattr(result, "status", None) != "failed":
+            return result
+        if getattr(result, "artifacts", None):
+            return result
+        shots = await _capture_screenshot(adapter, getattr(result, "action", "") or "failed step")
+        if shots:
+            result.artifacts = shots
+    except Exception as exc:  # noqa: BLE001 — never let screenshotting break a result
+        logger.debug("failure screenshot capture skipped: %s", exc)
+    return result
 
 
 async def _capture_screenshot(adapter, label: str) -> list[ArtifactRef]:

@@ -17,11 +17,20 @@ Appium driver (mobile), mirroring the ``bubblegum repl`` launchers.
 
 from __future__ import annotations
 
+import logging
+import os
 import uuid
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from bubblegum.bridge import protocol as p
+
+logger = logging.getLogger("bubblegum.bridge.sessions")
+
+
+def _env_truthy(value: str | None) -> bool:
+    """True for the usual on values ("1", "true", "yes", "on"); False otherwise."""
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 @dataclass
@@ -162,28 +171,57 @@ async def default_session_factory(spec: OpenSpec) -> OpenedSession:
             ) from exc
 
         pw = await async_playwright().start()
+        video_dir: str | None = None
         if spec.cdp_endpoint:
             # Client-owned browser: attach to the Chromium the caller already
             # drives (e.g. their Playwright test) and resolve against an existing
-            # page. We never create or close the caller's browser/page.
+            # page. We never create or close the caller's browser/page — and can't
+            # add video recording to a context we didn't create (the caller's
+            # Playwright must set recordVideo on its own context).
             browser = await pw.chromium.connect_over_cdp(spec.cdp_endpoint)
             page = select_cdp_page(browser, spec.page_index)
         else:
             browser = await pw.chromium.launch(headless=spec.headless)
-            context = await browser.new_context()
+            # Engine-owned browser: optional per-session screen recording, toggled
+            # by env so no config-file or client change is needed (BUBBLEGUM_RECORD_VIDEO
+            # flows through to the spawned bridge). BUBBLEGUM_VIDEO_DIR overrides the
+            # output dir; BUBBLEGUM_VIDEO_SIZE ("1280x720") the frame size.
+            ctx_kwargs: dict[str, Any] = {}
+            if _env_truthy(os.environ.get("BUBBLEGUM_RECORD_VIDEO")):
+                video_dir = os.environ.get("BUBBLEGUM_VIDEO_DIR") or "artifacts/videos"
+                os.makedirs(video_dir, exist_ok=True)
+                ctx_kwargs["record_video_dir"] = video_dir
+                size = os.environ.get("BUBBLEGUM_VIDEO_SIZE", "")
+                if "x" in size.lower():
+                    try:
+                        w, h = size.lower().split("x")[:2]
+                        ctx_kwargs["record_video_size"] = {"width": int(w), "height": int(h)}
+                    except ValueError:
+                        pass
+            context = await browser.new_context(**ctx_kwargs)
             page = await context.new_page()
         if spec.url:
             await page.goto(spec.url)
         session = await BubblegumSession.web(page, dry_run=spec.dry_run).__aenter__()
 
         async def aclose() -> None:
+            video_path: str | None = None
             try:
+                if video_dir and getattr(page, "video", None):
+                    try:
+                        video_path = await page.video.path()
+                    except Exception:  # noqa: BLE001 — path may need the close flush
+                        video_path = None
                 await session.__aexit__(None, None, None)
             finally:
                 # For a CDP-attached browser, browser.close() only disconnects our
-                # Playwright connection — the caller's browser keeps running.
+                # Playwright connection — the caller's browser keeps running. For an
+                # engine-owned browser this also flushes any recorded video to disk.
                 await browser.close()
                 await pw.stop()
+                if video_dir:
+                    logger.info("Session video recorded under %s%s", video_dir,
+                                f" ({video_path})" if video_path else "")
 
         return OpenedSession(session=session, aclose=aclose)
 
