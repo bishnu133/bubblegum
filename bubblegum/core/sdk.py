@@ -2921,6 +2921,25 @@ async def _maybe_resolve_clickable(adapter, channel: str, instruction: str, inte
                 ref=ref, confidence=0.75, resolver_name="clickable_dom",
                 metadata={"role": "button", "clickable_dom": True},
             )
+    # Still not found on the visible bar: the item may be collapsed into a
+    # responsive "…"/More overflow menu (narrow window). Open that trigger and
+    # retry — generic across nav libraries, a no-op when nothing is overflowing.
+    overflow = getattr(adapter, "find_clickable_in_overflow", None)
+    if callable(overflow):
+        for candidate in candidates:
+            if not candidate.strip():
+                continue
+            try:
+                ref = await overflow(candidate)
+            except Exception as exc:  # noqa: BLE001 — keep the original grounding error
+                logger.debug("overflow clickable fallback errored: %s", exc)
+                break
+            if ref:
+                logger.debug("Resolved click '%s' via overflow-menu reveal on %r (%s)", instruction, candidate, ref)
+                return ResolvedTarget(
+                    ref=ref, confidence=0.72, resolver_name="clickable_overflow_dom",
+                    metadata={"role": "button", "clickable_overflow_dom": True},
+                )
     return None
 
 

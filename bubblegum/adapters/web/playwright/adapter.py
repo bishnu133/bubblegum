@@ -1680,6 +1680,52 @@ _FIND_CLICKABLE_JS = r"""
 """
 
 
+# JS: find a VISIBLE responsive-overflow trigger — the "…" / "More" control a nav
+# bar collapses its extra items into when the window is too narrow (Ant Menu's
+# `.ant-menu-overflow-item-rest`, or any visible element that advertises a popup
+# via aria-haspopup and reads as more/overflow/ellipsis). Returns a stable
+# selector for it, or null when the bar isn't overflowing (so ordinary pages are
+# untouched). Framework-agnostic; used to reveal a hidden item like "My Account".
+_FIND_OVERFLOW_TRIGGER_JS = r"""
+() => {
+  const vis = (e) => {
+    if (!e || e.getAttribute('aria-hidden') === 'true') return false;
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
+  };
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  // Known component-library overflow triggers first, then a generic signal: an
+  // element that opens a popup (aria-haspopup / a menu-submenu title) whose label
+  // or text reads as "more"/"overflow"/an ellipsis.
+  const SPECIFIC = ".ant-menu-overflow-item-rest,[class*='overflow-item-rest'],"
+    + "[class*='MuiMenu'] [aria-haspopup],[class*='rc-overflow'] [aria-haspopup]";
+  const GENERIC = "[aria-haspopup]:not([aria-hidden='true']),.ant-menu-submenu-title,"
+    + "button,[role='button'],[class*='overflow'],[class*='ellipsis'],[class*='more']";
+  const looksMore = (e) => {
+    const lbl = norm(e.getAttribute('aria-label')) + ' ' + norm(e.getAttribute('title'))
+      + ' ' + norm(e.textContent) + ' ' + norm(e.className && e.className.toString());
+    return /(^|[^a-z])(more|overflow|ellipsis)([^a-z]|$)/.test(lbl)
+      || /…/.test(e.textContent || '')            // … ellipsis char
+      || (norm(e.textContent) === '...' );
+  };
+  let pick = null;
+  try {
+    pick = Array.from(document.querySelectorAll(SPECIFIC)).filter(vis)[0] || null;
+  } catch (e) { pick = null; }
+  if (!pick) {
+    let els; try { els = Array.from(document.querySelectorAll(GENERIC)); } catch (e) { els = []; }
+    pick = els.filter(vis).filter(looksMore)[0] || null;
+  }
+  if (!pick) return null;
+  document.querySelectorAll('[data-bg-overflow]').forEach((n) => n.removeAttribute('data-bg-overflow'));
+  pick.setAttribute('data-bg-overflow', '1');
+  return '[data-bg-overflow="1"]';
+}
+"""
+
+
 # JS: resolve a clickable INSIDE the topmost open dialog/modal by name. When a
 # blocking modal is open (e.g. an Ant confirm "Submit Badge?"), a button named
 # "Submit" also exists on the page behind it — the page copy is covered by the
@@ -3593,6 +3639,55 @@ class PlaywrightAdapter(BaseAdapter):
             return None
         logger.debug("find_dialog_clickable %r -> %s", text, result)
         return result.get("selector")
+
+    async def find_clickable_in_overflow(self, text: str, *, exact: bool = False) -> str | None:
+        """Reveal a nav item collapsed into a responsive "…"/More menu, then find it.
+
+        When the window is too narrow, a nav bar hides its extra items behind an
+        overflow trigger (Ant ``.ant-menu-overflow-item-rest``, or a generic
+        More/ellipsis ``aria-haspopup`` control), so a clickable named ``text`` is
+        not on the visible bar. This opens the overflow trigger (hover + click,
+        falling back to a DOM click) and then resolves ``text`` from the revealed
+        popup. Returns the item's selector, or ``None`` when there is no overflow
+        trigger or the item still isn't found (ordinary pages are unaffected).
+        """
+        try:
+            trigger_sel = await self._page.evaluate(_FIND_OVERFLOW_TRIGGER_JS)
+        except Exception as exc:  # noqa: BLE001 — probe never breaks a step
+            logger.debug("overflow-trigger probe errored: %s", exc)
+            return None
+        if not trigger_sel:
+            return None
+        trig = self._page.locator(trigger_sel).first
+        # Open the overflow popup. Ant reveals it on hover; a click is more
+        # reliable across libraries. Fall back to a DOM click if a real click is
+        # itself intercepted (the trigger can sit under the same sticky header).
+        try:
+            await trig.scroll_into_view_if_needed(timeout=2_000)
+        except Exception:  # noqa: BLE001
+            pass
+        for attempt in ("hover_click", "dispatch"):
+            try:
+                if attempt == "hover_click":
+                    try:
+                        await trig.hover(timeout=2_000)
+                    except Exception:  # noqa: BLE001 — hover is best-effort
+                        pass
+                    await trig.click(timeout=3_000)
+                else:
+                    await trig.dispatch_event("click")
+                break
+            except Exception as exc:  # noqa: BLE001 — try the next open strategy
+                logger.debug("overflow open via %s failed: %s", attempt, exc)
+        # Let the popup mount, then resolve the item now that it's revealed.
+        try:
+            await self._page.wait_for_timeout(300)
+        except Exception:  # noqa: BLE001
+            pass
+        ref = await self.find_clickable(text, exact=exact)
+        if ref:
+            logger.debug("find_clickable_in_overflow revealed %r -> %s", text, ref)
+        return ref
 
     async def find_link(self, text: str, *, exact: bool = False) -> str | None:
         """Return a selector for a visible link whose text matches ``text``.

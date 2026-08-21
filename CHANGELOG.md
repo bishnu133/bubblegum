@@ -1,5 +1,26 @@
 # Unreleased
 
+## 0.0.14 — feat(web): click a nav item collapsed into a responsive "…"/More overflow menu
+
+When the window is narrow, a top nav collapses the items that don't fit into a
+`…`/More overflow menu (Ant Menu's `.ant-menu-overflow-item-rest`, or a generic
+`aria-haspopup` more/ellipsis control), so a step like `Click on the My Account
+menu` couldn't find the item — it's hidden until the `…` is opened.
+
+The click fallback now, after failing to find the item on the visible bar,
+detects a visible overflow trigger, opens it (hover + click, falling back to a
+DOM click if the trigger is itself under a sticky header), waits for the popup to
+mount, and resolves the item from the revealed menu (`clickable_overflow_dom`).
+Generic across nav libraries — no component/app-specific names — and a complete
+no-op when nothing is overflowing (the item is on the bar) so ordinary pages are
+unaffected. This complements, but doesn't replace, keeping a wide viewport: the
+most reliable prevention is still a viewport wide enough that the nav never
+collapses.
+
+Coverage: `tests/integration/test_overflow_menu_web.py` — an item collapsed into
+the `…` menu is revealed and clicked (fails on the pre-0.0.14 path), and the
+reveal is a no-op when the item is already on the bar.
+
 ## 0.0.13 — fix(web): click through a sticky-header overlay + screenshot on execution failure
 
 - **Click intercepted by a fixed/sticky header (CI failure).** After 0.0.12
