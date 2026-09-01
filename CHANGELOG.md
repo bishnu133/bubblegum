@@ -1,5 +1,31 @@
 # Unreleased
 
+## 0.0.15 — feat(verify): negative existence assertions ("... is not present")
+
+A negated presence assertion — `verify('the "X" button is not present')`,
+`'... is no longer visible'`, `"... isn't displayed"`, `'... is absent'` — was
+previously ignored: the engine detected the presence word, ran the same positive
+count check, and returned the **inverse** verdict (it passed when the element
+was present and failed when it was correctly absent). Negative existence checks
+were therefore unusable.
+
+The presence path now detects negation generically (a sentence-level negation
+cue — `not` / `n't` / `no longer` / `absent` / `gone` / `removed` / `hidden` /
+`disappeared` — never any label or app name) and evaluates it as an **absence**
+check: it passes only when nothing of the named kind (optionally filtered by the
+quoted accessible name), or the quoted text, is visible on the page. A kind-less
+phrase falls back to a page-wide text check, so `'"Saving..." is no longer
+displayed'` works too. The check **polls up to the timeout for the element to go
+away**, so a "no longer present" assertion is reliable right after the action
+that removes it, rather than snapshotting once. Positive presence assertions are
+unchanged. Callers can also opt in explicitly with
+`assertion_type="absent"` / `"not_present"`.
+
+Coverage: `tests/unit/test_ui_validation_detectors.py` (negation detection +
+`_is_negated_presence`, including the "No"-labelled-button guard) and
+`tests/integration/test_ui_validations_web.py` (absent vs present verdicts,
+alternative phrasings, and wait-for-removal against a real browser).
+
 ## 0.0.14 — feat(web): click a nav item collapsed into a responsive "…"/More overflow menu
 
 When the window is narrow, a top nav collapses the items that don't fit into a

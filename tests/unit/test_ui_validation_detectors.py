@@ -31,6 +31,33 @@ def test_present_detection_and_kind():
     assert sdk._element_kind("nothing element-like here") is None
 
 
+# --- V1b: negated presence (absence) detection -------------------------------
+
+def test_negated_presence_detection():
+    f = sdk._looks_like_present_assertion
+    neg = sdk._is_negated_presence
+    # A negated presence routes through the same present-assertion entry point…
+    assert f('the "Save" button is not present', {})
+    assert f('the "Save" button is no longer visible', {})
+    assert f("the Username textbox isn't displayed", {})
+    assert f('the "Delete" link is absent', {})
+    assert f("the confirmation message has disappeared", {})
+    # …and is flagged as negated so it is evaluated as an absence check.
+    assert neg('the "Save" button is not present')
+    assert neg('the "Save" button is no longer visible')
+    assert neg("the Username textbox isn't displayed")
+    assert neg('the "Delete" link is absent')
+    # A positive presence assertion is NOT negated.
+    assert not neg('the "Save" button is present')
+    assert not neg("a table is present on the page")
+    # A bare "No"-labelled control must not be read as a negation.
+    assert not neg('the "No" button is present')
+    # Explicit assertion_type wins in both directions.
+    assert neg("anything", {"assertion_type": "absent"})
+    assert not neg("anything", {"assertion_type": "present"})
+    assert f("anything", {"assertion_type": "not_present"})
+
+
 # --- V2: active/highlighted detection ----------------------------------------
 
 def test_active_detection():

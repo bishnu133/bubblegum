@@ -1290,6 +1290,38 @@ _PRESENCE_WORDS = (
     "exist", "appears", "appear", "available", "can be seen", "is showing", "on the page",
 )
 
+# Words that describe absence on their own (no separate presence word needed), so
+# "the X is absent / has gone / was removed" routes to the presence check and is
+# evaluated as a negative (absence) assertion.
+_ABSENCE_WORDS = (
+    "absent", "absence", "gone", "removed", "missing",
+    "disappear", "disappears", "disappeared", "hidden",
+)
+
+# Negation cue in a presence context: "is NOT present", "is NO LONGER visible",
+# "doesn'T appear", "is absent/gone/removed/hidden". Deliberately excludes a bare
+# "no" (would misfire on a "No" button) — only the explicit "no longer" phrase.
+# Generic across apps: it keys off the sentence's negation, never any label.
+_NEG_PRESENCE_RE = re.compile(
+    r"(?:\bnot\b|\bnever\b|\bno longer\b|n['’]t\b"
+    r"|\babsent\b|\babsence\b|\bmissing\b|\bgone\b|\bremoved\b|\bhidden\b"
+    r"|\bdisappear(?:s|ed)?\b)",
+    re.IGNORECASE,
+)
+
+# Explicit assertion_type values a caller may pass for a negative existence check.
+_ABSENT_ASSERTION_TYPES = ("absent", "not_present", "element_absent", "not_visible")
+
+
+def _is_negated_presence(instruction: str, kwargs: dict | None = None) -> bool:
+    """True when a presence assertion is negated ("... is not present/visible")."""
+    at = (kwargs or {}).get("assertion_type")
+    if at in _ABSENT_ASSERTION_TYPES:
+        return True
+    if at in ("present", "element_present"):
+        return False
+    return bool(_NEG_PRESENCE_RE.search(_norm_txt(instruction)))
+
 
 def _norm_txt(s: str | None) -> str:
     return " ".join((s or "").split()).strip().lower()
@@ -1307,15 +1339,26 @@ def _element_kind(instruction: str) -> str | None:
 
 
 def _looks_like_present_assertion(instruction: str, kwargs: dict) -> bool:
-    """True for "the X <kind> is present/visible" element-presence assertions."""
+    """True for "the X <kind> is present/visible" presence assertions.
+
+    Also true for the negated form ("... is not present", "... is no longer
+    visible", "... is absent"), which is evaluated as an absence check. A negated
+    phrase may stand without a kind word (it falls back to a page-wide text
+    check), whereas a positive presence assertion still needs a kind.
+    """
     at = kwargs.get("assertion_type")
-    if at in ("present", "element_present"):
+    if at in ("present", "element_present") or at in _ABSENT_ASSERTION_TYPES:
         return True
     if at:
         return False
     low = _norm_txt(instruction)
-    if not any(w in low for w in _PRESENCE_WORDS):
+    negated = bool(_NEG_PRESENCE_RE.search(low))
+    has_presence_word = any(w in low for w in _PRESENCE_WORDS)
+    has_absence_word = any(w in low for w in _ABSENCE_WORDS)
+    if not (has_presence_word or has_absence_word):
         return False
+    if negated or has_absence_word:
+        return True
     return _element_kind(instruction) is not None
 
 
@@ -1421,6 +1464,11 @@ async def _verify_present(adapter, channel: str, instruction: str, kwargs: dict,
     # Element name is a quoted label only — not the kind word itself.
     if _norm_txt(name) in _ELEMENT_KINDS:
         name = ""
+    # Negated form ("... is not present / no longer visible / is absent"): assert
+    # the element/text is ABSENT instead of present. Handled separately so it can
+    # wait for the element to go away and report the inverse verdict.
+    if _is_negated_presence(instruction, kwargs):
+        return await _verify_absent(adapter, instruction, kind, name, kwargs, options, t0)
     counter = getattr(adapter, "count_elements", None)
     res = None
     if kind and callable(counter):
@@ -1454,6 +1502,81 @@ async def _verify_present(adapter, channel: str, instruction: str, kwargs: dict,
         error=None if passed else ErrorInfo(error_type="ValidationFailedError",
                                             message=f"expected a {kind}{named} to be present"),
         metadata={"kind": kind, "name": name, "count": count, "sample": sample},
+        ref="page", resolver_name="present_dom",
+    )
+
+
+async def _verify_absent(
+    adapter, instruction: str, kind: str | None, name: str,
+    kwargs: dict, options, t0: float,
+) -> StepResult:
+    """Assert an element of a named kind (or a quoted text) is ABSENT.
+
+    The negated counterpart of :func:`_verify_present`. Page-scoped and
+    selector-free: it counts visible elements of the kind (optionally filtered by
+    accessible name), or falls back to a page-wide text check, and passes only
+    when nothing matches. It polls up to the timeout so a "no longer present"
+    assertion is reliable right after the action that removes the element —
+    waiting for it to disappear rather than snapshotting once. Generic across
+    stacks; no project or element names live in this code.
+    """
+    timeout_ms = kwargs.get("timeout_ms", options.timeout_ms)
+    counter = getattr(adapter, "count_elements", None)
+    text = name or _extract_present_text(instruction)
+    use_count = bool(kind) and callable(counter)
+    deadline = time.monotonic() + max(int(timeout_ms or 0), 0) / 1000.0
+
+    present = True
+    count = -1
+    sample: list = []
+    matched = "count" if use_count else "text"
+    while True:
+        present = False
+        if use_count:
+            try:
+                res = await counter(kind, name)
+            except Exception as exc:  # noqa: BLE001 — never let a probe break a verify
+                logger.debug("count_elements errored: %s", exc)
+                res = None
+            if res is not None and res.get("count", -1) >= 0:
+                count = int(res.get("count", 0))
+                sample = res.get("sample") or []
+                present = count > 0
+            else:
+                # Kind not recognised by the counter -> page-wide text fallback.
+                use_count = False
+                matched = "text"
+        if not use_count:
+            if text:
+                # Small per-poll timeout: a visible match returns fast; an absent
+                # one falls through quickly too, and our own loop owns the budget.
+                remaining = max(0.0, deadline - time.monotonic())
+                poll_ms = int(min(remaining * 1000, 250)) or 1
+                vp = build_validation_plan(
+                    assertion_type="text_visible", expected_value=text, timeout_ms=poll_ms)
+                vr = await adapter.validate(vp)
+                present = bool(vr and vr.passed)
+            else:
+                present = False
+        if not present or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(0.15)
+
+    subject = (f"{kind} matching {name!r}" if kind and name
+               else kind or (f"{text!r}" if text else "element"))
+    passed = not present
+    if passed:
+        msg = f"{subject} is not present (as expected)"
+        error = None
+    else:
+        extra = f"; e.g. {sample}" if sample else ""
+        msg = f"{subject} is still present{extra}"
+        error = ErrorInfo(error_type="ValidationFailedError",
+                          message=f"expected {subject} to be absent, but it is present")
+    return _page_scoped_result(
+        instruction=instruction, t0=t0, passed=passed, message=msg, error=error,
+        metadata={"kind": kind, "name": name, "negated": True,
+                  "count": count, "sample": sample, "matched": matched},
         ref="page", resolver_name="present_dom",
     )
 

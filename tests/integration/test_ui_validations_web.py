@@ -108,6 +108,49 @@ async def test_table_present_and_missing_button():
             await browser.close()
 
 
+# --- V1b: negated presence (absence) -----------------------------------------
+
+async def test_negated_presence_absent_and_present():
+    """"... is not present" passes when the element is absent and fails when it
+    is present — the inverse of the positive presence check."""
+    aw = pytest.importorskip("playwright.async_api")
+    async with aw.async_playwright() as p:
+        browser, page = await _page(p)
+        try:
+            # Absent element -> the negative assertion PASSES.
+            r = await verify('the "Delete" button is not present', channel="web", page=page)
+            assert r.status == "passed", r.error and r.error.message
+            # Present element -> the negative assertion FAILS.
+            r2 = await verify('the "Save" button is not present', channel="web", page=page)
+            assert r2.status == "failed"
+            # Alternative phrasings resolve to the same absence semantics.
+            r3 = await verify('the "Delete" button is no longer visible', channel="web", page=page)
+            assert r3.status == "passed", r3.error and r3.error.message
+            r4 = await verify('the "Delete" link is absent', channel="web", page=page)
+            assert r4.status == "passed", r4.error and r4.error.message
+        finally:
+            await browser.close()
+
+
+async def test_negated_presence_waits_for_removal():
+    """A "no longer present" assertion waits for the element to be removed, so it
+    is reliable right after the action that removes it."""
+    aw = pytest.importorskip("playwright.async_api")
+    async with aw.async_playwright() as p:
+        browser, page = await _page(p)
+        try:
+            await page.set_content(
+                '<!doctype html><body style="font-family:Helvetica">'
+                '<span id="msg">Saving...</span>'
+                "<script>setTimeout(()=>document.getElementById('msg').remove(), 700)</script>"
+                "</body>"
+            )
+            r = await verify('"Saving..." is no longer displayed', channel="web", page=page)
+            assert r.status == "passed", r.error and r.error.message
+        finally:
+            await browser.close()
+
+
 # --- V2: active / highlighted ------------------------------------------------
 
 async def test_menu_highlighted_and_not():
