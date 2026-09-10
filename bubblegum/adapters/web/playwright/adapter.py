@@ -2393,6 +2393,29 @@ class PlaywrightAdapter(BaseAdapter):
         except Exception:  # noqa: BLE001 — probe is best-effort
             return False
 
+    # A token/tags multi-input keeps a typed value in its search box until a
+    # commit keystroke turns it into a chip. Detected generically across
+    # libraries: Ant `.ant-select-multiple`, `aria-multiselectable`, and the
+    # common multiselect/tags/token/chips class conventions. A plain text input
+    # (or a single-select) matches nothing here, so it never gets a stray key.
+    _TOKEN_INPUT_PROBE_JS = r"""
+    (el) => {
+      if (!el) return false;
+      return !!el.closest(
+        '.ant-select-multiple,[aria-multiselectable="true"],'
+        + '[class*="multiselect" i],[class*="multi-select" i],'
+        + '[class*="tags-input" i],[class*="tagsinput" i],[class*="tag-input" i],'
+        + '[class*="token" i],[class*="chips" i],[class*="chip-input" i]'
+      );
+    }
+    """
+
+    async def _is_token_input(self, locator) -> bool:
+        try:
+            return bool(await locator.evaluate(self._TOKEN_INPUT_PROBE_JS))
+        except Exception:  # noqa: BLE001 — probe is best-effort
+            return False
+
     async def _do_type(self, plan: ActionPlan, locator, timeout: int) -> None:
         value = plan.input_value or ""
         # Date/time picker inputs (Ant RangePicker, MUI pickers, …) need real
@@ -2407,6 +2430,20 @@ class PlaywrightAdapter(BaseAdapter):
             await self._type_into_picker(locator, value, timeout)
             return
         await locator.fill(value, timeout=timeout)
+
+        # Commit the value with a keystroke when asked, or automatically for a
+        # token/tags multi-input (where the typed text only becomes a chip on a
+        # keystroke, and an uncommitted value is overwritten by the next item).
+        # A trusted keypress is fired, so React/Ant commit it; the search box then
+        # clears, so repeated "Enter X into <field>" steps each add a new item.
+        key = getattr(plan.options, "press_key", None)
+        if not key and value and await self._is_token_input(locator):
+            key = "Enter"
+        if key:
+            try:
+                await locator.press(key, timeout=timeout)
+            except Exception as exc:  # noqa: BLE001 — commit is best-effort
+                logger.debug("commit keypress %r after type failed: %s", key, exc)
 
     async def _type_into_picker(self, locator, value: str, timeout: int) -> None:
         """Enter ``value`` into a date/time picker input via real keystrokes.

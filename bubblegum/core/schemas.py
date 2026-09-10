@@ -76,6 +76,12 @@ class ExecutionOptions(BaseModel):
     # in the report as tech debt, never counted as a self-heal. Default None
     # keeps steps fully selector-free.
     fallback_selector:   str | None = None
+    # Keyboard key to press after typing a value, to *commit* it. Set from a
+    # trailing "… and press Enter/Tab" in the step, or auto-selected (Enter) when
+    # the field is a token/tags multi-input whose typed value only becomes a chip
+    # on a keystroke. A Playwright key name ("Enter", "Tab", "Escape", …). None
+    # leaves a plain text field untouched (no stray submit).
+    press_key:           str | None = None
 
 
 # ---------------------------------------------------------------------------
