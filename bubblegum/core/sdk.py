@@ -565,6 +565,15 @@ async def act(
         if system_action is not None:
             return await _act_system(adapter, instruction, system_action, t0)
 
+    # A trailing "… and press Enter/Tab" on a value-entry step is a *commit*
+    # directive (adding a token/tags item), not part of the field name. Strip it
+    # off so grounding targets the field itself, and remember the key so the
+    # adapter presses it after typing. Caller-set press_key wins.
+    if not kwargs.get("press_key"):
+        instruction, _pressed = _extract_press_key(instruction)
+        if _pressed:
+            kwargs = {**kwargs, "press_key": _pressed}
+
     # 1. Build StepIntent
     options = build_options(kwargs, ai_enabled=_config.ai_enabled, max_cost_level=_config.grounding.max_cost_level, memory_ttl_days=_config.grounding.memory_ttl_days, memory_max_failures=_config.grounding.memory_max_failures, resolve_retries=_config.grounding.resolve_retries, resolve_retry_interval_ms=_config.grounding.resolve_retry_interval_ms, stability_wait_enabled=_config.grounding.stability_wait_enabled, stability_quiet_ms=_config.grounding.stability_quiet_ms, stability_timeout_ms=_config.grounding.stability_timeout_ms, stability_spinner_selectors=_config.grounding.stability_spinner_selectors)
     action_type, target_phrase, input_value = await _decompose_for(instruction, kwargs)
@@ -817,6 +826,53 @@ async def act(
 
 
 _QUOTED_RE = re.compile(r'"([^"]+)"|“([^”]+)”|‘([^’]+)’|\'([^\']+)\'')
+
+# Trailing "… and/then press <Key>" on a value-entry step — the tester's way of
+# committing a token/tags item ("Enter \"X\" into Milestones and press Tab").
+# Only keyboard KEY names match (not "press the Submit button"), so a click verb
+# is never mistaken for a key press.
+_PRESS_KEY_MAP = {
+    "enter": "Enter", "return": "Enter",
+    "tab": "Tab", "escape": "Escape", "esc": "Escape",
+    "space": "Space", "spacebar": "Space",
+    "arrowdown": "ArrowDown", "arrowup": "ArrowUp",
+    "arrowleft": "ArrowLeft", "arrowright": "ArrowRight",
+    "backspace": "Backspace", "delete": "Delete", "del": "Delete",
+}
+_PRESS_KEY_RE = re.compile(
+    r"[\s,]*(?:and|then|,)?\s*(?:press|hit|type|tap)\s+(?:the\s+)?"
+    r"(enter|return|tab|escape|esc|space(?:bar)?|arrow\s?down|arrow\s?up|"
+    r"arrow\s?left|arrow\s?right|backspace|delete|del)\s*(?:key)?"
+    r"(?:\s+(?:to\s+\w+(?:\s+\w+){0,2}|button))?\s*[.!?]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def _extract_press_key(instruction: str) -> tuple[str, str | None]:
+    """Split a trailing 'press <Key>' commit directive off a value-entry step.
+
+    Returns ``(clean_instruction, key)`` — e.g. ``'Enter "X" into Milestones and
+    press Tab'`` → ``('Enter "X" into Milestones', 'Tab')``. Only applied to
+    value-entry phrasing (``into`` / enter / type / input / fill / set) so click
+    and other verbs are untouched, and only when a real target remains after the
+    split. Returns the instruction unchanged and ``None`` otherwise.
+    """
+    text = instruction or ""
+    low = text.lower()
+    if " into " not in low and not re.match(r"^\s*(enter|type|input|fill|set)\b", low):
+        return text, None
+    m = _PRESS_KEY_RE.search(text)
+    if not m:
+        return text, None
+    key = _PRESS_KEY_MAP.get(re.sub(r"\s+", "", m.group(1).lower()))
+    if not key:
+        return text, None
+    clean = text[: m.start()].rstrip(" ,.\t")
+    # Require a meaningful remainder (a target beyond the verb) so a bare
+    # "press Enter" step isn't reduced to nothing.
+    if not clean or len(clean.split()) < 2:
+        return text, None
+    return clean, key
 
 
 def _quoted_segments(instruction: str) -> list[str]:

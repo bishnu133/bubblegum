@@ -38,6 +38,7 @@ def build_options(
         "stability_spinner_selectors",
         "select_no_filter",
         "fallback_selector",
+        "press_key",
     }
     opts = {k: v for k, v in kwargs.items() if k in known}
     opts.setdefault("use_ai", ai_enabled)

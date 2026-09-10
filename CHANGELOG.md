@@ -1,5 +1,36 @@
 # Unreleased
 
+## 0.0.16 — fix(web): commit token/tags multi-input items ("press Enter/Tab" + auto-commit)
+
+Adding multiple items to a token/tags multi-input (Ant `ant-select-multiple`
+search box, and similar tags/chips widgets) silently failed: `Enter "X" into
+Milestones` only `fill()`-ed the search box, and the typed value was never
+turned into a chip — so it stayed in the box, got overwritten by the next item,
+and the step still reported "passed". A trailing `… and press Enter/Tab` didn't
+help either: it was folded into the field name and no key was ever pressed.
+
+Two fixes:
+
+1. **Honour an explicit commit key.** A value-entry step ending in `… and press
+   Enter`, `then press Tab`, `and hit Return`, `press Escape`, etc. now strips
+   that directive from the field name (so grounding still targets the field) and
+   presses the key after typing. Also available as `press_key` in step options.
+   Recognises only real keyboard keys (Enter/Return/Tab/Escape/Space/Arrows/
+   Backspace/Delete), so `press the Submit button` is never mistaken for a key.
+
+2. **Auto-commit token/tags inputs.** When the field is a token/tags multi-input
+   — detected generically (Ant `.ant-select-multiple`, `aria-multiselectable`,
+   or the common `multiselect`/`tags-input`/`token`/`chips` class conventions) —
+   the typed value is committed with `Enter` even without an explicit directive,
+   and the box clears, so repeated `Enter X into <field>` steps each add a new
+   item. A plain single text input matches none of this and never receives a
+   stray keypress (no accidental form submit).
+
+Adds `tests/unit/test_press_key_parsing.py` and
+`tests/integration/test_token_input_web.py`. Engine `0.0.15` → `0.0.16`.
+(Engine-only; no Node client change.)
+
+
 ## 0.0.15 — feat(verify): negative existence assertions ("... is not present")
 
 A negated presence assertion — `verify('the "X" button is not present')`,
