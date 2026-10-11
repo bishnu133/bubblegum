@@ -3,12 +3,11 @@
 Node/TypeScript client for [**Bubblegum**](https://github.com/bishnu133/bubblegum) —
 drive AI-powered, natural-language Playwright/Appium test steps from JS/TS.
 
-> **Status: alpha scaffold (`0.2.0` slice).** This is a thin, typed client that
-> spawns the Python **bubblegum bridge** and speaks its JSON-RPC protocol. The
-> Python engine stays the single source of truth for grounding/self-healing — we
-> do **not** re-implement it in TypeScript. See
-> [`docs/distribution-npm-and-pypi.md`](../../docs/distribution-npm-and-pypi.md)
-> and [`docs/bridge-protocol.md`](../../docs/bridge-protocol.md).
+> A thin, typed client: it runs the Python **Bubblegum engine** for you and talks to
+> it over JSON-RPC, so all element finding and self-healing happen in the engine —
+> the same behaviour as the Python SDK. See the
+> [main README](https://github.com/bishnu133/bubblegum#readme) for the full guide to
+> writing steps, configuration and reports.
 
 ## Prerequisites
 
@@ -195,8 +194,7 @@ was spawned — normally your project root). Returns
 ### Advanced: `BridgeClient`
 
 `Bubblegum` wraps a lower-level `BridgeClient` (`bg.bridge`) that you can use
-directly, or with an injected `Transport` (e.g. for tests or a future daemon
-socket). See `src/client.ts`.
+directly, or with an injected `Transport` (e.g. for tests). See `src/client.ts`.
 
 ## Versioning
 
@@ -228,8 +226,3 @@ npm run build      # tsc -> dist/esm (ESM) + dist/cjs (CommonJS)
 npm test           # build + node:test (no Python needed; mock transport)
 npm run typecheck
 ```
-
-## Not yet (roadmap)
-
-- Auto-bootstrap of a managed Python venv when the engine isn't found.
-- Published to npm + dual-publish CI alongside PyPI.
