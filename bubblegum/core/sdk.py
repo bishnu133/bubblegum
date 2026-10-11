@@ -613,6 +613,12 @@ async def act(
     # link text — resolved deterministically from the DOM rather than by name,
     # so they work when the visible text is dynamic (a UUID, a DB value, ...).
     table_target = await _maybe_resolve_table_or_link(adapter, channel, instruction, kwargs)
+    # Column-header controls: "Click the Search icon of the Title column" — several
+    # headers share the same filter/search/sort icon, so pin the one inside the
+    # NAMED column's header. Only claims column-scoped header-control phrasing.
+    table_target = table_target or await _maybe_resolve_column_header_control(
+        adapter, channel, instruction, intent
+    )
     # Date-range pickers: "type into Start date / End date" targets a nameless
     # Ant RangePicker input that name-based grounding mis-hits — pin it from the
     # DOM first. No-op on pages without a range picker.
@@ -2660,6 +2666,40 @@ async def _maybe_resolve_table_or_link(adapter, channel: str, instruction: str, 
     return ResolvedTarget(
         ref=ref, confidence=0.9, resolver_name=resolver_name,
         metadata={"table_or_link_dom": True, "spec": spec},
+    )
+
+
+async def _maybe_resolve_column_header_control(adapter, channel: str, instruction: str, intent: StepIntent):
+    """Resolve a click on a control inside a named table column's header.
+
+    "Click the Search icon of the Title column" / "Click the filter icon in the
+    Status column" / "Click the Title column search icon". Table headers often
+    carry identical filter/search/sort icons, so without the column scope the
+    first icon on the page wins. Runs before grounding; returns ``None`` (no-op)
+    unless the step scopes a header control to a column AND that header/control
+    exists, so every other click is unaffected.
+    """
+    if channel != "web" or getattr(intent, "action_type", None) not in ("click", "tap"):
+        return None
+    from bubblegum.core.table import parse_column_header_control
+
+    spec = parse_column_header_control(instruction)
+    if not spec:
+        return None
+    finder = getattr(adapter, "find_column_header_control", None)
+    if finder is None:
+        return None
+    try:
+        ref = await finder(spec["column"], spec["control"])
+    except Exception as exc:  # noqa: BLE001 — fall through to normal grounding
+        logger.debug("column-header control resolution errored: %s", exc)
+        return None
+    if not ref:
+        return None
+    logger.debug("Resolved %r via column-header control (%s)", instruction, ref)
+    return ResolvedTarget(
+        ref=ref, confidence=0.9, resolver_name="column_header_dom",
+        metadata={"role": "button", "column_header_dom": True, "spec": spec},
     )
 
 

@@ -515,3 +515,59 @@ def parse_table_action(instruction: str, kwargs: dict[str, Any] | None = None) -
             return {"kind": "link", "text": link_text, "exact": False}
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Column-HEADER controls: "Click the Search icon of the Title column"
+# ---------------------------------------------------------------------------
+# A data table's header cells often carry their own small controls — a filter
+# funnel, a column-search magnifier, a sort caret, a column menu. Several columns
+# share the same icon, so an unscoped "Click the Search icon" is ambiguous and
+# the first match on the page wins. Naming the column scopes the click to that
+# header. Two phrasings:
+#   A) "<control> of/in/on/for/under the <Column> column [header]"
+#   B) "the <Column> column['s] [header] <control>"
+_COLHDR_VERB = r"(?:click|tap|press|open|hit|select)\s+(?:on\s+)?(?:the\s+)?"
+_COLHDR_COL = r"[\"'“‘]?(?P<column>[^\"'”’]+?)[\"'”’]?"
+_COLHDR_A_RE = re.compile(
+    rf"^\s*{_COLHDR_VERB}(?P<control>.+?)\s+"
+    r"(?:of|in|on|for|from|under|inside|within|beside|next\s+to|at)\s+(?:the\s+)?"
+    rf"{_COLHDR_COL}\s+column(?:\s+header)?(?:\s+(?:in|of)\s+the\s+table)?\s*[.!?]*\s*$",
+    re.IGNORECASE,
+)
+_COLHDR_B_RE = re.compile(
+    rf"^\s*{_COLHDR_VERB}{_COLHDR_COL}\s+column(?:'s|’s)?(?:\s+header)?\s+"
+    r"(?P<control>.+?)\s*[.!?]*\s*$",
+    re.IGNORECASE,
+)
+# The control phrase must name a header-type control. "button" alone is NOT
+# enough — "the Edit button in the Actions column" is a row/cell control and
+# stays with the cell resolver / normal grounding.
+_COLHDR_CONTROL_WORDS = frozenset({
+    "icon", "filter", "search", "sort", "sorter", "sorting", "funnel", "menu",
+    "dropdown", "trigger", "magnifier", "magnifying", "caret", "kebab", "ellipsis",
+})
+
+
+def parse_column_header_control(instruction: str) -> dict | None:
+    """Parse a column-scoped header-control click.
+
+    ``'Click on the Search icon of Title Column'`` →
+    ``{"column": "Title", "control": "Search icon"}``. Returns ``None`` when the
+    step doesn't scope a header control to a named column, so ordinary clicks
+    and row/cell actions are untouched.
+    """
+    text = (instruction or "").strip()
+    for rx in (_COLHDR_A_RE, _COLHDR_B_RE):
+        m = rx.match(text)
+        if not m:
+            continue
+        control = " ".join(m.group("control").split())
+        column = " ".join(m.group("column").split()).strip(" .,:")
+        if not column or not control:
+            continue
+        words = set(re.findall(r"[a-z]+", control.lower()))
+        if not words & _COLHDR_CONTROL_WORDS:
+            continue
+        return {"column": column, "control": control}
+    return None

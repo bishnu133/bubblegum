@@ -1,5 +1,39 @@
 # Unreleased
 
+## 0.0.17 — feat(web): click a control inside a named table column's header
+
+Data-table headers often carry identical controls — a column-search magnifier,
+a filter funnel, a sort caret, a column menu — so an unscoped `Click on the
+Search icon` landed on whichever icon came first (e.g. the "Updated By" column's
+search instead of "Title"'s), and a column-scoped phrase like `Click on the
+Search icon of Title Column` failed outright because the column name was
+ignored.
+
+Steps can now scope a header control to a column, in natural language:
+
+- `Click on the Search icon of Title Column`
+- `Click the filter icon in the Status column`
+- `Click the search icon in the "Updated By" column header`
+- `Click the Title column search icon` / `Click the Division column's filter`
+- `Click the sort icon of Start column`
+
+A new pre-grounding resolver (`column_header_dom`) finds the header cell whose
+title matches the column — framework-agnostic (`<th>` / `role=columnheader`,
+Ant, MUI, AG-Grid, react-table, plain HTML), preferring the table inside an
+open modal — then the clickable inside it whose icon/label matches the control
+(search ~ magnifier, filter ~ funnel, sort ~ caret, menu ~ more/ellipsis),
+choosing the innermost real control rather than a wrapper around the title.
+
+Only column-scoped *header-control* phrasing is claimed: unscoped clicks, the
+page's own "Search" button, row/cell controls ("the Edit button in the Actions
+column") and existing table-cell actions behave exactly as before. When the
+named header or control isn't found it falls through to normal grounding.
+
+Adds `tests/unit/test_column_header_control.py` and
+`tests/integration/test_column_header_control_web.py`. Engine `0.0.16` →
+`0.0.17` (engine-only; no Node client change).
+
+
 ## 0.0.16 — fix(web): commit token/tags multi-input items ("press Enter/Tab" + auto-commit)
 
 Adding multiple items to a token/tags multi-input (Ant `ant-select-multiple`
