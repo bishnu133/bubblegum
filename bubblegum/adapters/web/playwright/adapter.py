@@ -115,6 +115,125 @@ _DIALOG_ROOT_JS = (
     " return ds[ds.length-1]; }"
 )
 
+# JS: resolve a control inside a named table COLUMN HEADER — "the Search icon of
+# the Title column". Header cells often carry their own filter funnel / search
+# magnifier / sort caret / menu, and several columns share the same icon, so an
+# unscoped click lands on whichever comes first. This finds the header cell whose
+# title matches the column (any framework: <th>/role=columnheader, Ant, MUI,
+# AG-Grid, react-table…), then picks the clickable inside it whose icon/label
+# matches the control words (search~magnifier, filter~funnel, sort~caret,
+# menu~more/ellipsis). Prefers the topmost open modal's table when one is up.
+_FIND_COLUMN_HEADER_CONTROL_JS = r"""
+(args) => {
+  __DIALOG_JS
+  const raw = (s) => (s || '').replace(/([a-z])([A-Z])/g, '$1 $2');
+  const norm = (s) => raw(s).replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  const col = norm(args && args.column);
+  if (!col) return null;
+  const STOP = new Set(['icon','icons','button','btn','the','a','an','on','of','in','column',
+    'header','trigger','control','small','little','symbol','glyph','image','img','this','that']);
+  const words = norm(args && args.control).split(/[^a-z0-9]+/).filter((w) => w && !STOP.has(w));
+  const SYN = {
+    search: ['search', 'magnif', 'find', 'lookup', 'query'], magnifier: ['search', 'magnif'],
+    magnifying: ['search', 'magnif'], filter: ['filter', 'funnel'], funnel: ['filter', 'funnel'],
+    sort: ['sort', 'caret', 'arrow'], sorter: ['sort', 'caret'], sorting: ['sort', 'caret'],
+    caret: ['caret', 'sort', 'arrow'], menu: ['menu', 'more', 'ellipsis', 'kebab', 'dots', 'option'],
+    kebab: ['kebab', 'more', 'ellipsis', 'menu', 'dots'], ellipsis: ['ellipsis', 'more', 'menu', 'dots'],
+    dropdown: ['dropdown', 'down', 'menu', 'filter'],
+  };
+  const visible = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const HDR = 'thead th, [role="columnheader"], .ant-table-thead th, .MuiTableCell-head, '
+            + '.ag-header-cell, .rt-th, .rdt_TableCol, [class*="header-cell" i], [class*="HeaderCell"]';
+  const TITLE = '.ant-table-column-title, .ag-header-cell-text, .MuiTableSortLabel-root, '
+              + '[class*="column-title" i], [class*="header-title" i], [class*="headerTitle"], [class*="header-text" i]';
+  const headerTitle = (th) => {
+    const t = th.querySelector(TITLE);
+    let txt = t ? t.textContent : '';
+    if (!norm(txt)) {
+      const c = th.cloneNode(true);
+      c.querySelectorAll('svg,[role="img"],.anticon,[aria-hidden="true"],button,[role="button"],input,select')
+        .forEach((n) => n.remove());
+      txt = c.textContent;
+    }
+    return norm(txt) || norm(th.getAttribute('aria-label')) || norm(th.getAttribute('title'));
+  };
+  const findHeaders = (root) => {
+    // Keep the outermost header cell when a role=columnheader sits inside a <th>.
+    const all = Array.from(root.querySelectorAll(HDR)).filter(visible);
+    const ths = all.filter((th) => !all.some((o) => o !== th && o.contains(th)));
+    const titled = ths.map((th) => [th, headerTitle(th)]);
+    let hit = titled.filter(([, h]) => h === col);
+    if (!hit.length) hit = titled.filter(([, h]) => h && h.startsWith(col));
+    if (!hit.length) hit = titled.filter(([, h]) => h && h.includes(col));
+    return hit.map(([th]) => th);
+  };
+  const dlg = __bgTopDialog();
+  let headers = dlg ? findHeaders(dlg) : [];
+  if (!headers.length) headers = findHeaders(document);
+  if (!headers.length) return null;
+
+  const CTRL = '[role="button"], button, a[href], .ant-table-filter-trigger, .ant-dropdown-trigger, '
+             + '.ant-table-column-sorter, [class*="filter" i], [class*="sort" i], [class*="menu" i], '
+             + '[class*="icon" i], [role="img"], svg';
+  // NOT .ant-table-column-sorters: that wrapper also holds the title text, so
+  // climbing to it would click the label instead of the sort caret.
+  const CLICKABLE = '[role="button"], button, a[href], .ant-table-filter-trigger, .ant-dropdown-trigger, '
+                  + '.ant-table-column-sorter, .MuiTableSortLabel-root, .ag-header-icon, [class*="trigger" i]';
+  const descr = (el) => {
+    const parts = [];
+    [el, ...el.querySelectorAll('*')].forEach((n) => {
+      ['aria-label', 'title', 'data-testid', 'data-icon', 'class', 'name', 'data-original-title']
+        .forEach((a) => { const v = n.getAttribute && n.getAttribute(a); if (v) parts.push(v); });
+    });
+    return norm(parts.join(' '));
+  };
+  const isTrigger = (el) => el.matches('[role="button"], button, .ant-table-filter-trigger, .ant-dropdown-trigger, [class*="trigger" i]');
+
+  for (const th of headers) {
+    const seen = new Set();
+    const cands = [];
+    th.querySelectorAll(CTRL).forEach((el) => {
+      let c = el.closest(CLICKABLE);
+      if (!c || !th.contains(c) || c === th) c = el;
+      // Climb an inline <svg> child up to its icon wrapper so we click a real element.
+      if (c.tagName && c.tagName.toLowerCase() === 'path') c = c.closest('svg') || c;
+      if (seen.has(c) || !visible(c)) return;
+      // Skip a control that just wraps others we'll also see (keep the innermost trigger).
+      seen.add(c);
+      cands.push(c);
+    });
+    // Prefer the innermost control: drop any candidate that merely contains another
+    // (a filter-column / sorters wrapper that also holds the title text).
+    const leaves = cands.filter((c) => !cands.some((o) => o !== c && c.contains(o)));
+    if (!leaves.length) continue;
+    let best = null, bestScore = -1;
+    leaves.forEach((c, i) => {
+      const d = descr(c);
+      let hits = 0;
+      words.forEach((w) => { if ((SYN[w] || [w]).some((s) => d.includes(s))) hits++; });
+      // Real triggers outrank incidental icons on a tie; DOM order breaks the rest.
+      const score = hits * 10 + (isTrigger(c) ? 1 : 0) - i * 0.001;
+      if (score > bestScore) { bestScore = score; best = c; }
+    });
+    const matched = words.length ? Math.floor(bestScore / 10) > 0 : true;
+    // A named control that matches nothing in this header: only accept when the
+    // header has a single control (the column scope is then unambiguous).
+    if (!matched && leaves.length !== 1) continue;
+    if (!matched) best = leaves[0];
+    document.querySelectorAll('[data-bg-colctl]').forEach((n) => n.removeAttribute('data-bg-colctl'));
+    best.setAttribute('data-bg-colctl', '1');
+    return { selector: '[data-bg-colctl="1"]', column: headerTitle(th), descr: descr(best).slice(0, 120) };
+  }
+  return null;
+}
+""".replace("__DIALOG_JS", _DIALOG_ROOT_JS)
+
+
 # JS: collect the visible text of *status-indicator* components — the small
 # pill/tag/badge/chip/label a UI uses to show an item's state (e.g. "In Draft",
 # "Live", "Active"). Deliberately framework-agnostic: Ant (.ant-tag/.ant-badge),
@@ -3658,6 +3777,27 @@ class PlaywrightAdapter(BaseAdapter):
         if not result:
             return None
         logger.debug("find_clickable %r -> %s", text, result)
+        return result.get("selector")
+
+    async def find_column_header_control(self, column: str, control: str) -> str | None:
+        """Return a selector for a control inside the named table column's header.
+
+        Resolves "the Search icon of the Title column": finds the header cell
+        titled ``column`` (any table framework; the open modal's table first),
+        then the clickable inside it whose icon/label matches ``control``
+        (search~magnifier, filter~funnel, sort~caret, menu~more). Returns
+        ``None`` when no such header/control exists so normal grounding runs.
+        """
+        try:
+            result = await self._page.evaluate(
+                _FIND_COLUMN_HEADER_CONTROL_JS, {"column": column or "", "control": control or ""}
+            )
+        except Exception as exc:  # noqa: BLE001 — fall back to normal grounding
+            logger.debug("find_column_header_control errored: %s", exc)
+            return None
+        if not result:
+            return None
+        logger.debug("find_column_header_control %r/%r -> %s", column, control, result)
         return result.get("selector")
 
     async def find_dialog_clickable(self, text: str, *, exact: bool = False) -> str | None:
