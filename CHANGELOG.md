@@ -1,5 +1,31 @@
 # Unreleased
 
+## 0.0.18 — fix(web): click the button inside an open pop-up panel, not the page's
+
+A table column's filter panel (Ant `.ant-table-filter-dropdown`, and similar
+dropdown / popover panels) has its own `Search` and `Reset` buttons, and the
+page usually has a `Search` button of its own. The panel is not a modal — no
+mask, no `aria-modal` — so the existing "prefer the button inside the open
+dialog" rule never applied, and `Click the Search button` clicked the page's
+button: the step passed but the column filter was never applied.
+
+The dialog-click pre-resolver (`dialog_click_dom`) now also checks open
+floating pop-ups before the page: Ant dropdown / popover / popconfirm / picker /
+select / menu popups, the table filter panel, MUI Popover / Popper / Menu, Radix
+popper content, Bootstrap `.popover.show` / `.dropdown-menu.show`, and floating
+`role=menu` / `role=listbox` / `[data-popper-placement]` elements. A pop-up
+only counts while it is shown, actually floating (absolute/fixed), and stacked
+above any open dialog. Its button wins only on a **whole-name** match that is
+really on top at its centre — so `Click the Save button` still clicks the page's
+`Save` when the pop-up only has `Save draft`, a closed (hidden) panel left in
+the DOM is ignored, and with no pop-up open behaviour is unchanged. `Click on
+Search` (no quotes, bare "on") is now also normalised for the dialog/pop-up
+finder.
+
+Adds `tests/integration/test_popup_click_web.py`. Engine `0.0.17` → `0.0.18`;
+Node client `0.0.6-alpha.16` → `0.0.6-alpha.17` (version alignment, no client
+code change).
+
 ## 0.0.17 — feat(web): click a control inside a named table column's header
 
 Data-table headers often carry identical controls — a column-search magnifier,

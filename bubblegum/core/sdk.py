@@ -2880,8 +2880,10 @@ async def _maybe_resolve_dialog_click(adapter, channel: str, intent: StepIntent)
     When a blocking modal is open (Ant confirm, ``[role=dialog]``, …), a button
     with the same name usually also exists on the page behind it — covered by the
     modal mask, so clicking the page copy hangs. This pins the button inside the
-    dialog. Runs before grounding; returns ``None`` (no-op) when no dialog is open
-    so ordinary flows are unaffected.
+    dialog. The same holds for an open floating popup (a table column's filter
+    panel with its own "Search"/"Reset"): its exact-name button wins over the
+    page's. Runs before grounding; returns ``None`` (no-op) when no dialog or
+    popup holds a match, so ordinary flows are unaffected.
     """
     if channel != "web" or getattr(intent, "action_type", None) not in ("click", "tap"):
         return None

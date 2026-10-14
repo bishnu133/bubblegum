@@ -1850,6 +1850,11 @@ _FIND_OVERFLOW_TRIGGER_JS = r"""
 # "Submit" also exists on the page behind it — the page copy is covered by the
 # modal mask, so clicking it hangs. This scopes the search to the dialog and
 # splits off an "... on <title> dialog" scope tail so the button label matches.
+# An open floating popup (dropdown, popover, table-filter panel, picker, menu
+# popup) is checked first: a column filter's "Search"/"Reset" shares its name with
+# page buttons, and the popup copy is the one the tester is looking at. Popups
+# only claim whole-name matches that are actually on top, so a page button still
+# wins whenever the popup has no such button.
 _FIND_DIALOG_CLICKABLE_JS = r"""
 (args) => {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -1863,16 +1868,40 @@ _FIND_DIALOG_CLICKABLE_JS = r"""
     return s.visibility !== 'hidden' && s.display !== 'none';
   };
 
+  const zOf = (e) => { let n = e, m = 0; while (n && n.nodeType === 1) { const v = parseInt(window.getComputedStyle(n).zIndex); if (!isNaN(v)) m = Math.max(m, v); n = n.parentElement; } return m; };
+  const byStack = (a, b) => (zOf(a) - zOf(b)) || ((a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
+
   // Topmost open dialog: role=dialog / native <dialog> / common modal classes,
   // visible only, ranked by effective z-index then DOM order (last wins).
   const DIALOG = "[role='dialog'],[role='alertdialog'],dialog[open],"
                + ".ant-modal,.ant-modal-confirm,.MuiDialog-container,"
                + "[class*='modal'][class*='show'],[class*='Modal'][class*='open']";
-  let dialogs = Array.from(document.querySelectorAll(DIALOG)).filter(visible);
-  if (!dialogs.length) return null;
-  const zOf = (e) => { let n = e, m = 0; while (n) { const v = parseInt(window.getComputedStyle(n).zIndex); if (!isNaN(v)) m = Math.max(m, v); n = n.parentElement; } return m; };
-  dialogs.sort((a, b) => (zOf(a) - zOf(b)) || ((a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1));
-  const dialog = dialogs[dialogs.length - 1];
+  const dialogs = Array.from(document.querySelectorAll(DIALOG)).filter(visible).sort(byStack);
+  const dialog = dialogs.length ? dialogs[dialogs.length - 1] : null;
+
+  // Open floating popups (dropdown / popover / popconfirm / table-filter panel /
+  // picker / menu popup). They are not modal, so the dialog scope above misses
+  // them — yet a button inside one (a column filter's "Search"/"Reset") usually
+  // shares its name with a page button. A popup only counts while it is actually
+  // floating (absolute/fixed), shown, and stacked above any open dialog.
+  const POPUP = ".ant-dropdown,.ant-popover,.ant-popconfirm,.ant-picker-dropdown,"
+              + ".ant-table-filter-dropdown,.ant-select-dropdown,.ant-cascader-dropdown,"
+              + ".ant-menu-submenu-popup,.MuiPopover-paper,.MuiPopper-root,.MuiMenu-paper,"
+              + "[data-radix-popper-content-wrapper],.popover.show,.dropdown-menu.show,"
+              + "[role='menu'],[role='listbox'],[data-popper-placement]";
+  const floating = (e) => {
+    for (let n = e; n && n.nodeType === 1 && n !== document.body; n = n.parentElement) {
+      const p = window.getComputedStyle(n).position;
+      if (p === 'absolute' || p === 'fixed') return true;
+    }
+    return false;
+  };
+  const shown = (e) => visible(e) && window.getComputedStyle(e).opacity !== '0' && floating(e);
+  let popups = Array.from(document.querySelectorAll(POPUP)).filter(shown);
+  popups = popups.filter((p) => !popups.some((o) => o !== p && o.contains(p)));
+  if (dialog) popups = popups.filter((p) => dialog.contains(p) || byStack(dialog, p) < 0);
+  popups.sort(byStack);
+  if (!dialog && !popups.length) return null;
 
   // Normalise the phrase to the button label:
   //  - strip a leading action verb ("Click on"/"Press"/"Tap"/…/"the") so
@@ -1882,7 +1911,7 @@ _FIND_DIALOG_CLICKABLE_JS = r"""
   //    -> "Submit button");
   //  - strip a trailing widget noun and surrounding quotes.
   const deQuote = (s) => s.replace(/^["'‘’“”]+|["'‘’“”]+$/g, '').trim();
-  let base = want.replace(/^\s*(?:please\s+)?(?:click|press|tap|hit|select|choose|open|toggle|activate)\s+(?:on\s+|the\s+)*/i, '').trim();
+  let base = want.replace(/^\s*(?:please\s+)?(?:(?:click|press|tap|hit|select|choose|open|toggle|activate)\s+)?(?:on\s+|the\s+)*/i, '').trim();
   let main = deQuote(base.split(/\s+(?:on|in|within|from|of)\s+/i)[0]
                  .replace(/\s+(button|link|tab|option|item|menu\s*item|menuitem)$/i, '').trim());
   const wants = [main, deQuote(base), want].filter((v, i, a) => v && a.indexOf(v) === i);
@@ -1897,27 +1926,47 @@ _FIND_DIALOG_CLICKABLE_JS = r"""
     if (t) return t;
     return norm(e.getAttribute && e.getAttribute('title'));
   };
-  const els = Array.from(dialog.querySelectorAll(SEL)).filter(visible);
-  if (!els.length) return null;
+  // strict: whole-name matches only (case-insensitive) — used for popups, so a
+  // popup's "Save draft" can never steal a step meant for the page's "Save".
+  const matchIn = (root, strict) => {
+    const els = Array.from(root.querySelectorAll(SEL)).filter(visible);
+    let matches = [];
+    for (const w of wants) {
+      const wl = w.toLowerCase();
+      matches = els.filter((e) => nameOf(e) === w);
+      if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase() === wl);
+      if (!matches.length && !strict && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wl));
+      if (matches.length) break;
+    }
+    return matches.filter((e) => !matches.some((o) => o !== e && o.contains(e)));
+  };
+  // The popup copy must really be the one on top at its centre (not covered by
+  // another layer); off-screen centres are left to the click's own scrolling.
+  const onTop = (e) => {
+    const r = e.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return true;
+    const hit = document.elementFromPoint(x, y);
+    return !!hit && (e === hit || e.contains(hit));
+  };
 
-  let matches = [];
-  for (const w of wants) {
-    const wl = w.toLowerCase();
-    matches = els.filter((e) => nameOf(e) === w);
-    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase() === wl);
-    if (!matches.length && !exact) matches = els.filter((e) => nameOf(e).toLowerCase().includes(wl));
-    if (matches.length) break;
+  let best = null, count = 0, scope = 'dialog';
+  for (let i = popups.length - 1; i >= 0 && !best; i--) {
+    const m = matchIn(popups[i], true).filter(onTop);
+    if (m.length) { best = m[0]; count = m.length; scope = 'popup'; }
   }
-  if (!matches.length) return null;
-  matches = matches.filter((e) => !matches.some((o) => o !== e && o.contains(e)));
-  const best = matches[0];
+  if (!best && dialog) {
+    const m = matchIn(dialog, false);
+    if (m.length) { best = m[0]; count = m.length; }
+  }
+  if (!best) return null;
   document.querySelectorAll('[data-bg-dialogclick]').forEach((n) => n.removeAttribute('data-bg-dialogclick'));
   best.setAttribute('data-bg-dialogclick', '1');
   // Prefer a stable id selector (survives a React re-render that would wipe the
   // temporary marker); fall back to the marker.
   let selector = '[data-bg-dialogclick="1"]';
   if (best.id) selector = '[id="' + best.id.split('"').join('\\"') + '"]';
-  return { selector, name: nameOf(best), count: matches.length };
+  return { selector, name: nameOf(best), count, scope };
 }
 """
 
@@ -3806,8 +3855,10 @@ class PlaywrightAdapter(BaseAdapter):
         When a blocking modal is open, the same button name often also exists on
         the page behind it (covered by the modal mask). Scopes the search to the
         topmost visible dialog and splits off an ``... on <title> dialog`` scope
-        tail. Returns ``None`` when no dialog is open (so non-modal flows fall
-        through to normal grounding).
+        tail. An open floating popup (dropdown / popover / table-filter panel)
+        stacked above the page is checked first, by whole name only. Returns
+        ``None`` when neither holds a match (so ordinary flows fall through to
+        normal grounding).
         """
         result = await self._page.evaluate(
             _FIND_DIALOG_CLICKABLE_JS, {"text": text or "", "exact": bool(exact)}
