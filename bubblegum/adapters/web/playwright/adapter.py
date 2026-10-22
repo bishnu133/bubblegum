@@ -2948,15 +2948,15 @@ class PlaywrightAdapter(BaseAdapter):
         except Exception:  # noqa: BLE001 — the option path reports an un-openable trigger
             return False, False
         info = None
-        for _ in range(10):
-            try:
+        try:
+            for _ in range(10):
                 info = await trigger.first.evaluate(_CHECKABLE_PANEL_JS, {"op": "detect"})
-            except Exception:  # noqa: BLE001 — undetectable: treat as an ordinary popup
-                return False, True
-            if info and info.get("open"):
-                break
-            await self._page.wait_for_timeout(100)
-        if not (info and info.get("panel")):
+                if not isinstance(info, dict) or info.get("open"):
+                    break
+                await self._page.wait_for_timeout(100)
+        except Exception:  # noqa: BLE001 — undetectable: treat as an ordinary popup
+            return False, True
+        if not (isinstance(info, dict) and info.get("panel")):
             return False, True
 
         page = self._page
