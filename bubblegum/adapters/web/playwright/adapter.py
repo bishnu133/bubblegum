@@ -1971,6 +1971,124 @@ _FIND_DIALOG_CLICKABLE_JS = r"""
 """
 
 
+# JS: a select whose popup is a custom PICKER PANEL rather than an option list —
+# grouped checkable tags / checkboxes / toggle buttons with a Confirm (OK, Apply,
+# Done …) button, e.g. an Ant Select rendered via dropdownRender. Such a panel has
+# no option rows, and nothing shows in the field until Confirm, so the option-list
+# path can neither find the values nor see them commit. One script, several ops:
+#   detect  (on the trigger) — find the open popup this trigger owns; report
+#           whether it is a checkable panel and mark it [data-bg-panel].
+#   mark    — mark the item named args.text [data-bg-panel-item] + its state.
+#   state   — current state of the marked item.
+#   button  — mark the panel's confirm (args.kind="ok") or cancel button.
+#   clear   — drop all markers.
+_CHECKABLE_PANEL_JS = r"""
+(el, args) => {
+  const op = args && args.op;
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const tight = (s) => (s || '').replace(/\s+/g, '').toLowerCase();
+  const vis = (e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
+  };
+  const OPT = '.ant-select-item-option,[role="option"],[role="menuitem"],[role="treeitem"],'
+            + '.ant-cascader-menu-item,.MuiAutocomplete-option,.ant-select-tree-treenode';
+  const ITEM = '.ant-tag-checkable,.ant-checkbox-wrapper,label:has(input[type="checkbox"]),'
+             + '[role="checkbox"],[aria-pressed],[role="switch"]';
+  const items = (panel) => {
+    const all = Array.from(panel.querySelectorAll(ITEM)).filter(vis);
+    return all.filter((i) => !all.some((o) => o !== i && o.contains(i)));
+  };
+  const textOf = (i) => norm(i.getAttribute('title') || i.textContent || i.getAttribute('aria-label'));
+  const stateOf = (i) => {
+    const inp = i.matches('input') ? i : i.querySelector('input[type="checkbox"],input[type="radio"]');
+    if (inp) return !!inp.checked;
+    for (const a of ['aria-checked', 'aria-pressed', 'aria-selected']) {
+      const v = i.getAttribute(a);
+      if (v === 'true') return true;
+      if (v === 'false') return false;
+    }
+    const c = ' ' + (i.className || '') + ' ';
+    if (/-checked\s|\s(checked|selected|active|is-checked|is-selected|is-active)\s/i.test(c)) return true;
+    if (i.matches('.ant-tag-checkable,.ant-checkbox-wrapper')) return false;
+    return null;
+  };
+  const sigOf = (i) => {
+    const inp = i.querySelector('input');
+    return [i.className, i.getAttribute('style'), i.getAttribute('aria-checked'),
+            i.getAttribute('aria-pressed'), inp ? inp.checked : ''].join('|');
+  };
+  const panelEl = () => document.querySelector('[data-bg-panel="1"]');
+
+  if (op === 'clear') {
+    ['data-bg-panel', 'data-bg-panel-item', 'data-bg-panel-btn'].forEach((a) =>
+      document.querySelectorAll('[' + a + ']').forEach((n) => n.removeAttribute(a)));
+    return true;
+  }
+
+  if (op === 'detect') {
+    document.querySelectorAll('[data-bg-panel]').forEach((n) => n.removeAttribute('data-bg-panel'));
+    const POP = '.ant-select-dropdown,.ant-dropdown,.ant-popover,.ant-cascader-dropdown,'
+              + '.MuiPopover-paper,.MuiPopper-root,.MuiMenu-paper,[data-radix-popper-content-wrapper],'
+              + '.popover.show,.dropdown-menu.show,[role="listbox"],[data-popper-placement]';
+    let pops = Array.from(document.querySelectorAll(POP)).filter(vis);
+    pops = pops.filter((p) => !pops.some((o) => o !== p && o.contains(p)));
+    if (!pops.length) return { open: false };
+    const root = (el.closest && el.closest('.ant-select,.ant-cascader,[class*="select" i]')) || el;
+    const pick = (n) => n && (n.getAttribute('aria-controls') || n.getAttribute('aria-owns'));
+    const owned = (pick(el) || pick(el.querySelector && el.querySelector('[aria-controls],[aria-owns]')) || '').split(/\s+/)[0];
+    let panel = pops.find((p) => root.contains(p))
+             || (owned && pops.find((p) => p.id === owned || p.querySelector('[id="' + owned + '"]')));
+    if (!panel) {
+      const zOf = (e) => { let n = e, m = 0; while (n && n.nodeType === 1) { const v = parseInt(window.getComputedStyle(n).zIndex); if (!isNaN(v)) m = Math.max(m, v); n = n.parentElement; } return m; };
+      pops.sort((a, b) => (zOf(a) - zOf(b)) || ((a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1));
+      panel = pops[pops.length - 1];
+    }
+    if (Array.from(panel.querySelectorAll(OPT)).some(vis)) return { open: true, panel: false };
+    const its = items(panel);
+    if (!its.length) return { open: true, panel: false };
+    panel.setAttribute('data-bg-panel', '1');
+    return { open: true, panel: true, items: its.map(textOf).slice(0, 300) };
+  }
+
+  const panel = panelEl();
+  if (!panel) return null;
+
+  if (op === 'mark' || op === 'state') {
+    let it;
+    if (op === 'mark') {
+      document.querySelectorAll('[data-bg-panel-item]').forEach((n) => n.removeAttribute('data-bg-panel-item'));
+      const want = norm(args.text), wantT = tight(args.text);
+      const its = items(panel);
+      it = its.find((i) => textOf(i) === want) || its.find((i) => tight(textOf(i)) === wantT);
+      if (!it) return { found: false };
+      it.setAttribute('data-bg-panel-item', '1');
+    } else {
+      it = panel.querySelector('[data-bg-panel-item="1"]');
+      if (!it) return { found: false };
+    }
+    return { found: true, checked: stateOf(it), sig: sigOf(it), text: textOf(it) };
+  }
+
+  if (op === 'button') {
+    document.querySelectorAll('[data-bg-panel-btn]').forEach((n) => n.removeAttribute('data-bg-panel-btn'));
+    const RX = args.kind === 'cancel'
+      ? /^(cancel|close|discard)$/
+      : /^(confirm|ok|okay|apply|done|save|select|submit|update|add|set)$/;
+    const btns = Array.from(panel.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]'))
+      .filter(vis).filter((b) => RX.test(norm(b.value || b.textContent || b.getAttribute('aria-label'))));
+    if (!btns.length) return false;
+    const b = btns.find((x) => /primary/i.test(x.className || '')) || btns[btns.length - 1];
+    b.setAttribute('data-bg-panel-btn', '1');
+    return true;
+  }
+  return null;
+}
+"""
+
+
 # JS: click a link by its (possibly dynamic) text. Exact → case-insensitive →
 # substring. Marks the match with a temporary attribute and returns its selector.
 _FIND_LINK_JS = r"""
@@ -2746,6 +2864,14 @@ class PlaywrightAdapter(BaseAdapter):
           3. Generic: any element with the exact text, scoped to an open popup
              (listbox/menu/dropdown), then the aria-controls/aria-owns listbox.
         """
+        # Custom picker panels (checkable tags / checkboxes + a Confirm button, no
+        # option rows) are handled whole: tick every requested item, then confirm.
+        # Opening here is the same click the option path would make, so for an
+        # ordinary dropdown the first pick below simply reuses the open popup.
+        handled, preopened = await self._try_checkable_panel(trigger, value, timeout)
+        if handled:
+            return
+
         # Multi-select support: a tags widget takes several values in one step,
         # written comma-separated ("TagAccepted, Aerobic, Strength"). Only split
         # for an actual multi-select so a single value that legitimately contains
@@ -2753,12 +2879,13 @@ class PlaywrightAdapter(BaseAdapter):
         values = await self._split_multi_values(trigger, value)
         if len(values) > 1:
             missed = []
-            for v in values:
+            for i, v in enumerate(values):
                 # Don't self-correct across other dropdowns for each value: we
                 # already know THIS multi-select is the target, and probing the
                 # rest per value is what made the step take ~44s and left a stray
                 # popup open in another section.
-                if not await self._select_single(trigger, v, timeout, probe_others=False, no_filter=no_filter):
+                if not await self._select_single(trigger, v, timeout, probe_others=False, no_filter=no_filter,
+                                                 preopened=preopened and i == 0):
                     missed.append(v)
             if missed and len(missed) == len(values):
                 raise ValueError(
@@ -2768,7 +2895,7 @@ class PlaywrightAdapter(BaseAdapter):
                 logger.warning("multi-select: could not add %r (added the rest)", missed)
             return
 
-        if await self._select_single(trigger, values[0], timeout, no_filter=no_filter):
+        if await self._select_single(trigger, values[0], timeout, no_filter=no_filter, preopened=preopened):
             return
         raise ValueError(
             f"could not find a dropdown option matching {value!r} after opening "
@@ -2800,8 +2927,108 @@ class PlaywrightAdapter(BaseAdapter):
         parts = [v.strip() for v in value.split(",") if v.strip()]
         return parts or [value]
 
+    async def _try_checkable_panel(self, trigger, value: str, timeout: int) -> tuple[bool, bool]:
+        """Select ``value`` in a custom picker panel; returns ``(handled, opened)``.
+
+        Opens the combobox and inspects the popup it owns. When that popup is a
+        checkable panel (checkable tags / checkboxes / toggle buttons, no option
+        rows), every requested item is ticked — comma-separated values are split
+        unless the whole value names one item — already-ticked items are left as
+        they are, each click is checked to have toggled its item, and the panel's
+        own Confirm/OK/Apply/Done button is clicked (Escape when it has none).
+        Raises ``ValueError`` naming any value the panel doesn't offer (after
+        cancelling, so nothing half-applied is committed).
+
+        For any other popup returns ``(False, opened)``: nothing was clicked but
+        the opening click, so the option-list path continues on the open popup.
+        """
+        probe = min(timeout, 3000)
+        try:
+            await self._open_combobox(trigger, probe)
+        except Exception:  # noqa: BLE001 — the option path reports an un-openable trigger
+            return False, False
+        info = None
+        try:
+            for _ in range(10):
+                info = await trigger.first.evaluate(_CHECKABLE_PANEL_JS, {"op": "detect"})
+                if not isinstance(info, dict) or info.get("open"):
+                    break
+                await self._page.wait_for_timeout(100)
+        except Exception:  # noqa: BLE001 — undetectable: treat as an ordinary popup
+            return False, True
+        if not (isinstance(info, dict) and info.get("panel")):
+            return False, True
+
+        page = self._page
+        body = page.locator("body")
+
+        async def run(op: str, **kw):
+            return await body.evaluate(_CHECKABLE_PANEL_JS, {"op": op, **kw})
+
+        offered = [" ".join((t or "").split()).lower() for t in (info.get("items") or [])]
+        whole = " ".join((value or "").split()).lower()
+        if "," in value and whole not in offered and whole.replace(" ", "") not in [o.replace(" ", "") for o in offered]:
+            values = [v.strip() for v in value.split(",") if v.strip()]
+        else:
+            values = [value.strip()]
+
+        missed: list = []
+        try:
+            for v in values:
+                mark = await run("mark", text=v)
+                if not mark or not mark.get("found"):
+                    missed.append(v)
+                    continue
+                if mark.get("checked") is True:
+                    logger.debug("checkable panel: %r already selected", v)
+                    continue
+                item = page.locator('[data-bg-panel-item="1"]').first
+                try:
+                    await item.click(timeout=probe)
+                except Exception:  # noqa: BLE001 — covered by a sibling layer: click through it
+                    await item.click(timeout=probe, force=True)
+                await page.wait_for_timeout(120)
+                after = await run("state") or {}
+                toggled = (after.get("checked") is True) if after.get("checked") is not None \
+                    else after.get("sig") != mark.get("sig")
+                if not toggled:
+                    missed.append(v)
+
+            if missed:
+                if await run("button", kind="cancel"):
+                    await page.locator('[data-bg-panel-btn="1"]').first.click(timeout=probe)
+                else:
+                    await page.keyboard.press("Escape")
+                raise ValueError(
+                    f"could not select {missed!r} in the picker panel "
+                    f"(it offers: {', '.join((info.get('items') or [])[:40])})"
+                )
+
+            if await run("button", kind="ok"):
+                await page.locator('[data-bg-panel-btn="1"]').first.click(timeout=probe)
+            else:
+                await page.keyboard.press("Escape")
+            await page.wait_for_timeout(200)
+        finally:
+            try:
+                await run("clear")
+            except Exception:  # noqa: BLE001 — markers are harmless leftovers
+                pass
+
+        # Where the field lists its selections (Ant tags), confirm they landed.
+        # Informational only: a collapsed "+N" summary can hide some of them.
+        if await self._is_ant_select(trigger):
+            shown = await self._selected_texts(trigger)
+            if shown:
+                absent = [v for v in values if not await self._value_committed(trigger, v)]
+                if absent:
+                    logger.warning("checkable panel: %r not shown in the field after confirm", absent)
+        logger.debug("checkable panel: selected %r", values)
+        return True, True
+
     async def _select_single(self, trigger, value: str, timeout: int,
-                             probe_others: bool = True, no_filter: bool = False) -> bool:
+                             probe_others: bool = True, no_filter: bool = False,
+                             preopened: bool = False) -> bool:
         """Commit one ``value`` into a combobox, self-correcting the trigger.
 
         Tries the resolved trigger first; if it does not actually offer the value
@@ -2812,7 +3039,8 @@ class PlaywrightAdapter(BaseAdapter):
         selection left on a merely-probed candidate is undone.
 
         ``probe_others=False`` restricts the attempt to the given trigger (used
-        when adding several values to one known multi-select).
+        when adding several values to one known multi-select). ``preopened``
+        means the given trigger's popup is already open (don't click it again).
         """
         candidates = [trigger]
         if probe_others:
@@ -2831,7 +3059,8 @@ class PlaywrightAdapter(BaseAdapter):
         picked = -1
         for i, cand in enumerate(candidates):
             try:
-                if await self._try_pick_option(cand, value, timeout, no_filter=no_filter):
+                if await self._try_pick_option(cand, value, timeout, no_filter=no_filter,
+                                               already_open=preopened and i == 0):
                     picked = i
                     break
             except Exception:  # noqa: BLE001 — try the next candidate
@@ -3073,7 +3302,8 @@ class PlaywrightAdapter(BaseAdapter):
             except Exception:  # noqa: BLE001
                 return
 
-    async def _try_pick_option(self, trigger, value: str, timeout: int, no_filter: bool = False) -> bool:
+    async def _try_pick_option(self, trigger, value: str, timeout: int, no_filter: bool = False,
+                               already_open: bool = False) -> bool:
         """Open one combobox, filter by typing, and click the matching option.
 
         ``no_filter=True`` skips the type-to-filter step and scans the open list
@@ -3086,10 +3316,11 @@ class PlaywrightAdapter(BaseAdapter):
         starts from a clean page). Never raises for a normal "not found".
         """
         probe = min(timeout, 3000)
-        try:
-            await self._open_combobox(trigger, timeout)
-        except Exception:  # noqa: BLE001 — an un-openable trigger simply doesn't match
-            return False
+        if not already_open:
+            try:
+                await self._open_combobox(trigger, timeout)
+            except Exception:  # noqa: BLE001 — an un-openable trigger simply doesn't match
+                return False
 
         # Searchable comboboxes (Ant `showSearch`, MUI Autocomplete, react-select)
         # render a *filtered / virtualized* option list — the target row is often

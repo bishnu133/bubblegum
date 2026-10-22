@@ -63,7 +63,7 @@ tests and you can mix plain-English steps with regular Playwright/Appium code.
 
 | Package | Latest | Install |
 |---|---|---|
-| Engine (Python) — `bubblegum-ai` | **0.0.18** | `pip install "bubblegum-ai[web]"` |
+| Engine (Python) — `bubblegum-ai` | **0.0.19** | `pip install "bubblegum-ai[web]"` |
 | Node / TypeScript client — `@bubblegum-ai/node` | **0.0.6-alpha.17** | `npm install @bubblegum-ai/node` |
 
 Requirements: **Python 3.11+**. The Node client needs **Node 18+** *and* the Python engine
@@ -538,6 +538,7 @@ Full details for every release are in the [CHANGELOG](CHANGELOG.md).
 
 | Version | Highlights |
 |---|---|
+| **0.0.19** | **Picker panels** — select several tags in a dropdown panel of checkable tags and its **Confirm** button is clicked for you (`Select "A, B" from Content Tags`). |
 | **0.0.18** | Buttons inside an open **pop-up panel** (e.g. a column filter's `Search` / `Reset`) win over same-named page buttons. |
 | **0.0.17** | Click a filter / search / sort icon inside a **named column header** (`Click on the Search icon of Title column`). |
 | **0.0.16** | **Tags / token inputs** — add multiple items; `… and press Enter` / `… and press Tab` supported. |

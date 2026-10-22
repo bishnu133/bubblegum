@@ -1,5 +1,34 @@
 # Unreleased
 
+## 0.0.19 — fix(web): select from a custom picker panel (checkable tags + Confirm)
+
+Some selects open a custom panel instead of an option list — e.g. an Ant
+`Select` with `dropdownRender` showing grouped checkable tags with Cancel /
+Confirm buttons. The panel has no option rows and nothing appears in the field
+until Confirm, so `Select "A, B" from Content Tags` failed: no option was found,
+the "did it commit?" check never saw the value, and the retry clicked the same
+tag again (toggling it back off) before Escape closed the panel.
+
+A select step now inspects the popup it opens. When it is a **checkable panel**
+— checkable tags (`.ant-tag-checkable`), checkboxes, `role=checkbox`,
+`aria-pressed` toggle buttons or switches, and no option rows — every requested
+item is ticked, then the panel's own Confirm / OK / Apply / Done button is
+clicked (Escape when it has none):
+
+- comma-separated values select several items in one step (split only when the
+  whole value doesn't name a single item);
+- an item that is already ticked is left as it is (idempotent re-runs);
+- each click is checked to have actually toggled its item;
+- a value the panel doesn't offer fails the step with the list of what it does
+  offer — after Cancel, so nothing half-applied is committed.
+
+Ordinary option-list selects (single, multi, searchable, no-filter) are
+unchanged: the panel check reuses the same opening click, so the option path
+continues on the already-open popup without clicking the trigger twice.
+
+Adds `tests/integration/test_checkable_panel_select_web.py`. Engine `0.0.18` →
+`0.0.19`; Node client stays `0.0.6-alpha.17` (no client code change).
+
 ## 0.0.18 — fix(web): click the button inside an open pop-up panel, not the page's
 
 A table column's filter panel (Ant `.ant-table-filter-dropdown`, and similar
