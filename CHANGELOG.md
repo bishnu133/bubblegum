@@ -1,5 +1,31 @@
 # Unreleased
 
+## 0.0.20 — fix(web): picker panels whose tags show "picked" by inline colour only
+
+0.0.19's picker-panel select read a tag's picked state only from explicit
+signals (Ant's `ant-tag-checkable-checked` class, `aria-checked`, a checkbox).
+Many apps mark a picked tag by changing its **inline colours** alone — the
+class never changes — so every click was judged "did not take", the panel was
+cancelled and the step failed with a misleading "could not select … (it
+offers: …)" listing the very tags it had tried.
+
+- A click counts as picking the item when anything that shows its state
+  changes — class, inline `style`, `aria-*`, or the inner input.
+- "Already picked" (to keep re-runs idempotent) now also works without an
+  explicit flag: when the panel opens, the look most items share is taken as
+  the un-picked look, and an item styled differently is treated as picked.
+- If the app re-renders an item on click, it is found again by its text.
+- Errors now say which values are **not in the panel** and which **did not
+  respond to a click**, and that the panel was cancelled with nothing applied.
+
+Panels with an explicit checked class / aria state behave exactly as before;
+ordinary option-list selects are untouched.
+
+Adds realistic-page cases to `tests/integration/test_checkable_panel_select_web.py`
+(panel opens on mousedown and covers its field, inline-colour picked state, a
+neighbouring "Eligibility Tags" multi-select, pre-picked tags, two steps in a
+row, unknown tag). Engine `0.0.19` → `0.0.20`.
+
 ## 0.0.19 — fix(web): select from a custom picker panel (checkable tags + Confirm)
 
 Some selects open a custom panel instead of an option list — e.g. an Ant

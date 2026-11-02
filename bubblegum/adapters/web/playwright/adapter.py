@@ -2001,7 +2001,11 @@ _CHECKABLE_PANEL_JS = r"""
     const all = Array.from(panel.querySelectorAll(ITEM)).filter(vis);
     return all.filter((i) => !all.some((o) => o !== i && o.contains(i)));
   };
-  const textOf = (i) => norm(i.getAttribute('title') || i.textContent || i.getAttribute('aria-label'));
+  const rawOf = (i) => (i.getAttribute('title') || i.textContent || i.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+  const textOf = (i) => norm(rawOf(i));
+  // An item's look (inline style + classes; never :hover, which only changes the
+  // computed style). Many apps mark a picked tag by inline colours alone.
+  const lookOf = (i) => (i.getAttribute('style') || '') + '|' + (i.className || '');
   const stateOf = (i) => {
     const inp = i.matches('input') ? i : i.querySelector('input[type="checkbox"],input[type="radio"]');
     if (inp) return !!inp.checked;
@@ -2012,6 +2016,11 @@ _CHECKABLE_PANEL_JS = r"""
     }
     const c = ' ' + (i.className || '') + ' ';
     if (/-checked\s|\s(checked|selected|active|is-checked|is-selected|is-active)\s/i.test(c)) return true;
+    // No explicit flag: compare with the look most items had when the panel
+    // opened (the unpicked look) — a differently-styled item is picked.
+    const p = i.closest('[data-bg-panel]');
+    const rest = p && p.__bgRestLook;
+    if (rest !== undefined && rest !== null) return lookOf(i) !== rest;
     if (i.matches('.ant-tag-checkable,.ant-checkbox-wrapper')) return false;
     return null;
   };
@@ -2050,7 +2059,12 @@ _CHECKABLE_PANEL_JS = r"""
     const its = items(panel);
     if (!its.length) return { open: true, panel: false };
     panel.setAttribute('data-bg-panel', '1');
-    return { open: true, panel: true, items: its.map(textOf).slice(0, 300) };
+    const counts = new Map();
+    its.forEach((i) => counts.set(lookOf(i), (counts.get(lookOf(i)) || 0) + 1));
+    let rest = null, best = 0;
+    counts.forEach((n, k) => { if (n > best) { best = n; rest = k; } });
+    panel.__bgRestLook = (its.length >= 3 && best * 2 > its.length) ? rest : null;
+    return { open: true, panel: true, items: its.map(rawOf).slice(0, 300) };
   }
 
   const panel = panelEl();
@@ -2972,12 +2986,13 @@ class PlaywrightAdapter(BaseAdapter):
         else:
             values = [value.strip()]
 
-        missed: list = []
+        not_offered: list = []
+        no_response: list = []
         try:
             for v in values:
                 mark = await run("mark", text=v)
                 if not mark or not mark.get("found"):
-                    missed.append(v)
+                    not_offered.append(v)
                     continue
                 if mark.get("checked") is True:
                     logger.debug("checkable panel: %r already selected", v)
@@ -2989,20 +3004,29 @@ class PlaywrightAdapter(BaseAdapter):
                     await item.click(timeout=probe, force=True)
                 await page.wait_for_timeout(120)
                 after = await run("state") or {}
-                toggled = (after.get("checked") is True) if after.get("checked") is not None \
-                    else after.get("sig") != mark.get("sig")
-                if not toggled:
-                    missed.append(v)
+                if not after.get("found"):
+                    # The app re-rendered the item (marker gone): find it again.
+                    after = await run("mark", text=v) or {}
+                # Picked when the item now reads as picked, or anything that shows
+                # its state (class / inline style / aria / input) changed — apps
+                # often mark a picked tag by inline colours alone.
+                if not (after.get("checked") is True or after.get("sig") != mark.get("sig")):
+                    no_response.append(v)
 
-            if missed:
+            if not_offered or no_response:
                 if await run("button", kind="cancel"):
                     await page.locator('[data-bg-panel-btn="1"]').first.click(timeout=probe)
                 else:
                     await page.keyboard.press("Escape")
-                raise ValueError(
-                    f"could not select {missed!r} in the picker panel "
-                    f"(it offers: {', '.join((info.get('items') or [])[:40])})"
-                )
+                problems = []
+                if not_offered:
+                    problems.append(
+                        f"{not_offered!r} not found in the picker panel "
+                        f"(it offers: {', '.join((info.get('items') or [])[:40])})"
+                    )
+                if no_response:
+                    problems.append(f"{no_response!r} did not change when clicked")
+                raise ValueError("; ".join(problems) + " — cancelled, nothing applied")
 
             if await run("button", kind="ok"):
                 await page.locator('[data-bg-panel-btn="1"]').first.click(timeout=probe)
